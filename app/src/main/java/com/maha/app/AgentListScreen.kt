@@ -35,6 +35,8 @@ fun AgentListScreen(
     executionStateMap: Map<String, String>,
     onAgentClick: (Agent) -> Unit,
     onAddAgentClick: () -> Unit,
+    onSaveScenarioClick: () -> Unit,
+    onOpenScenarioListClick: () -> Unit,
     onMoveUpClick: (Agent) -> Unit,
     onMoveDownClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
@@ -85,6 +87,24 @@ fun AgentListScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "Add Agent")
+                }
+            }
+
+            item {
+                Button(
+                    onClick = onSaveScenarioClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Save Scenario")
+                }
+            }
+
+            item {
+                Button(
+                    onClick = onOpenScenarioListClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Load Scenario")
                 }
             }
 

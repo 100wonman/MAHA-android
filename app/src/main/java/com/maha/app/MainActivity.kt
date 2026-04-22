@@ -71,10 +71,12 @@ fun MAHAApp() {
     }
 
     val runList = remember { mutableStateListOf<Run>() }
+    val scenarioList = remember { mutableStateListOf<Scenario>() }
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
 
     var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
+    var isScenarioScreenOpen by remember { mutableStateOf(false) }
 
     agentList.forEach { agent ->
         if (executionStateMap[agent.id] == null) {
@@ -90,6 +92,30 @@ fun MAHAApp() {
                 run = selectedRun!!,
                 onBackClick = {
                     selectedRun = null
+                }
+            )
+        }
+
+        isScenarioScreenOpen -> {
+            ScenarioListScreen(
+                scenarioList = scenarioList,
+                onScenarioClick = { scenario ->
+                    agentList.clear()
+                    agentList.addAll(
+                        scenario.agents.map { savedAgent ->
+                            savedAgent.copy()
+                        }
+                    )
+
+                    executionStateMap.clear()
+                    agentList.forEach { agent ->
+                        executionStateMap[agent.id] = "WAITING"
+                    }
+
+                    isScenarioScreenOpen = false
+                },
+                onBackClick = {
+                    isScenarioScreenOpen = false
                 }
             )
         }
@@ -145,6 +171,18 @@ fun MAHAApp() {
                     agentList.add(newAgent)
                     executionStateMap[newAgent.id] = "WAITING"
                     selectedAgentId = newAgent.id
+                },
+                onSaveScenarioClick = {
+                    val newScenario = Scenario(
+                        id = "scenario_${System.currentTimeMillis()}",
+                        name = "Scenario ${scenarioList.size + 1}",
+                        agents = agentList.map { it.copy() },
+                        savedAt = getCurrentTimeText()
+                    )
+                    scenarioList.add(0, newScenario)
+                },
+                onOpenScenarioListClick = {
+                    isScenarioScreenOpen = true
                 },
                 onMoveUpClick = { agent ->
                     val index = agentList.indexOfFirst { it.id == agent.id }
