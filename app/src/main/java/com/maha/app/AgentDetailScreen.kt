@@ -34,6 +34,7 @@ fun AgentDetailScreen(
     agent: Agent,
     runList: List<Run>,
     onRunClick: (Run) -> Unit,
+    onRunItemClick: (Run) -> Unit,
     onBackClick: () -> Unit
 ) {
     var runStatus by remember { mutableStateOf("Idle") }
@@ -177,7 +178,12 @@ fun AgentDetailScreen(
                 }
             } else {
                 items(runList) { run ->
-                    RunItemCard(run = run)
+                    RunItemCard(
+                        run = run,
+                        onClick = {
+                            onRunItemClick(run)
+                        }
+                    )
                 }
             }
         }

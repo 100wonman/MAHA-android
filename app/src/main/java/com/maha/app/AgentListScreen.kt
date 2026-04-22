@@ -32,6 +32,7 @@ fun AgentListScreen(
     runList: List<Run>,
     executionStateMap: Map<String, String>,
     onAgentClick: (Agent) -> Unit,
+    onRunItemClick: (Run) -> Unit,
     onRunAllClick: () -> Unit
 ) {
     Scaffold(
@@ -104,7 +105,12 @@ fun AgentListScreen(
                 }
             } else {
                 items(runList) { run ->
-                    RunItemCard(run = run)
+                    RunItemCard(
+                        run = run,
+                        onClick = {
+                            onRunItemClick(run)
+                        }
+                    )
                 }
             }
         }
@@ -149,9 +155,14 @@ fun AgentListItem(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RunItemCard(run: Run) {
+fun RunItemCard(
+    run: Run,
+    onClick: () -> Unit
+) {
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
@@ -186,38 +197,6 @@ fun RunItemCard(run: Run) {
                 text = "Log Count: ${run.logs.size}",
                 style = MaterialTheme.typography.bodyMedium
             )
-
-            if (run.results.isNotEmpty()) {
-                Text(
-                    text = "Results",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-
-                run.results.forEach { result ->
-                    Text(
-                        text = "${result.order}. ${result.agentName} - ${result.status}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            if (run.logs.isNotEmpty()) {
-                Text(
-                    text = "Logs",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-
-                run.logs.forEach { log ->
-                    Text(
-                        text = "${log.timestamp} - ${log.message}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
         }
     }
 }
