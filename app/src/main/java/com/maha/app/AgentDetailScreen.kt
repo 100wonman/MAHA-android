@@ -27,9 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,19 +106,16 @@ fun AgentDetailScreen(
                     onClick = {
                         runStatus = "Running"
 
-                        val timeText = SimpleDateFormat(
-                            "yyyy-MM-dd HH:mm:ss",
-                            Locale.getDefault()
-                        ).format(Date())
-
+                        val timeText = getCurrentTimeText()
                         val resultText = "${agent.name} executed successfully at $timeText."
 
                         val newResult = RunResult(
                             agentId = agent.id,
                             agentName = agent.name,
-                            status = "Completed",
+                            status = "SUCCESS",
                             resultText = resultText,
-                            timestamp = timeText
+                            timestamp = timeText,
+                            order = runResults.size + 1
                         )
 
                         onRunClick(newResult)
@@ -167,42 +161,6 @@ fun AgentDetailScreen(
                     RunResultItem(result = result)
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun RunResultItem(result: RunResult) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "${result.order}. ${result.agentName}",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "Status: ${result.status}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Text(
-                text = "Time: ${result.timestamp}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Text(
-                text = "Result: ${result.resultText}",
-                style = MaterialTheme.typography.bodyMedium
-            )
         }
     }
 }

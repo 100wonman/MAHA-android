@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 fun AgentListScreen(
     agentList: List<Agent>,
     runResults: List<RunResult>,
+    executionStateMap: Map<String, String>,
+    logList: List<LogItem>,
     onAgentClick: (Agent) -> Unit,
     onRunAllClick: () -> Unit
 ) {
@@ -57,6 +59,7 @@ fun AgentListScreen(
             items(agentList) { agent ->
                 AgentListItem(
                     agent = agent,
+                    executionState = executionStateMap[agent.id] ?: "WAITING",
                     onClick = {
                         onAgentClick(agent)
                     }
@@ -105,6 +108,31 @@ fun AgentListScreen(
                     RunResultItem(result = result)
                 }
             }
+
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            item {
+                Text(
+                    text = "Execution Logs",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (logList.isEmpty()) {
+                item {
+                    Text(
+                        text = "No logs yet.",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            } else {
+                items(logList) { log ->
+                    LogItemCard(log = log)
+                }
+            }
         }
     }
 }
@@ -113,6 +141,7 @@ fun AgentListScreen(
 @Composable
 fun AgentListItem(
     agent: Agent,
+    executionState: String,
     onClick: () -> Unit
 ) {
     Card(
@@ -135,6 +164,76 @@ fun AgentListItem(
                 text = "Status: ${agent.status}",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Text(
+                text = "Run State: $executionState",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun RunResultItem(result: RunResult) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "${result.order}. ${result.agentName}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Status: ${result.status}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Text(
+                text = "Time: ${result.timestamp}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Text(
+                text = "Result: ${result.resultText}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun LogItemCard(log: LogItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = log.timestamp,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = log.message,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 6.dp)
             )
         }
     }
