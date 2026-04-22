@@ -15,31 +15,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-data class AgentItem(
-    val name: String,
-    val status: String
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentListScreen() {
-
-    val dummyAgents = listOf(
-        AgentItem(name = "Planner", status = "Enabled"),
-        AgentItem(name = "Researcher", status = "Disabled"),
-        AgentItem(name = "Writer", status = "Enabled")
+    val agentList = listOf(
+        Agent(id = "agent_001", name = "Planner", status = "Enabled"),
+        Agent(id = "agent_002", name = "Researcher", status = "Disabled"),
+        Agent(id = "agent_003", name = "Writer", status = "Enabled")
     )
 
     Scaffold(
@@ -70,7 +64,6 @@ fun AgentListScreen() {
             }
         }
     ) { innerPadding ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -83,7 +76,7 @@ fun AgentListScreen() {
                 contentPadding = PaddingValues(vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(dummyAgents) { agent ->
+                items(agentList) { agent ->
                     AgentListItem(agent = agent)
                 }
             }
@@ -92,7 +85,7 @@ fun AgentListScreen() {
 }
 
 @Composable
-fun AgentListItem(agent: AgentItem) {
+fun AgentListItem(agent: Agent) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
