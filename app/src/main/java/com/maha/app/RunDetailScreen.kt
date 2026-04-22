@@ -167,7 +167,12 @@ fun RunResultDetailItem(result: RunResult) {
             )
 
             Text(
-                text = "Result: ${result.resultText}",
+                text = "Input: ${result.inputText}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = "Output: ${result.outputText}",
                 style = MaterialTheme.typography.bodyMedium
             )
         }

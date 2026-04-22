@@ -39,24 +39,30 @@ fun MAHAApp() {
     val scope = rememberCoroutineScope()
 
     val agentList = remember {
-        listOf(
+        mutableStateListOf(
             Agent(
                 id = "agent_001",
                 name = "Planner",
                 description = "작업 순서를 먼저 정리하는 에이전트",
-                status = "Enabled"
+                status = "Enabled",
+                inputFormat = "User Request",
+                outputFormat = "Plan Text"
             ),
             Agent(
                 id = "agent_002",
                 name = "Researcher",
                 description = "필요한 정보를 조사하고 정리하는 에이전트",
-                status = "Enabled"
+                status = "Enabled",
+                inputFormat = "Plan Text",
+                outputFormat = "Research Notes"
             ),
             Agent(
                 id = "agent_003",
                 name = "Writer",
                 description = "최종 결과를 문장 형태로 작성하는 에이전트",
-                status = "Enabled"
+                status = "Enabled",
+                inputFormat = "Research Notes",
+                outputFormat = "Final Answer"
             )
         )
     }
@@ -64,7 +70,7 @@ fun MAHAApp() {
     val runList = remember { mutableStateListOf<Run>() }
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
 
-    var selectedAgent by remember { mutableStateOf<Agent?>(null) }
+    var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
 
     agentList.forEach { agent ->
@@ -72,6 +78,8 @@ fun MAHAApp() {
             executionStateMap[agent.id] = "WAITING"
         }
     }
+
+    val selectedAgent = agentList.find { it.id == selectedAgentId }
 
     when {
         selectedRun != null -> {
@@ -85,9 +93,15 @@ fun MAHAApp() {
 
         selectedAgent != null -> {
             AgentDetailScreen(
-                agent = selectedAgent!!,
+                agent = selectedAgent,
                 runList = runList.filter { run ->
-                    run.results.any { it.agentId == selectedAgent!!.id }
+                    run.results.any { it.agentId == selectedAgent.id }
+                },
+                onSaveClick = { updatedAgent ->
+                    val index = agentList.indexOfFirst { it.id == updatedAgent.id }
+                    if (index != -1) {
+                        agentList[index] = updatedAgent
+                    }
                 },
                 onRunClick = { newRun ->
                     runList.add(0, newRun)
@@ -96,7 +110,7 @@ fun MAHAApp() {
                     selectedRun = run
                 },
                 onBackClick = {
-                    selectedAgent = null
+                    selectedAgentId = null
                 }
             )
         }
@@ -107,7 +121,7 @@ fun MAHAApp() {
                 runList = runList,
                 executionStateMap = executionStateMap,
                 onAgentClick = { agent ->
-                    selectedAgent = agent
+                    selectedAgentId = agent.id
                 },
                 onRunItemClick = { run ->
                     selectedRun = run
@@ -124,6 +138,8 @@ fun MAHAApp() {
                         val resultList = mutableListOf<RunResult>()
                         val logList = mutableListOf<ExecutionLog>()
 
+                        var currentInput = "User request: Create a simple MAHA workflow summary."
+
                         logList.add(
                             ExecutionLog(
                                 message = "Run All started",
@@ -136,18 +152,25 @@ fun MAHAApp() {
 
                             logList.add(
                                 ExecutionLog(
-                                    message = "${agent.name} is RUNNING",
+                                    message = "${agent.name} is RUNNING with input: $currentInput",
                                     timestamp = getCurrentTimeText()
                                 )
                             )
 
                             delay(700)
 
+                            val outputText = buildDummyOutput(
+                                agentName = agent.name,
+                                stepNumber = index + 1,
+                                input = currentInput
+                            )
+
                             val result = RunResult(
                                 agentId = agent.id,
                                 agentName = agent.name,
                                 status = "SUCCESS",
-                                resultText = "${agent.name} executed successfully in step ${index + 1}.",
+                                inputText = currentInput,
+                                outputText = outputText,
                                 timestamp = getCurrentTimeText(),
                                 order = index + 1
                             )
@@ -157,10 +180,12 @@ fun MAHAApp() {
 
                             logList.add(
                                 ExecutionLog(
-                                    message = "${agent.name} finished with SUCCESS",
+                                    message = "${agent.name} finished with SUCCESS and output: $outputText",
                                     timestamp = getCurrentTimeText()
                                 )
                             )
+
+                            currentInput = outputText
 
                             delay(300)
                         }
@@ -193,4 +218,12 @@ fun getCurrentTimeText(): String {
         "yyyy-MM-dd HH:mm:ss",
         Locale.getDefault()
     ).format(Date())
+}
+
+fun buildDummyOutput(
+    agentName: String,
+    stepNumber: Int,
+    input: String
+): String {
+    return "Step $stepNumber - $agentName output based on: $input"
 }

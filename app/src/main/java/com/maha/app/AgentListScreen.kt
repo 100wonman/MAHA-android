@@ -141,9 +141,27 @@ fun AgentListItem(
             )
 
             Text(
+                text = "Description: ${agent.description}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Text(
                 text = "Status: ${agent.status}",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Text(
+                text = "Input: ${agent.inputFormat}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Text(
+                text = "Output: ${agent.outputFormat}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
             )
 
             Text(

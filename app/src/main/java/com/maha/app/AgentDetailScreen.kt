@@ -15,11 +15,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,12 +35,20 @@ import androidx.compose.ui.unit.dp
 fun AgentDetailScreen(
     agent: Agent,
     runList: List<Run>,
+    onSaveClick: (Agent) -> Unit,
     onRunClick: (Run) -> Unit,
     onRunItemClick: (Run) -> Unit,
     onBackClick: () -> Unit
 ) {
-    var runStatus by remember { mutableStateOf("Idle") }
-    var latestResultText by remember { mutableStateOf("") }
+    var editedName by remember(agent.id) { mutableStateOf(agent.name) }
+    var editedDescription by remember(agent.id) { mutableStateOf(agent.description) }
+    var runStatus by remember(agent.id) { mutableStateOf("Idle") }
+    var latestOutputText by remember(agent.id) { mutableStateOf("") }
+
+    LaunchedEffect(agent.id, agent.name, agent.description) {
+        editedName = agent.name
+        editedDescription = agent.description
+    }
 
     Scaffold(
         topBar = {
@@ -71,15 +81,18 @@ fun AgentDetailScreen(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "Name: ${agent.name}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                        OutlinedTextField(
+                            value = editedName,
+                            onValueChange = { editedName = it },
+                            label = { Text("Name") },
+                            modifier = Modifier.fillMaxWidth()
                         )
 
-                        Text(
-                            text = "Description: ${agent.description}",
-                            style = MaterialTheme.typography.bodyLarge
+                        OutlinedTextField(
+                            value = editedDescription,
+                            onValueChange = { editedDescription = it },
+                            label = { Text("Description") },
+                            modifier = Modifier.fillMaxWidth()
                         )
 
                         Text(
@@ -88,13 +101,23 @@ fun AgentDetailScreen(
                         )
 
                         Text(
+                            text = "Input Format: ${agent.inputFormat}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+
+                        Text(
+                            text = "Output Format: ${agent.outputFormat}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+
+                        Text(
                             text = "Run Status: $runStatus",
                             style = MaterialTheme.typography.bodyLarge
                         )
 
-                        if (latestResultText.isNotEmpty()) {
+                        if (latestOutputText.isNotEmpty()) {
                             Text(
-                                text = "Latest Result: $latestResultText",
+                                text = "Latest Output: $latestOutputText",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -105,41 +128,66 @@ fun AgentDetailScreen(
             item {
                 Button(
                     onClick = {
+                        val updatedAgent = agent.copy(
+                            name = editedName,
+                            description = editedDescription
+                        )
+                        onSaveClick(updatedAgent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Save")
+                }
+            }
+
+            item {
+                Button(
+                    onClick = {
+                        val currentAgent = agent.copy(
+                            name = editedName,
+                            description = editedDescription
+                        )
+
+                        onSaveClick(currentAgent)
+
                         runStatus = "RUNNING"
 
                         val timeText = getCurrentTimeText()
-                        val resultText = "${agent.name} executed successfully at $timeText."
+                        val inputText = "User request for ${currentAgent.name}"
+                        val outputText =
+                            "Single run output from ${currentAgent.name} based on: $inputText"
 
                         val result = RunResult(
-                            agentId = agent.id,
-                            agentName = agent.name,
+                            agentId = currentAgent.id,
+                            agentName = currentAgent.name,
                             status = "SUCCESS",
-                            resultText = resultText,
+                            inputText = inputText,
+                            outputText = outputText,
                             timestamp = timeText,
                             order = 1
                         )
 
                         val logs = listOf(
                             ExecutionLog(
-                                message = "${agent.name} is RUNNING",
+                                message = "${currentAgent.name} is RUNNING with input: $inputText",
                                 timestamp = timeText
                             ),
                             ExecutionLog(
-                                message = "${agent.name} finished with SUCCESS",
+                                message = "${currentAgent.name} finished with SUCCESS and output: $outputText",
                                 timestamp = getCurrentTimeText()
                             )
                         )
 
                         val run = Run(
                             runId = "run_${System.currentTimeMillis()}",
-                            title = "Single Run - ${agent.name}",
+                            title = "Single Run - ${currentAgent.name}",
                             timestamp = timeText,
                             results = listOf(result),
                             logs = logs
                         )
 
                         onRunClick(run)
-                        latestResultText = resultText
+                        latestOutputText = outputText
                         runStatus = "SUCCESS"
                     },
                     modifier = Modifier.fillMaxWidth()
