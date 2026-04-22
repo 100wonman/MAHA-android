@@ -8,5 +8,6 @@ data class Agent(
     val description: String,
     val status: String,
     val inputFormat: String,
-    val outputFormat: String
+    val outputFormat: String,
+    val isEnabled: Boolean
 )

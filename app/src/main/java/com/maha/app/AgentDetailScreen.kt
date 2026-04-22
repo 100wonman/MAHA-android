@@ -4,6 +4,7 @@ package com.maha.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -26,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,12 +45,14 @@ fun AgentDetailScreen(
 ) {
     var editedName by remember(agent.id) { mutableStateOf(agent.name) }
     var editedDescription by remember(agent.id) { mutableStateOf(agent.description) }
+    var editedIsEnabled by remember(agent.id) { mutableStateOf(agent.isEnabled) }
     var runStatus by remember(agent.id) { mutableStateOf("Idle") }
     var latestOutputText by remember(agent.id) { mutableStateOf("") }
 
-    LaunchedEffect(agent.id, agent.name, agent.description) {
+    LaunchedEffect(agent.id, agent.name, agent.description, agent.isEnabled) {
         editedName = agent.name
         editedDescription = agent.description
+        editedIsEnabled = agent.isEnabled
     }
 
     Scaffold(
@@ -95,6 +100,22 @@ fun AgentDetailScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Enabled",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+
+                            Switch(
+                                checked = editedIsEnabled,
+                                onCheckedChange = { editedIsEnabled = it }
+                            )
+                        }
+
                         Text(
                             text = "Status: ${agent.status}",
                             style = MaterialTheme.typography.bodyLarge
@@ -130,7 +151,8 @@ fun AgentDetailScreen(
                     onClick = {
                         val updatedAgent = agent.copy(
                             name = editedName,
-                            description = editedDescription
+                            description = editedDescription,
+                            isEnabled = editedIsEnabled
                         )
                         onSaveClick(updatedAgent)
                     },
@@ -145,7 +167,8 @@ fun AgentDetailScreen(
                     onClick = {
                         val currentAgent = agent.copy(
                             name = editedName,
-                            description = editedDescription
+                            description = editedDescription,
+                            isEnabled = editedIsEnabled
                         )
 
                         onSaveClick(currentAgent)

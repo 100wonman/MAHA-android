@@ -46,7 +46,8 @@ fun MAHAApp() {
                 description = "작업 순서를 먼저 정리하는 에이전트",
                 status = "Enabled",
                 inputFormat = "User Request",
-                outputFormat = "Plan Text"
+                outputFormat = "Plan Text",
+                isEnabled = true
             ),
             Agent(
                 id = "agent_002",
@@ -54,7 +55,8 @@ fun MAHAApp() {
                 description = "필요한 정보를 조사하고 정리하는 에이전트",
                 status = "Enabled",
                 inputFormat = "Plan Text",
-                outputFormat = "Research Notes"
+                outputFormat = "Research Notes",
+                isEnabled = true
             ),
             Agent(
                 id = "agent_003",
@@ -62,7 +64,8 @@ fun MAHAApp() {
                 description = "최종 결과를 문장 형태로 작성하는 에이전트",
                 status = "Enabled",
                 inputFormat = "Research Notes",
-                outputFormat = "Final Answer"
+                outputFormat = "Final Answer",
+                isEnabled = true
             )
         )
     }
@@ -101,6 +104,7 @@ fun MAHAApp() {
                     val index = agentList.indexOfFirst { it.id == updatedAgent.id }
                     if (index != -1) {
                         agentList[index] = updatedAgent
+                        executionStateMap[updatedAgent.id] = "WAITING"
                     }
                 },
                 onRunClick = { newRun ->
@@ -123,6 +127,22 @@ fun MAHAApp() {
                 onAgentClick = { agent ->
                     selectedAgentId = agent.id
                 },
+                onMoveUpClick = { agent ->
+                    val index = agentList.indexOfFirst { it.id == agent.id }
+                    if (index > 0) {
+                        val temp = agentList[index - 1]
+                        agentList[index - 1] = agentList[index]
+                        agentList[index] = temp
+                    }
+                },
+                onMoveDownClick = { agent ->
+                    val index = agentList.indexOfFirst { it.id == agent.id }
+                    if (index != -1 && index < agentList.lastIndex) {
+                        val temp = agentList[index + 1]
+                        agentList[index + 1] = agentList[index]
+                        agentList[index] = temp
+                    }
+                },
                 onRunItemClick = { run ->
                     selectedRun = run
                 },
@@ -131,6 +151,8 @@ fun MAHAApp() {
                         agentList.forEach { agent ->
                             executionStateMap[agent.id] = "WAITING"
                         }
+
+                        val enabledAgents = agentList.filter { it.isEnabled }
 
                         val runId = "run_${System.currentTimeMillis()}"
                         val runTimestamp = getCurrentTimeText()
@@ -147,7 +169,27 @@ fun MAHAApp() {
                             )
                         )
 
-                        agentList.forEachIndexed { index, agent ->
+                        if (enabledAgents.isEmpty()) {
+                            logList.add(
+                                ExecutionLog(
+                                    message = "No enabled agents. Run All stopped.",
+                                    timestamp = getCurrentTimeText()
+                                )
+                            )
+
+                            val newRun = Run(
+                                runId = runId,
+                                title = "Run All",
+                                timestamp = runTimestamp,
+                                results = resultList,
+                                logs = logList
+                            )
+
+                            runList.add(0, newRun)
+                            return@launch
+                        }
+
+                        enabledAgents.forEachIndexed { index, agent ->
                             executionStateMap[agent.id] = "RUNNING"
 
                             logList.add(

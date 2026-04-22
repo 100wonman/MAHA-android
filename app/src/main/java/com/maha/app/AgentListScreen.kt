@@ -5,11 +5,13 @@ package com.maha.app
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,6 +34,8 @@ fun AgentListScreen(
     runList: List<Run>,
     executionStateMap: Map<String, String>,
     onAgentClick: (Agent) -> Unit,
+    onMoveUpClick: (Agent) -> Unit,
+    onMoveDownClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
     onRunAllClick: () -> Unit
 ) {
@@ -56,12 +60,20 @@ fun AgentListScreen(
             contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(agentList) { agent ->
+            itemsIndexed(agentList) { index, agent ->
                 AgentListItem(
                     agent = agent,
                     executionState = executionStateMap[agent.id] ?: "WAITING",
+                    canMoveUp = index > 0,
+                    canMoveDown = index < agentList.lastIndex,
                     onClick = {
                         onAgentClick(agent)
+                    },
+                    onMoveUpClick = {
+                        onMoveUpClick(agent)
+                    },
+                    onMoveDownClick = {
+                        onMoveDownClick(agent)
                     }
                 )
             }
@@ -104,7 +116,7 @@ fun AgentListScreen(
                     )
                 }
             } else {
-                items(runList) { run ->
+                itemsIndexed(runList) { _, run ->
                     RunItemCard(
                         run = run,
                         onClick = {
@@ -122,7 +134,11 @@ fun AgentListScreen(
 fun AgentListItem(
     agent: Agent,
     executionState: String,
-    onClick: () -> Unit
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onClick: () -> Unit,
+    onMoveUpClick: () -> Unit,
+    onMoveDownClick: () -> Unit
 ) {
     Card(
         onClick = onClick,
@@ -142,6 +158,12 @@ fun AgentListItem(
 
             Text(
                 text = "Description: ${agent.description}",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Text(
+                text = "Enabled: ${if (agent.isEnabled) "ON" else "OFF"}",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
@@ -169,6 +191,31 @@ fun AgentListItem(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 4.dp)
             )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = onMoveUpClick,
+                    enabled = canMoveUp,
+                    modifier = Modifier.width(110.dp)
+                ) {
+                    Text(text = "Move Up")
+                }
+
+                Button(
+                    onClick = onMoveDownClick,
+                    enabled = canMoveDown,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .width(110.dp)
+                ) {
+                    Text(text = "Move Down")
+                }
+            }
         }
     }
 }
