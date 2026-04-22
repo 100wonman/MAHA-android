@@ -17,6 +17,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,6 +31,9 @@ fun AgentDetailScreen(
     agent: Agent,
     onBackClick: () -> Unit
 ) {
+    var runStatus by remember { mutableStateOf("Idle") }
+    var runResult by remember { mutableStateOf("") }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,7 +79,30 @@ fun AgentDetailScreen(
                         text = "Status: ${agent.status}",
                         style = MaterialTheme.typography.bodyLarge
                     )
+
+                    Text(
+                        text = "Run Status: $runStatus",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    if (runResult.isNotEmpty()) {
+                        Text(
+                            text = "Result: $runResult",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
                 }
+            }
+
+            Button(
+                onClick = {
+                    runStatus = "Running"
+                    runResult = "${agent.name} executed successfully."
+                    runStatus = "Completed"
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Run")
             }
 
             Button(
