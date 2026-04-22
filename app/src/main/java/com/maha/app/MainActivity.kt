@@ -107,6 +107,11 @@ fun MAHAApp() {
                         executionStateMap[updatedAgent.id] = "WAITING"
                     }
                 },
+                onDeleteClick = { agentToDelete ->
+                    agentList.removeAll { it.id == agentToDelete.id }
+                    executionStateMap.remove(agentToDelete.id)
+                    selectedAgentId = null
+                },
                 onRunClick = { newRun ->
                     runList.add(0, newRun)
                 },
@@ -126,6 +131,20 @@ fun MAHAApp() {
                 executionStateMap = executionStateMap,
                 onAgentClick = { agent ->
                     selectedAgentId = agent.id
+                },
+                onAddAgentClick = {
+                    val newAgent = Agent(
+                        id = "agent_${System.currentTimeMillis()}",
+                        name = "New Agent",
+                        description = "새 워커 설명",
+                        status = "Enabled",
+                        inputFormat = "Input Text",
+                        outputFormat = "Output Text",
+                        isEnabled = true
+                    )
+                    agentList.add(newAgent)
+                    executionStateMap[newAgent.id] = "WAITING"
+                    selectedAgentId = newAgent.id
                 },
                 onMoveUpClick = { agent ->
                     val index = agentList.indexOfFirst { it.id == agent.id }

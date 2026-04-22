@@ -39,6 +39,7 @@ fun AgentDetailScreen(
     agent: Agent,
     runList: List<Run>,
     onSaveClick: (Agent) -> Unit,
+    onDeleteClick: (Agent) -> Unit,
     onRunClick: (Run) -> Unit,
     onRunItemClick: (Run) -> Unit,
     onBackClick: () -> Unit
@@ -159,6 +160,17 @@ fun AgentDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "Save")
+                }
+            }
+
+            item {
+                Button(
+                    onClick = {
+                        onDeleteClick(agent)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Delete")
                 }
             }
 

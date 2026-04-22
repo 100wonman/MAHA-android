@@ -34,6 +34,7 @@ fun AgentListScreen(
     runList: List<Run>,
     executionStateMap: Map<String, String>,
     onAgentClick: (Agent) -> Unit,
+    onAddAgentClick: () -> Unit,
     onMoveUpClick: (Agent) -> Unit,
     onMoveDownClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
@@ -80,7 +81,7 @@ fun AgentListScreen(
 
             item {
                 Button(
-                    onClick = { },
+                    onClick = onAddAgentClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "Add Agent")
