@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MAHAApp() {
     var selectedAgent by remember { mutableStateOf<Agent?>(null) }
+    val runResults = remember { mutableStateListOf<RunResult>() }
 
     if (selectedAgent == null) {
         AgentListScreen(
@@ -39,6 +41,10 @@ fun MAHAApp() {
     } else {
         AgentDetailScreen(
             agent = selectedAgent!!,
+            runResults = runResults.filter { it.agentId == selectedAgent!!.id },
+            onRunClick = { result ->
+                runResults.add(0, result)
+            },
             onBackClick = {
                 selectedAgent = null
             }
