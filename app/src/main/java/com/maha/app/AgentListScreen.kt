@@ -2,6 +2,7 @@
 
 package com.maha.app
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,12 +25,15 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentListScreen() {
+    val context = LocalContext.current
+
     val agentList = listOf(
         Agent(id = "agent_001", name = "Planner", status = "Enabled"),
         Agent(id = "agent_002", name = "Researcher", status = "Disabled"),
@@ -77,16 +81,30 @@ fun AgentListScreen() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(agentList) { agent ->
-                    AgentListItem(agent = agent)
+                    AgentListItem(
+                        agent = agent,
+                        onClick = {
+                            Toast.makeText(
+                                context,
+                                "Selected Agent: ${agent.name}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgentListItem(agent: Agent) {
+fun AgentListItem(
+    agent: Agent,
+    onClick: () -> Unit
+) {
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
