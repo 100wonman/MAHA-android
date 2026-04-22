@@ -2,14 +2,11 @@
 
 package com.maha.app
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,19 +22,33 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgentListScreen() {
-    val context = LocalContext.current
-
+fun AgentListScreen(
+    onAgentClick: (Agent) -> Unit
+) {
     val agentList = listOf(
-        Agent(id = "agent_001", name = "Planner", status = "Enabled"),
-        Agent(id = "agent_002", name = "Researcher", status = "Disabled"),
-        Agent(id = "agent_003", name = "Writer", status = "Enabled")
+        Agent(
+            id = "agent_001",
+            name = "Planner",
+            description = "작업 순서를 먼저 정리하는 에이전트",
+            status = "Enabled"
+        ),
+        Agent(
+            id = "agent_002",
+            name = "Researcher",
+            description = "필요한 정보를 조사하고 정리하는 에이전트",
+            status = "Disabled"
+        ),
+        Agent(
+            id = "agent_003",
+            name = "Writer",
+            description = "최종 결과를 문장 형태로 작성하는 에이전트",
+            status = "Enabled"
+        )
     )
 
     Scaffold(
@@ -68,30 +79,21 @@ fun AgentListScreen() {
             }
         }
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(agentList) { agent ->
-                    AgentListItem(
-                        agent = agent,
-                        onClick = {
-                            Toast.makeText(
-                                context,
-                                "Selected Agent: ${agent.name}",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    )
-                }
+            items(agentList) { agent ->
+                AgentListItem(
+                    agent = agent,
+                    onClick = {
+                        onAgentClick(agent)
+                    }
+                )
             }
         }
     }
@@ -119,11 +121,10 @@ fun AgentListItem(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             Text(
                 text = "Status: ${agent.status}",
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
     }
