@@ -32,8 +32,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AgentDetailScreen(
     agent: Agent,
-    runResults: List<RunResult>,
-    onRunClick: (RunResult) -> Unit,
+    runList: List<Run>,
+    onRunClick: (Run) -> Unit,
     onBackClick: () -> Unit
 ) {
     var runStatus by remember { mutableStateOf("Idle") }
@@ -104,23 +104,42 @@ fun AgentDetailScreen(
             item {
                 Button(
                     onClick = {
-                        runStatus = "Running"
+                        runStatus = "RUNNING"
 
                         val timeText = getCurrentTimeText()
                         val resultText = "${agent.name} executed successfully at $timeText."
 
-                        val newResult = RunResult(
+                        val result = RunResult(
                             agentId = agent.id,
                             agentName = agent.name,
                             status = "SUCCESS",
                             resultText = resultText,
                             timestamp = timeText,
-                            order = runResults.size + 1
+                            order = 1
                         )
 
-                        onRunClick(newResult)
+                        val logs = listOf(
+                            ExecutionLog(
+                                message = "${agent.name} is RUNNING",
+                                timestamp = timeText
+                            ),
+                            ExecutionLog(
+                                message = "${agent.name} finished with SUCCESS",
+                                timestamp = getCurrentTimeText()
+                            )
+                        )
+
+                        val run = Run(
+                            runId = "run_${System.currentTimeMillis()}",
+                            title = "Single Run - ${agent.name}",
+                            timestamp = timeText,
+                            results = listOf(result),
+                            logs = logs
+                        )
+
+                        onRunClick(run)
                         latestResultText = resultText
-                        runStatus = "Completed"
+                        runStatus = "SUCCESS"
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -143,22 +162,22 @@ fun AgentDetailScreen(
 
             item {
                 Text(
-                    text = "Recent Run Results",
+                    text = "Recent Runs",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            if (runResults.isEmpty()) {
+            if (runList.isEmpty()) {
                 item {
                     Text(
-                        text = "No run results yet.",
+                        text = "No runs yet.",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
             } else {
-                items(runResults) { result ->
-                    RunResultItem(result = result)
+                items(runList) { run ->
+                    RunItemCard(run = run)
                 }
             }
         }

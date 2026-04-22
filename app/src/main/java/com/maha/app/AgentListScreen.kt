@@ -29,9 +29,8 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AgentListScreen(
     agentList: List<Agent>,
-    runResults: List<RunResult>,
+    runList: List<Run>,
     executionStateMap: Map<String, String>,
-    logList: List<LogItem>,
     onAgentClick: (Agent) -> Unit,
     onRunAllClick: () -> Unit
 ) {
@@ -90,47 +89,22 @@ fun AgentListScreen(
 
             item {
                 Text(
-                    text = "Run All Results",
+                    text = "Recent Runs",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            if (runResults.isEmpty()) {
+            if (runList.isEmpty()) {
                 item {
                     Text(
-                        text = "No run results yet.",
+                        text = "No runs yet.",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
             } else {
-                items(runResults) { result ->
-                    RunResultItem(result = result)
-                }
-            }
-
-            item {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            }
-
-            item {
-                Text(
-                    text = "Execution Logs",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            if (logList.isEmpty()) {
-                item {
-                    Text(
-                        text = "No logs yet.",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-            } else {
-                items(logList) { log ->
-                    LogItemCard(log = log)
+                items(runList) { run ->
+                    RunItemCard(run = run)
                 }
             }
         }
@@ -176,7 +150,7 @@ fun AgentListItem(
 }
 
 @Composable
-fun RunResultItem(result: RunResult) {
+fun RunItemCard(run: Run) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
@@ -184,57 +158,66 @@ fun RunResultItem(result: RunResult) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "${result.order}. ${result.agentName}",
+                text = run.title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
 
             Text(
-                text = "Status: ${result.status}",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
+                text = "Run ID: ${run.runId}",
+                style = MaterialTheme.typography.bodyMedium
             )
 
             Text(
-                text = "Time: ${result.timestamp}",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp)
+                text = "Time: ${run.timestamp}",
+                style = MaterialTheme.typography.bodyMedium
             )
 
             Text(
-                text = "Result: ${result.resultText}",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun LogItemCard(log: LogItem) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = log.timestamp,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Bold
+                text = "Result Count: ${run.results.size}",
+                style = MaterialTheme.typography.bodyMedium
             )
 
             Text(
-                text = log.message,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 6.dp)
+                text = "Log Count: ${run.logs.size}",
+                style = MaterialTheme.typography.bodyMedium
             )
+
+            if (run.results.isNotEmpty()) {
+                Text(
+                    text = "Results",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                run.results.forEach { result ->
+                    Text(
+                        text = "${result.order}. ${result.agentName} - ${result.status}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+
+            if (run.logs.isNotEmpty()) {
+                Text(
+                    text = "Logs",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                run.logs.forEach { log ->
+                    Text(
+                        text = "${log.timestamp} - ${log.message}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
     }
 }

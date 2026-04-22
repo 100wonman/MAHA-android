@@ -62,9 +62,8 @@ fun MAHAApp() {
     }
 
     var selectedAgent by remember { mutableStateOf<Agent?>(null) }
-    val runResults = remember { mutableStateListOf<RunResult>() }
+    val runList = remember { mutableStateListOf<Run>() }
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
-    val logList = remember { mutableStateListOf<LogItem>() }
 
     agentList.forEach { agent ->
         if (executionStateMap[agent.id] == null) {
@@ -75,24 +74,25 @@ fun MAHAApp() {
     if (selectedAgent == null) {
         AgentListScreen(
             agentList = agentList,
-            runResults = runResults,
+            runList = runList,
             executionStateMap = executionStateMap,
-            logList = logList,
             onAgentClick = { agent ->
                 selectedAgent = agent
             },
             onRunAllClick = {
                 scope.launch {
-                    runResults.clear()
-                    logList.clear()
-
                     agentList.forEach { agent ->
                         executionStateMap[agent.id] = "WAITING"
                     }
 
+                    val runId = "run_${System.currentTimeMillis()}"
+                    val runTimestamp = getCurrentTimeText()
+
+                    val resultList = mutableListOf<RunResult>()
+                    val logList = mutableListOf<ExecutionLog>()
+
                     logList.add(
-                        0,
-                        LogItem(
+                        ExecutionLog(
                             message = "Run All started",
                             timestamp = getCurrentTimeText()
                         )
@@ -100,9 +100,9 @@ fun MAHAApp() {
 
                     agentList.forEachIndexed { index, agent ->
                         executionStateMap[agent.id] = "RUNNING"
+
                         logList.add(
-                            0,
-                            LogItem(
+                            ExecutionLog(
                                 message = "${agent.name} is RUNNING",
                                 timestamp = getCurrentTimeText()
                             )
@@ -119,12 +119,11 @@ fun MAHAApp() {
                             order = index + 1
                         )
 
-                        runResults.add(result)
+                        resultList.add(result)
                         executionStateMap[agent.id] = "SUCCESS"
 
                         logList.add(
-                            0,
-                            LogItem(
+                            ExecutionLog(
                                 message = "${agent.name} finished with SUCCESS",
                                 timestamp = getCurrentTimeText()
                             )
@@ -134,21 +133,32 @@ fun MAHAApp() {
                     }
 
                     logList.add(
-                        0,
-                        LogItem(
+                        ExecutionLog(
                             message = "Run All completed",
                             timestamp = getCurrentTimeText()
                         )
                     )
+
+                    val newRun = Run(
+                        runId = runId,
+                        title = "Run All",
+                        timestamp = runTimestamp,
+                        results = resultList,
+                        logs = logList
+                    )
+
+                    runList.add(0, newRun)
                 }
             }
         )
     } else {
         AgentDetailScreen(
             agent = selectedAgent!!,
-            runResults = runResults.filter { it.agentId == selectedAgent!!.id },
-            onRunClick = { result ->
-                runResults.add(result)
+            runList = runList.filter { run ->
+                run.results.any { it.agentId == selectedAgent!!.id }
+            },
+            onRunClick = { newRun ->
+                runList.add(0, newRun)
             },
             onBackClick = {
                 selectedAgent = null
