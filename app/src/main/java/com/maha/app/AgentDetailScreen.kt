@@ -184,7 +184,7 @@ fun RunResultItem(result: RunResult) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = result.agentName,
+                text = "${result.order}. ${result.agentName}",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )

@@ -7,5 +7,6 @@ data class RunResult(
     val agentName: String,
     val status: String,
     val resultText: String,
-    val timestamp: String
+    val timestamp: String,
+    val order: Int = 0
 )

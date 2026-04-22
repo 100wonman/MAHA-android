@@ -14,13 +14,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,29 +28,11 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentListScreen(
-    onAgentClick: (Agent) -> Unit
+    agentList: List<Agent>,
+    runResults: List<RunResult>,
+    onAgentClick: (Agent) -> Unit,
+    onRunAllClick: () -> Unit
 ) {
-    val agentList = listOf(
-        Agent(
-            id = "agent_001",
-            name = "Planner",
-            description = "작업 순서를 먼저 정리하는 에이전트",
-            status = "Enabled"
-        ),
-        Agent(
-            id = "agent_002",
-            name = "Researcher",
-            description = "필요한 정보를 조사하고 정리하는 에이전트",
-            status = "Disabled"
-        ),
-        Agent(
-            id = "agent_003",
-            name = "Writer",
-            description = "최종 결과를 문장 형태로 작성하는 에이전트",
-            status = "Enabled"
-        )
-    )
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -62,21 +44,6 @@ fun AgentListScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors()
             )
-        },
-        bottomBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Button(
-                    onClick = { },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Add Agent")
-                }
-            }
         }
     ) { innerPadding ->
         LazyColumn(
@@ -94,6 +61,49 @@ fun AgentListScreen(
                         onAgentClick(agent)
                     }
                 )
+            }
+
+            item {
+                Button(
+                    onClick = { },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Add Agent")
+                }
+            }
+
+            item {
+                Button(
+                    onClick = onRunAllClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "Run All")
+                }
+            }
+
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            item {
+                Text(
+                    text = "Run All Results",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (runResults.isEmpty()) {
+                item {
+                    Text(
+                        text = "No run results yet.",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            } else {
+                items(runResults) { result ->
+                    RunResultItem(result = result)
+                }
             }
         }
     }
