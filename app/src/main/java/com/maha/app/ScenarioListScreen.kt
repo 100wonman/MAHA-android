@@ -19,6 +19,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ScenarioListScreen(
     scenarioList: List<Scenario>,
+    onMenuClick: () -> Unit,
     onScenarioClick: (Scenario) -> Unit,
     onBackClick: () -> Unit
 ) {
@@ -39,6 +41,15 @@ fun ScenarioListScreen(
                         text = "Scenario List",
                         fontWeight = FontWeight.Bold
                     )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onMenuClick) {
+                        Text(
+                            text = "☰",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors()
             )
@@ -54,10 +65,7 @@ fun ScenarioListScreen(
         ) {
             if (scenarioList.isEmpty()) {
                 item {
-                    Text(
-                        text = "No scenarios saved.",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    EmptyInfoCard(text = "No scenarios saved.")
                 }
             } else {
                 items(scenarioList) { scenario ->
@@ -105,19 +113,18 @@ fun ScenarioItemCard(
                 fontWeight = FontWeight.Bold
             )
 
-            Text(
-                text = "Saved At: ${scenario.savedAt}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            Text(
-                text = "Agent Count: ${scenario.agents.size}",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            InfoRow(label = "Saved At", value = scenario.savedAt)
+            InfoRow(label = "Agent Count", value = scenario.agents.size.toString())
 
             if (scenario.agents.isNotEmpty()) {
                 Text(
-                    text = "Agents: ${scenario.agents.joinToString { it.name }}",
+                    text = "Agents",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = scenario.agents.joinToString("  •  ") { it.name },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

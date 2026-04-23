@@ -2,6 +2,7 @@
 
 package com.maha.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,11 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -38,22 +39,39 @@ import androidx.compose.ui.unit.dp
 fun AgentDetailScreen(
     agent: Agent,
     runList: List<Run>,
+    isAnyExecutionRunning: Boolean,
+    isCurrentAgentRunning: Boolean,
+    onMenuClick: () -> Unit,
     onSaveClick: (Agent) -> Unit,
     onDeleteClick: (Agent) -> Unit,
-    onRunClick: (Run) -> Unit,
+    onRunClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
     onBackClick: () -> Unit
 ) {
     var editedName by remember(agent.id) { mutableStateOf(agent.name) }
     var editedDescription by remember(agent.id) { mutableStateOf(agent.description) }
     var editedIsEnabled by remember(agent.id) { mutableStateOf(agent.isEnabled) }
-    var runStatus by remember(agent.id) { mutableStateOf("Idle") }
-    var latestOutputText by remember(agent.id) { mutableStateOf("") }
 
     LaunchedEffect(agent.id, agent.name, agent.description, agent.isEnabled) {
         editedName = agent.name
         editedDescription = agent.description
         editedIsEnabled = agent.isEnabled
+    }
+
+    val currentRunState = when {
+        isCurrentAgentRunning -> "RUNNING"
+        runList.isNotEmpty() -> {
+            val latestResult = runList.firstOrNull()?.results?.firstOrNull()
+            latestResult?.status ?: "WAITING"
+        }
+        else -> "WAITING"
+    }
+
+    val stateMessage = when (currentRunState) {
+        "RUNNING" -> "현재 이 워커가 실행 중입니다. Run 버튼은 잠시 비활성화됩니다."
+        "SUCCESS" -> "가장 최근 실행이 정상 완료되었습니다."
+        "FAILED" -> "가장 최근 실행이 실패했습니다."
+        else -> "실행 전 대기 상태입니다."
     }
 
     Scaffold(
@@ -65,13 +83,28 @@ fun AgentDetailScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors()
+                navigationIcon = {
+                    IconButton(onClick = onMenuClick) {
+                        Text(
+                            text = "☰",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = androidx.compose.ui.graphics.Color(0xFF111827),
+                    titleContentColor = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+                    navigationIconContentColor = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                )
             )
-        }
+        },
+        containerColor = androidx.compose.ui.graphics.Color(0xFF070B12)
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color(0xFF070B12))
                 .padding(innerPadding)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -79,17 +112,21 @@ fun AgentDetailScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    colors = CardDefaults.cardColors(
+                        containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedTextField(
                             value = editedName,
                             onValueChange = { editedName = it },
+                            enabled = !isAnyExecutionRunning,
                             label = { Text("Name") },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -97,6 +134,7 @@ fun AgentDetailScreen(
                         OutlinedTextField(
                             value = editedDescription,
                             onValueChange = { editedDescription = it },
+                            enabled = !isAnyExecutionRunning,
                             label = { Text("Description") },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -108,47 +146,34 @@ fun AgentDetailScreen(
                         ) {
                             Text(
                                 text = "Enabled",
-                                style = MaterialTheme.typography.bodyLarge
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = androidx.compose.ui.graphics.Color(0xFFF3F6FB)
                             )
 
                             Switch(
                                 checked = editedIsEnabled,
-                                onCheckedChange = { editedIsEnabled = it }
+                                onCheckedChange = { editedIsEnabled = it },
+                                enabled = !isAnyExecutionRunning
                             )
                         }
 
-                        Text(
-                            text = "Status: ${agent.status}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
+                        InfoRow(label = "Status", value = agent.status)
+                        InfoRow(label = "Input Format", value = agent.inputFormat)
+                        InfoRow(label = "Output Format", value = agent.outputFormat)
 
-                        Text(
-                            text = "Input Format: ${agent.inputFormat}",
-                            style = MaterialTheme.typography.bodyLarge
+                        StatusPanel(
+                            title = "Run Status",
+                            status = currentRunState,
+                            message = stateMessage
                         )
-
-                        Text(
-                            text = "Output Format: ${agent.outputFormat}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-
-                        Text(
-                            text = "Run Status: $runStatus",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-
-                        if (latestOutputText.isNotEmpty()) {
-                            Text(
-                                text = "Latest Output: $latestOutputText",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
                     }
                 }
             }
 
             item {
-                Button(
+                SecondaryActionButton(
+                    text = "Save",
+                    enabled = !isAnyExecutionRunning,
                     onClick = {
                         val updatedAgent = agent.copy(
                             name = editedName,
@@ -156,115 +181,71 @@ fun AgentDetailScreen(
                             isEnabled = editedIsEnabled
                         )
                         onSaveClick(updatedAgent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Save")
-                }
+                    }
+                )
             }
 
             item {
-                Button(
+                SecondaryActionButton(
+                    text = "Delete",
+                    enabled = !isAnyExecutionRunning,
                     onClick = {
                         onDeleteClick(agent)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Delete")
-                }
+                    }
+                )
             }
 
             item {
-                Button(
+                PrimaryActionButton(
+                    text = if (isCurrentAgentRunning) "Run Disabled While Running" else "Run",
+                    enabled = !isAnyExecutionRunning,
                     onClick = {
                         val currentAgent = agent.copy(
                             name = editedName,
                             description = editedDescription,
                             isEnabled = editedIsEnabled
                         )
-
                         onSaveClick(currentAgent)
-
-                        runStatus = "RUNNING"
-
-                        val timeText = getCurrentTimeText()
-                        val inputText = "User request for ${currentAgent.name}"
-                        val outputText =
-                            "Single run output from ${currentAgent.name} based on: $inputText"
-
-                        val result = RunResult(
-                            agentId = currentAgent.id,
-                            agentName = currentAgent.name,
-                            status = "SUCCESS",
-                            inputText = inputText,
-                            outputText = outputText,
-                            timestamp = timeText,
-                            order = 1
-                        )
-
-                        val logs = listOf(
-                            ExecutionLog(
-                                message = "${currentAgent.name} is RUNNING with input: $inputText",
-                                timestamp = timeText
-                            ),
-                            ExecutionLog(
-                                message = "${currentAgent.name} finished with SUCCESS and output: $outputText",
-                                timestamp = getCurrentTimeText()
-                            )
-                        )
-
-                        val run = Run(
-                            runId = "run_${System.currentTimeMillis()}",
-                            title = "Single Run - ${currentAgent.name}",
-                            timestamp = timeText,
-                            results = listOf(result),
-                            logs = logs
-                        )
-
-                        onRunClick(run)
-                        latestOutputText = outputText
-                        runStatus = "SUCCESS"
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Run")
-                }
+                        onRunClick(currentAgent)
+                    }
+                )
             }
 
             item {
-                Button(
-                    onClick = onBackClick,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Back")
-                }
+                SecondaryActionButton(
+                    text = "Back",
+                    enabled = !isAnyExecutionRunning,
+                    onClick = onBackClick
+                )
             }
 
             item {
-                HorizontalDivider()
+                HorizontalDivider(
+                    color = androidx.compose.ui.graphics.Color(0xFF273244)
+                )
             }
 
             item {
                 Text(
                     text = "Recent Runs",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                 )
             }
 
             if (runList.isEmpty()) {
                 item {
-                    Text(
-                        text = "No runs yet.",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    EmptyInfoCard(text = "No runs yet.")
                 }
             } else {
                 items(runList) { run ->
                     RunItemCard(
                         run = run,
                         onClick = {
-                            onRunItemClick(run)
+                            if (!isAnyExecutionRunning) {
+                                onRunItemClick(run)
+                            }
                         }
                     )
                 }
