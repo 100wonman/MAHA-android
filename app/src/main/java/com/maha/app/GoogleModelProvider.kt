@@ -16,7 +16,9 @@ import java.net.URLEncoder
 object GoogleModelProvider : ModelProvider {
 
     private const val TAG = "GoogleModelProvider"
-    private const val MODEL_NAME = "gemini-1.5-flash"
+    private const val DEFAULT_MODEL_NAME = "gemini-2.5-flash"
+    private const val FLASH_MODEL_NAME = "gemini-2.5-flash"
+    private const val FLASH_LITE_MODEL_NAME = "gemini-2.5-flash-lite"
     private const val API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
@@ -30,10 +32,13 @@ object GoogleModelProvider : ModelProvider {
             )
         }
 
+        val safeModelName = sanitizeModelName(request.modelName)
+
         return withContext(Dispatchers.IO) {
             runCatching {
                 callGeminiApi(
                     apiKey = apiKey,
+                    modelName = safeModelName,
                     prompt = request.inputText
                 )
             }.getOrElse { exception ->
@@ -48,14 +53,18 @@ object GoogleModelProvider : ModelProvider {
 
     private fun callGeminiApi(
         apiKey: String,
+        modelName: String,
         prompt: String
     ): ModelResponse {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
         val maskedApiKey = maskApiKey(apiKey)
-        val urlText = "$API_BASE_URL/$MODEL_NAME:generateContent?key=$maskedApiKey"
-        val realUrl = "$API_BASE_URL/$MODEL_NAME:generateContent?key=$encodedApiKey"
+
+        val safeModelName = sanitizeModelName(modelName)
+        val urlText = "$API_BASE_URL/$safeModelName:generateContent?key=$maskedApiKey"
+        val realUrl = "$API_BASE_URL/$safeModelName:generateContent?key=$encodedApiKey"
 
         Log.d(TAG, "Gemini request URL: $urlText")
+        Log.d(TAG, "Gemini selected model: $safeModelName")
 
         val url = URL(realUrl)
         val connection = url.openConnection() as HttpURLConnection
@@ -163,6 +172,14 @@ object GoogleModelProvider : ModelProvider {
         }
 
         return outputBuilder.toString()
+    }
+
+    private fun sanitizeModelName(modelName: String): String {
+        return when (modelName.trim()) {
+            FLASH_MODEL_NAME -> FLASH_MODEL_NAME
+            FLASH_LITE_MODEL_NAME -> FLASH_LITE_MODEL_NAME
+            else -> DEFAULT_MODEL_NAME
+        }
     }
 
     private fun maskApiKey(apiKey: String): String {

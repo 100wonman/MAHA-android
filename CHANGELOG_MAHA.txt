@@ -1,4 +1,62 @@
 ==============================
+[2026-04-24 23:15] Worker 모델명 기반 Gemini 호출 연결
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Worker별 Gemini 모델 선택값을 실제 API 호출에 연결한다.
+
+목표:
+- Agent.modelName 값을 실제 Gemini API 호출에 반영한다
+- modelName에 따라 다른 Gemini 모델이 호출되도록 한다
+- 기본값은 gemini-2.5-flash로 설정한다
+
+구현 내용:
+- GoogleModelProvider에서 modelName을 받아 endpoint 구성
+- modelName이 null 또는 비어있으면 기본값 gemini-2.5-flash 사용
+- 지원 모델:
+  - gemini-2.5-flash
+  - gemini-2.5-flash-lite
+- ModelRequest.modelName을 실제 요청 URL에 반영
+
+조건:
+- API Key는 ApiKeyManager에서 가져온다
+- API Key 없으면 GOOGLE_API_KEY_NOT_SET 반환
+- 호출 실패 시 GOOGLE_API_CALL_FAILED 반환
+- 기존 Dummy 흐름 유지
+- Provider 선택 구조 유지
+- UI 변경 금지
+
+변경 파일:
+- GoogleModelProvider.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 전체 코드 제공
+- 부분 수정 금지
+- 빌드 가능한 코드로 제공
+- import 누락 금지
+- 기존 인터페이스 유지
+
+[결과]
+(실패)
+java.lang.SecurityException: Permission denied (missing INTERNET permission?)
+즉, Gemini 호출 코드 문제가 아니라 AndroidManifest에 인터넷 권한이 빠진 것이다. 로그에도 missing INTERNET permission?가 명확히 나온다.
+
+[적용 내용]
+- Agent.modelName → ModelRequest 전달 흐름 유지
+- GoogleModelProvider에서 modelName 기반 endpoint 구성
+- 기본 모델 fallback 처리 추가
+- Gemini API 호출 시 모델 선택 반영
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Google Provider 실제 응답 정상 수신 검증
+
+==============================
 [2026-04-24 23:00] Worker별 Gemini 모델 선택 구조 설계
 ==============================
 
