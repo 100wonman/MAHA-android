@@ -1,4 +1,67 @@
 ==============================
+[2026-04-25 HH:mm] Gemma 4 모델 선택지 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Gemma 4 모델을 Worker 모델 선택지에 추가한다.
+
+목표:
+- gemma-4-31b-it, gemma-4-26b-a4b-it 모델을 선택 가능하게 한다
+- Agent.modelName에 저장된 값으로 해당 모델을 호출할 수 있게 한다
+- 기존 gemini 모델들과 동일한 방식으로 endpoint 호출되게 한다
+
+구현 내용:
+- GeminiModelType에 Gemma 모델 상수 추가
+- AgentDetailScreen에 모델 선택 UI 확장
+- GoogleModelProvider에서 modelName 그대로 endpoint 반영
+- modelName 검증 시 Gemma 모델 포함
+
+조건:
+- 기존 gemini 모델 유지
+- fallback은 gemini-2.5-flash 유지
+- API Key 구조 유지
+- Dummy 흐름 유지
+- Worker modelName 구조 유지
+
+변경 파일:
+- GeminiModelType.kt
+- AgentDetailScreen.kt
+- GoogleModelProvider.kt
+
+추가 조건:
+- 변경된 파일만 출력
+- 전체 코드 제공
+- 빌드 가능 상태 유지
+
+[결과]
+(성공 / 에러 후 성공 / 실패)
+
+[적용 내용]
+- Gemma 4 모델 2종 선택지 추가
+- Worker별 modelName 기반 호출 구조 유지
+- 기존 Gemini 모델과 동일 방식으로 호출 가능하게 확장
+
+[문제 및 해결]
+- 기존 gemini-2.5-flash에서 quota 초과 발생
+- Gemma 모델 추가로 호출 분산 테스트 가능하게 개선
+
+-> HTTP 500
+SERVER_ERROR
+Internal error encountered.
+
+-> SocketTimeoutException: timeout
+Socket closed
+
+-> 이전: 429 = quota/rate limit
+현재: 500 = 서버 내부 오류
+현재: timeout = 응답 지연/연결 종료
+
+[다음 작업 예정]
+Gemma 모델 호출 성공 여부 및 응답 품질 검증
+
+==============================
 [2026-04-25 00:35] Gemma 4 모델 선택지 추가 설계
 ==============================
 

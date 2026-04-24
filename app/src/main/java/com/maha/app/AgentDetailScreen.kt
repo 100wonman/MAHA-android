@@ -165,10 +165,10 @@ fun AgentDetailScreen(
                         InfoRow(label = "Status", value = agent.status)
                         InfoRow(label = "Input Format", value = agent.inputFormat)
                         InfoRow(label = "Output Format", value = agent.outputFormat)
-                        InfoRow(label = "Current Gemini Model", value = editedModelName)
+                        InfoRow(label = "Current Model", value = editedModelName)
 
                         Text(
-                            text = "Gemini Model",
+                            text = "Gemini / Gemma Model",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
@@ -176,7 +176,7 @@ fun AgentDetailScreen(
 
                         GeminiModelRadioRow(
                             title = GeminiModelType.FLASH,
-                            description = "품질 우선 모델입니다. Planner / Researcher에 권장됩니다.",
+                            description = "기본 품질 모델입니다. Planner / Researcher에 권장됩니다.",
                             selected = editedModelName == GeminiModelType.FLASH,
                             enabled = !isAnyExecutionRunning,
                             onClick = {
@@ -191,6 +191,26 @@ fun AgentDetailScreen(
                             enabled = !isAnyExecutionRunning,
                             onClick = {
                                 editedModelName = GeminiModelType.FLASH_LITE
+                            }
+                        )
+
+                        GeminiModelRadioRow(
+                            title = GeminiModelType.GEMMA_4_31B_IT,
+                            description = "Gemma 4 고품질 테스트 모델입니다. 계획/분석 Worker 테스트에 사용합니다.",
+                            selected = editedModelName == GeminiModelType.GEMMA_4_31B_IT,
+                            enabled = !isAnyExecutionRunning,
+                            onClick = {
+                                editedModelName = GeminiModelType.GEMMA_4_31B_IT
+                            }
+                        )
+
+                        GeminiModelRadioRow(
+                            title = GeminiModelType.GEMMA_4_26B_A4B_IT,
+                            description = "Gemma 4 효율형 테스트 모델입니다. Writer/요약 Worker 테스트에 사용합니다.",
+                            selected = editedModelName == GeminiModelType.GEMMA_4_26B_A4B_IT,
+                            enabled = !isAnyExecutionRunning,
+                            onClick = {
+                                editedModelName = GeminiModelType.GEMMA_4_26B_A4B_IT
                             }
                         )
 
