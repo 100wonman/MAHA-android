@@ -7,7 +7,7 @@ object GoogleModelProvider : ModelProvider {
     override suspend fun generate(request: ModelRequest): ModelResponse {
         if (!ApiKeyManager.hasGoogleApiKey()) {
             return ModelResponse(
-                outputText = "GOOGLE_PROVIDER_NOT_CONNECTED: API key is not configured.",
+                outputText = "GOOGLE_API_KEY_NOT_SET",
                 status = "SUCCESS"
             )
         }
