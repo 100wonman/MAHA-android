@@ -1,4 +1,56 @@
 ==============================
+[2026-04-24 (20:35)] Google Gemini 실제 호출 연결
+==============================
+
+[지시문 전체] - [구현 모드]
+
+이번 단계는 Google Gemini API 실제 호출을 연결한다.
+
+목표:
+- GoogleModelProvider에서 실제 Gemini generateContent 호출 구현
+- ApiKeyManager에서 가져온 API Key를 사용
+- 입력(prompt)을 ModelRequest에서 받아 Gemini에 전달
+- 응답 텍스트를 ModelResponse로 반환
+
+조건:
+- HTTP 직접 호출 사용 (OkHttp 또는 기본 방식)
+- 모델은 "gemini-pro" 사용
+- API Key는 절대 코드에 하드코딩 금지 (ApiKeyManager 사용)
+- API Key가 없으면 기존처럼 "GOOGLE_API_KEY_NOT_SET" 반환
+- 네트워크 실패 시 "GOOGLE_API_CALL_FAILED" 메시지 반환
+- 기존 Dummy 흐름 유지 (ModelRouter 기본값은 Dummy)
+
+변경 파일:
+- GoogleModelProvider.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- 기존 기능 유지
+- 빌드 가능한 코드로 제공
+
+[구현 모드]
+
+이번 단계는 GoogleModelProvider.kt만 수정한다. OkHttp 의존성을 추가하지 않기 위해 Android 기본 HttpURLConnection으로 구현한다.
+
+[결과]
+(빌드 성공 / 정상)
+
+[적용 내용]
+- GoogleModelProvider에서 Gemini API 호출 구현
+- ApiKeyManager에서 API Key 사용
+- ModelRequest → Gemini 요청 변환
+- Gemini 응답 → ModelResponse 변환
+- 네트워크 실패 및 API Key 미설정 처리
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Dummy → Google Provider 전환 옵션 UI 또는 자동 전환 로직 추가
+
+==============================
 [2026-04-24 (시간 입력)] Google API Key 입력/저장 구조 추가
 ==============================
 
