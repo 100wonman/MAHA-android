@@ -15,19 +15,28 @@ object ExecutionEngine {
         val currentAgent = sanitizeAgent(agent)
         val timeText = getCurrentTimeText()
         val inputText = "User request for ${currentAgent.name}"
-        val outputText = "Single run output from ${currentAgent.name} based on: $inputText"
 
         onStateChange(currentAgent.id, "RUNNING")
 
         delay(500)
 
+        val modelResponse = ModelRouter.generate(
+            ModelRequest(
+                agentId = currentAgent.id,
+                agentName = currentAgent.name,
+                inputText = inputText,
+                stepNumber = 1,
+                runType = "SINGLE"
+            )
+        )
+
         val result = sanitizeRunResult(
             RunResult(
                 agentId = currentAgent.id,
                 agentName = currentAgent.name,
-                status = "SUCCESS",
+                status = modelResponse.status,
                 inputText = inputText,
-                outputText = outputText,
+                outputText = modelResponse.outputText,
                 timestamp = timeText,
                 order = 1
             )
@@ -39,7 +48,7 @@ object ExecutionEngine {
                 timestamp = timeText
             ),
             ExecutionLog(
-                message = "${currentAgent.name} finished with SUCCESS and output: $outputText",
+                message = "${currentAgent.name} finished with ${modelResponse.status} and output: ${modelResponse.outputText}",
                 timestamp = getCurrentTimeText()
             )
         )
@@ -57,7 +66,7 @@ object ExecutionEngine {
             validAgents = safeValidAgents
         ) ?: throw IllegalStateException("Invalid run")
 
-        onStateChange(currentAgent.id, "SUCCESS")
+        onStateChange(currentAgent.id, modelResponse.status)
 
         return run
     }
@@ -111,6 +120,8 @@ object ExecutionEngine {
         }
 
         enabledAgents.forEachIndexed { index, agent ->
+            val stepNumber = index + 1
+
             onStateChange(agent.id, "RUNNING")
 
             logList.add(
@@ -122,36 +133,40 @@ object ExecutionEngine {
 
             delay(700)
 
-            val outputText = buildDummyOutput(
-                agentName = agent.name,
-                stepNumber = index + 1,
-                input = currentInput
+            val modelResponse = ModelRouter.generate(
+                ModelRequest(
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    inputText = currentInput,
+                    stepNumber = stepNumber,
+                    runType = "RUN_ALL"
+                )
             )
 
             val result = sanitizeRunResult(
                 RunResult(
                     agentId = agent.id,
                     agentName = agent.name,
-                    status = "SUCCESS",
+                    status = modelResponse.status,
                     inputText = currentInput,
-                    outputText = outputText,
+                    outputText = modelResponse.outputText,
                     timestamp = getCurrentTimeText(),
-                    order = index + 1
+                    order = stepNumber
                 )
             ) ?: throw IllegalStateException("Invalid run result")
 
             resultList.add(result)
 
-            onStateChange(agent.id, "SUCCESS")
+            onStateChange(agent.id, modelResponse.status)
 
             logList.add(
                 ExecutionLog(
-                    message = "${agent.name} finished with SUCCESS and output: $outputText",
+                    message = "${agent.name} finished with ${modelResponse.status} and output: ${modelResponse.outputText}",
                     timestamp = getCurrentTimeText()
                 )
             )
 
-            currentInput = outputText
+            currentInput = modelResponse.outputText
 
             delay(300)
         }
