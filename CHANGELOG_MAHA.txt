@@ -1,4 +1,67 @@
 ==============================
+[2026-04-24 20:20] Google Provider 실제 응답 검증
+==============================
+
+[지시문 전체]
+[검증 모드]
+
+이번 단계는 Google Provider 전환 후 실제 Gemini 응답 흐름을 검증한다.
+
+목표:
+- Settings 화면에서 Google Provider 선택이 저장되는지 확인
+- API Key 입력 후 Google Provider로 전환했을 때 실제 응답이 반환되는지 확인
+- API Key가 없을 때 GOOGLE_API_KEY_NOT_SET이 반환되는지 확인
+- Dummy 선택 시 기존 Dummy 응답이 유지되는지 확인
+
+검증 항목:
+1. 앱 실행
+2. 기본 Provider가 Dummy인지 확인
+3. Dummy 응답 정상 확인
+4. Settings 화면 이동
+5. Google API Key 입력 및 저장
+6. Provider를 Google로 선택 후 저장
+7. 메인 화면에서 프롬프트 입력
+8. Gemini 실제 응답 반환 확인
+9. API Key 삭제 또는 미입력 상태에서 Google Provider 실행
+10. GOOGLE_API_KEY_NOT_SET 반환 확인
+11. Provider를 Dummy로 다시 변경
+12. Dummy 응답 정상 복귀 확인
+
+조건:
+- 코드 수정은 하지 않는다
+- 빌드 에러가 있으면 원인만 기록한다
+- 실행 중 앱 크래시 여부 확인
+- 네트워크 실패 시 GOOGLE_API_CALL_FAILED 반환 여부 확인
+- 확인 결과를 항목별로 기록한다
+
+[결과]
+(성공 / 기록 완료)
+1. 앱 실행: 성공
+2. 기본 Provider Dummy: 성공
+3. Dummy 응답: 성공
+4. Settings 이동: 성공
+5. API Key 저장: 실패-키입력창 있음/키붙여넣기 함/하단에 저장 버튼 안 눌러짐(커서만 깜빡임/
+6. Google Provider 저장: 성공(선택은 가능하나 세이브 프로바이더 눌림 확인불가)
+7. Gemini 응답: GOOGLE_API_CALL_FAILED (명령 입력창 자체가 없음)
+8. API Key 없음 응답: 성공 {"GOOGLE_API_CALL_FAILED" 올 런 실행 후 결과로 확인)
+9. Dummy 복귀: 성공
+10. 앱 크래시: 없음
+
+[적용 내용]
+- Google Provider 선택 저장 여부 확인
+- API Key 입력 후 Gemini 응답 확인
+- API Key 미설정 시 GOOGLE_API_KEY_NOT_SET 확인
+- Dummy Provider 복귀 확인
+- 네트워크 실패 처리 확인
+
+[문제 및 해결]
+- MainActivity 수정본 누락으로 이전 단계 빌드 에러 발생
+- MainActivity 반영 후 재빌드 성공
+
+[다음 작업 예정]
+Provider 상태 표시 및 현재 선택 Provider 표시 UI 개선
+
+==============================
 [2026-04-24 HH:mm] Provider 전환 옵션 구현
 ==============================
 
