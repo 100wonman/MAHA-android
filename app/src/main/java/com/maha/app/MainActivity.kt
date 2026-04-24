@@ -5,7 +5,6 @@ package com.maha.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.ui.Modifier
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,11 +30,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -190,7 +189,7 @@ fun MAHAApp() {
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(modifier = androidx.compose.ui.Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 DrawerHeader()
 
@@ -210,7 +209,7 @@ fun MAHAApp() {
                             scope.launch { drawerState.close() }
                         }
                     },
-                    modifier = androidx.compose.ui.Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
 
                 NavigationDrawerItem(
@@ -229,7 +228,7 @@ fun MAHAApp() {
                             scope.launch { drawerState.close() }
                         }
                     },
-                    modifier = androidx.compose.ui.Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
 
                 if (runList.isNotEmpty()) {
@@ -249,7 +248,7 @@ fun MAHAApp() {
                                 scope.launch { drawerState.close() }
                             }
                         },
-                        modifier = androidx.compose.ui.Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
                 }
             }
@@ -368,51 +367,17 @@ fun MAHAApp() {
                             executionStateMap[agentToRun.id] = "RUNNING"
 
                             try {
-                                val currentAgent = sanitizeAgent(agentToRun)
-                                val timeText = getCurrentTimeText()
-                                val inputText = "User request for ${currentAgent.name}"
-                                val outputText =
-                                    "Single run output from ${currentAgent.name} based on: $inputText"
-
-                                delay(500)
-
-                                val result = sanitizeRunResult(
-                                    RunResult(
-                                        agentId = currentAgent.id,
-                                        agentName = currentAgent.name,
-                                        status = "SUCCESS",
-                                        inputText = inputText,
-                                        outputText = outputText,
-                                        timestamp = timeText,
-                                        order = 1
-                                    )
-                                ) ?: throw IllegalStateException("Invalid run result")
-
-                                val logs = listOf(
-                                    ExecutionLog(
-                                        message = "${currentAgent.name} is RUNNING with input: $inputText",
-                                        timestamp = timeText
-                                    ),
-                                    ExecutionLog(
-                                        message = "${currentAgent.name} finished with SUCCESS and output: $outputText",
-                                        timestamp = getCurrentTimeText()
-                                    )
+                                val run = ExecutionEngine.runSingleAgent(
+                                    agent = agentToRun,
+                                    validAgents = agentList.toList(),
+                                    existingRuns = runList.toList(),
+                                    onStateChange = { agentId, state ->
+                                        executionStateMap[agentId] = state
+                                    }
                                 )
-
-                                val run = sanitizeRunWithAgents(
-                                    run = Run(
-                                        runId = generateUniqueRunId(runList),
-                                        title = "Single Run - ${currentAgent.name}",
-                                        timestamp = timeText,
-                                        results = listOf(result),
-                                        logs = logs
-                                    ),
-                                    validAgents = agentList
-                                ) ?: throw IllegalStateException("Invalid run")
 
                                 runList.removeAll { it.runId == run.runId }
                                 runList.add(0, run)
-                                executionStateMap[currentAgent.id] = "SUCCESS"
                             } catch (e: Exception) {
                                 executionStateMap[agentToRun.id] = "FAILED"
                             } finally {
@@ -500,131 +465,16 @@ fun MAHAApp() {
                                     executionStateMap = executionStateMap
                                 )
 
-                                agentList.forEach { agent ->
-                                    executionStateMap[agent.id] = "WAITING"
-                                }
-
-                                val enabledAgents = normalizeAgents(agentList)
-                                    .filter { it.isEnabled }
-
-                                val runId = generateUniqueRunId(runList)
-                                val runTimestamp = getCurrentTimeText()
-
-                                val resultList = mutableListOf<RunResult>()
-                                val logList = mutableListOf<ExecutionLog>()
-
-                                var currentInput = "User request: Create a simple MAHA workflow summary."
-
-                                logList.add(
-                                    ExecutionLog(
-                                        message = "Run All started",
-                                        timestamp = getCurrentTimeText()
-                                    )
-                                )
-
-                                if (enabledAgents.isEmpty()) {
-                                    logList.add(
-                                        ExecutionLog(
-                                            message = "No enabled agents. Run All stopped.",
-                                            timestamp = getCurrentTimeText()
-                                        )
-                                    )
-
-                                    val emptyRun = sanitizeRunWithAgents(
-                                        run = Run(
-                                            runId = runId,
-                                            title = "Run All",
-                                            timestamp = runTimestamp,
-                                            results = resultList,
-                                            logs = logList
-                                        ),
-                                        validAgents = agentList
-                                    )
-
-                                    if (emptyRun != null) {
-                                        runList.removeAll { it.runId == emptyRun.runId }
-                                        runList.add(0, emptyRun)
+                                val newRun = ExecutionEngine.runAllAgents(
+                                    agents = agentList.toList(),
+                                    existingRuns = runList.toList(),
+                                    onStateChange = { agentId, state ->
+                                        executionStateMap[agentId] = state
                                     }
-                                    return@launch
-                                }
-
-                                enabledAgents.forEachIndexed { index, agent ->
-                                    if (agentList.none { it.id == agent.id && it.isEnabled }) {
-                                        executionStateMap[agent.id] = "FAILED"
-                                        logList.add(
-                                            ExecutionLog(
-                                                message = "${agent.name} skipped because it is no longer enabled.",
-                                                timestamp = getCurrentTimeText()
-                                            )
-                                        )
-                                        return@forEachIndexed
-                                    }
-
-                                    executionStateMap[agent.id] = "RUNNING"
-
-                                    logList.add(
-                                        ExecutionLog(
-                                            message = "${agent.name} is RUNNING with input: $currentInput",
-                                            timestamp = getCurrentTimeText()
-                                        )
-                                    )
-
-                                    delay(700)
-
-                                    val outputText = buildDummyOutput(
-                                        agentName = agent.name,
-                                        stepNumber = index + 1,
-                                        input = currentInput
-                                    )
-
-                                    val result = sanitizeRunResult(
-                                        RunResult(
-                                            agentId = agent.id,
-                                            agentName = agent.name,
-                                            status = "SUCCESS",
-                                            inputText = currentInput,
-                                            outputText = outputText,
-                                            timestamp = getCurrentTimeText(),
-                                            order = index + 1
-                                        )
-                                    ) ?: throw IllegalStateException("Invalid run result")
-
-                                    resultList.add(result)
-                                    executionStateMap[agent.id] = "SUCCESS"
-
-                                    logList.add(
-                                        ExecutionLog(
-                                            message = "${agent.name} finished with SUCCESS and output: $outputText",
-                                            timestamp = getCurrentTimeText()
-                                        )
-                                    )
-
-                                    currentInput = outputText
-                                    delay(300)
-                                }
-
-                                logList.add(
-                                    ExecutionLog(
-                                        message = "Run All completed",
-                                        timestamp = getCurrentTimeText()
-                                    )
                                 )
 
-                                val newRun = sanitizeRunWithAgents(
-                                    run = Run(
-                                        runId = runId,
-                                        title = "Run All",
-                                        timestamp = runTimestamp,
-                                        results = resultList,
-                                        logs = logList
-                                    ),
-                                    validAgents = agentList
-                                )
-
-                                if (newRun != null) {
-                                    runList.removeAll { it.runId == newRun.runId }
-                                    runList.add(0, newRun)
-                                }
+                                runList.removeAll { it.runId == newRun.runId }
+                                runList.add(0, newRun)
                             } catch (e: Exception) {
                                 agentList.forEach { agent ->
                                     if (executionStateMap[agent.id] == "RUNNING") {
@@ -767,19 +617,6 @@ private fun generateUniqueScenarioId(existingScenarios: List<Scenario>): String 
     while (candidate in existingIds) {
         index += 1
         candidate = "scenario_$index"
-    }
-
-    return candidate
-}
-
-private fun generateUniqueRunId(existingRuns: List<Run>): String {
-    val existingIds = existingRuns.map { it.runId }.toSet()
-    var index = System.currentTimeMillis()
-    var candidate = "run_$index"
-
-    while (candidate in existingIds) {
-        index += 1
-        candidate = "run_$index"
     }
 
     return candidate
