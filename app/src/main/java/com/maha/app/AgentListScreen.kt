@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,6 +42,8 @@ fun AgentListScreen(
     runList: List<Run>,
     executionStateMap: Map<String, String>,
     isRunAllRunning: Boolean,
+    promptText: String,
+    onPromptTextChange: (String) -> Unit,
     onMenuClick: () -> Unit,
     onAgentClick: (Agent) -> Unit,
     onAddAgentClick: () -> Unit,
@@ -96,9 +99,48 @@ fun AgentListScreen(
                     message = if (isRunAllRunning) {
                         "전체 워커가 순서대로 실행 중입니다. Run All 버튼은 잠시 비활성화됩니다."
                     } else {
-                        "대기 중입니다. Run All 버튼으로 실행을 시작할 수 있습니다."
+                        "프롬프트를 입력한 뒤 Run Prompt 버튼으로 실행할 수 있습니다."
                     }
                 )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF1A2230)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Prompt Input",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF8FAFC)
+                        )
+
+                        OutlinedTextField(
+                            value = promptText,
+                            onValueChange = onPromptTextChange,
+                            enabled = !isRunAllRunning,
+                            label = { Text("Enter prompt") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3
+                        )
+
+                        PrimaryActionButton(
+                            text = if (isRunAllRunning) "Running..." else "Run Prompt",
+                            enabled = !isRunAllRunning,
+                            onClick = onRunAllClick
+                        )
+                    }
+                }
             }
 
             itemsIndexed(agentList) { index, agent ->

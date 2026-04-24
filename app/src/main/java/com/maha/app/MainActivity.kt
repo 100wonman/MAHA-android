@@ -75,6 +75,9 @@ fun MAHAApp() {
     var runningAgentId by remember { mutableStateOf<String?>(null) }
     var savedGoogleApiKey by remember { mutableStateOf("") }
     var savedProvider by remember { mutableStateOf(ModelProviderType.DUMMY) }
+    var promptText by remember {
+        mutableStateOf("Create a simple MAHA workflow summary.")
+    }
 
     LaunchedEffect(Unit) {
         ApiKeyManager.initialize(context)
@@ -426,6 +429,7 @@ fun MAHAApp() {
                                     agent = agentToRun,
                                     validAgents = agentList.toList(),
                                     existingRuns = runList.toList(),
+                                    inputPrompt = promptText,
                                     onStateChange = { agentId, state ->
                                         executionStateMap[agentId] = state
                                     }
@@ -456,6 +460,10 @@ fun MAHAApp() {
                     runList = runList,
                     executionStateMap = executionStateMap,
                     isRunAllRunning = isRunAllRunning,
+                    promptText = promptText,
+                    onPromptTextChange = { newPrompt ->
+                        promptText = newPrompt
+                    },
                     onMenuClick = {
                         scope.launch { drawerState.open() }
                     },
@@ -524,6 +532,7 @@ fun MAHAApp() {
                                 val newRun = ExecutionEngine.runAllAgents(
                                     agents = agentList.toList(),
                                     existingRuns = runList.toList(),
+                                    inputPrompt = promptText,
                                     onStateChange = { agentId, state ->
                                         executionStateMap[agentId] = state
                                     }

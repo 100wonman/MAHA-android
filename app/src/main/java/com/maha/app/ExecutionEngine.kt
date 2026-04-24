@@ -10,11 +10,12 @@ object ExecutionEngine {
         agent: Agent,
         validAgents: List<Agent>,
         existingRuns: List<Run>,
+        inputPrompt: String = "",
         onStateChange: (agentId: String, state: String) -> Unit
     ): Run {
         val currentAgent = sanitizeAgent(agent)
         val timeText = getCurrentTimeText()
-        val inputText = "User request for ${currentAgent.name}"
+        val inputText = inputPrompt.ifBlank { "User request for ${currentAgent.name}" }
 
         onStateChange(currentAgent.id, "RUNNING")
 
@@ -74,6 +75,7 @@ object ExecutionEngine {
     suspend fun runAllAgents(
         agents: List<Agent>,
         existingRuns: List<Run>,
+        inputPrompt: String = "",
         onStateChange: (agentId: String, state: String) -> Unit
     ): Run {
         val safeAgents = normalizeAgents(agents)
@@ -90,7 +92,9 @@ object ExecutionEngine {
         val resultList = mutableListOf<RunResult>()
         val logList = mutableListOf<ExecutionLog>()
 
-        var currentInput = "User request: Create a simple MAHA workflow summary."
+        var currentInput = inputPrompt.ifBlank {
+            "User request: Create a simple MAHA workflow summary."
+        }
 
         logList.add(
             ExecutionLog(

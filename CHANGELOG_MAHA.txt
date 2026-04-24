@@ -1,4 +1,77 @@
 ==============================
+[2026-04-24 22:35] Settings 저장 UI 및 프롬프트 입력 흐름 수정
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Settings 화면의 API Key 저장 및 Provider 저장 UI 동작 문제를 수정한다.
+
+목표:
+- API Key 저장 버튼이 정상 클릭되도록 수정
+- Provider 저장 버튼 클릭 결과가 사용자에게 보이도록 수정
+- 메인 화면에 프롬프트 입력창이 없으면 복구 또는 추가
+- Google Provider 선택 후 실제 프롬프트 입력 → 응답 흐름이 가능하도록 수정
+
+현재 검증 결과:
+- 앱 실행 성공
+- 기본 Provider Dummy 성공
+- Dummy 응답 성공
+- Settings 이동 성공
+- API Key 입력창 있음
+- API Key 붙여넣기 가능
+- API Key 저장 버튼이 눌리지 않음
+- Provider 선택 가능
+- Save Provider 클릭 여부 확인 불가
+- Google Provider 실행 시 GOOGLE_API_CALL_FAILED 반환
+- 메인 화면에 명령/프롬프트 입력창 자체가 없음
+- Dummy 복귀 성공
+- 앱 크래시 없음
+
+수정 대상:
+- SettingsScreen.kt
+- MainActivity.kt
+- 필요 시 관련 UI 파일
+
+구현 조건:
+- API Key 저장 버튼은 키보드/포커스 상태와 무관하게 클릭 가능해야 한다
+- 저장 성공 시 화면에 명확한 상태 문구 표시
+  예: "API Key saved"
+- Provider 저장 성공 시 현재 선택 Provider 표시
+  예: "Current Provider: GOOGLE"
+- 메인 화면에는 반드시 프롬프트 입력창과 실행 버튼이 있어야 한다
+- Dummy Provider 선택 시 기존 Dummy 응답 유지
+- Google Provider 선택 시 입력한 프롬프트가 GoogleModelProvider까지 전달되어야 한다
+- API Key가 없으면 GOOGLE_API_KEY_NOT_SET 반환
+- API Key가 있는데 호출 실패하면 GOOGLE_API_CALL_FAILED 반환
+- 앱 크래시 방지
+- 기존 기능 유지
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- 빌드 가능한 코드로 제공
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(정상 빌드 / api 연결 구현 안됨으로 호출 실패 반환 확인)
+
+[적용 내용]
+- API Key 저장 버튼 클릭 문제 수정
+- Provider 저장 상태 표시 추가
+- 현재 선택 Provider 표시 추가
+- 메인 화면 프롬프트 입력창 및 실행 버튼 복구/추가
+- 입력 프롬프트가 ModelRouter까지 전달되는 흐름 정리
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Google Provider 실제 Gemini 응답 재검증
+
+==============================
 [2026-04-24 20:20] Google Provider 실제 응답 검증
 ==============================
 
