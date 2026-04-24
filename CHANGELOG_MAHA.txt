@@ -1,4 +1,60 @@
 ==============================
+[2026-04-24 (시간 입력)] Google API Key 입력/저장 구조 추가
+==============================
+
+[지시문 전체] - [구현 모드]
+
+이번 단계는 Google API Key 입력/저장 구조만 만든다.
+실제 Google Gemini API 호출은 아직 하지 않는다.
+기본 실행은 계속 Dummy Provider 흐름을 유지한다.
+
+목표:
+- SettingsScreen.kt 추가
+- 앱 Drawer 메뉴에 Settings 항목 추가
+- Settings 화면에서 Google API Key 입력 가능
+- 입력한 API Key를 ApiKeyManager를 통해 로컬 저장
+- 저장된 API Key가 있으면 GoogleModelProvider가 "API_KEY_READY" 상태 응답을 반환
+- API Key가 없으면 기존처럼 "GOOGLE_API_KEY_NOT_SET" 응답을 반환
+- ModelRouter 기본 provider는 계속 Dummy 유지
+
+변경 파일:
+- SettingsScreen.kt [추가]
+- ApiKeyManager.kt [수정]
+- GoogleModelProvider.kt [수정]
+- MainActivity.kt [수정]
+
+조건:
+- 변경된 파일만 출력
+- 변경된 파일은 각 파일 전체 코드로 제공
+- 변경 없는 파일은 출력하지 말 것
+- 부분 수정 방식 금지
+- 기존 기능 유지
+- 실제 네트워크 호출 금지
+- 빌드 가능한 코드로 제공
+
+[구현 모드]
+
+이번 단계는 Settings 화면 + Google API Key 저장 통로만 추가한다. ModelRouter 기본값은 Dummy이므로 기존 Run / Run All 실행 결과는 그대로 유지된다.
+
+[결과]
+(빌드 성공 / API key 입력 창 생성)
+
+[적용 내용]
+- SettingsScreen 추가
+- Drawer에 Settings 항목 추가
+- Google API Key 입력/저장 구조 추가
+- ApiKeyManager를 통한 로컬 키 저장 준비
+- GoogleModelProvider가 API Key 상태 확인 가능
+- 실제 Gemini API 호출 없음
+- 기본 실행은 Dummy Provider 유지
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Google Gemini generateContent 실제 호출 연결
+
+==============================
 [2026-04-24 (20:10)] API Key 보관 통로 준비
 ==============================
 

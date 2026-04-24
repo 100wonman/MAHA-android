@@ -13,7 +13,7 @@ object GoogleModelProvider : ModelProvider {
         }
 
         return ModelResponse(
-            outputText = "GOOGLE_PROVIDER_READY_BUT_NETWORK_CALL_NOT_IMPLEMENTED",
+            outputText = "API_KEY_READY",
             status = "SUCCESS"
         )
     }

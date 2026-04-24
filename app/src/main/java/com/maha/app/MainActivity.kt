@@ -69,11 +69,16 @@ fun MAHAApp() {
     var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
     var isScenarioScreenOpen by remember { mutableStateOf(false) }
+    var isSettingsScreenOpen by remember { mutableStateOf(false) }
     var isDataLoaded by remember { mutableStateOf(false) }
     var isRunAllRunning by remember { mutableStateOf(false) }
     var runningAgentId by remember { mutableStateOf<String?>(null) }
+    var savedGoogleApiKey by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
+        ApiKeyManager.initialize(context)
+        savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+
         val loadedAgents = StorageManager.loadAgents(context)
         val safeAgents = if (loadedAgents.isEmpty()) {
             createDefaultAgents()
@@ -110,6 +115,7 @@ fun MAHAApp() {
         selectedAgentId = null
         selectedRun = null
         isScenarioScreenOpen = false
+        isSettingsScreenOpen = false
         isRunAllRunning = false
         runningAgentId = null
         isDataLoaded = true
@@ -200,12 +206,13 @@ fun MAHAApp() {
                             subtitle = "워커 목록과 실행 관리"
                         )
                     },
-                    selected = !isScenarioScreenOpen && selectedAgent == null && selectedRun == null,
+                    selected = !isScenarioScreenOpen && !isSettingsScreenOpen && selectedAgent == null && selectedRun == null,
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = false
+                            isSettingsScreenOpen = false
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -225,6 +232,28 @@ fun MAHAApp() {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = true
+                            isSettingsScreenOpen = false
+                            scope.launch { drawerState.close() }
+                        }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
+                NavigationDrawerItem(
+                    label = {
+                        DrawerItemTitle(
+                            title = "Settings",
+                            subtitle = "API Key 설정"
+                        )
+                    },
+                    selected = isSettingsScreenOpen,
+                    onClick = {
+                        if (!isRunAllRunning && runningAgentId == null) {
+                            selectedAgentId = null
+                            selectedRun = null
+                            isScenarioScreenOpen = false
+                            isSettingsScreenOpen = true
+                            savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -244,6 +273,7 @@ fun MAHAApp() {
                             if (!isRunAllRunning && runningAgentId == null) {
                                 selectedAgentId = null
                                 isScenarioScreenOpen = false
+                                isSettingsScreenOpen = false
                                 selectedRun = runList.firstOrNull()
                                 scope.launch { drawerState.close() }
                             }
@@ -267,6 +297,22 @@ fun MAHAApp() {
                 )
             }
 
+            isSettingsScreenOpen -> {
+                SettingsScreen(
+                    savedGoogleApiKey = savedGoogleApiKey,
+                    onMenuClick = {
+                        scope.launch { drawerState.open() }
+                    },
+                    onSaveGoogleApiKeyClick = { apiKey ->
+                        ApiKeyManager.saveGoogleApiKey(context, apiKey)
+                        savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+                    },
+                    onBackClick = {
+                        isSettingsScreenOpen = false
+                    }
+                )
+            }
+
             isScenarioScreenOpen -> {
                 ScenarioListScreen(
                     scenarioList = scenarioList,
@@ -274,7 +320,7 @@ fun MAHAApp() {
                         scope.launch { drawerState.open() }
                     },
                     onScenarioClick = { scenario ->
-                        if (isRunAllRunning) return@ScenarioListScreen
+                        if (isRunAllRunning || runningAgentId != null) return@ScenarioListScreen
 
                         val safeScenarioAgents = normalizeAgents(scenario.agents)
                         val finalAgents = if (safeScenarioAgents.isEmpty()) {
@@ -288,6 +334,7 @@ fun MAHAApp() {
 
                         selectedAgentId = null
                         selectedRun = null
+                        isSettingsScreenOpen = false
 
                         syncExecutionStateMap(
                             agents = agentList,
@@ -434,6 +481,7 @@ fun MAHAApp() {
                     onOpenScenarioListClick = {
                         if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
                         isScenarioScreenOpen = true
+                        isSettingsScreenOpen = false
                     },
                     onMoveUpClick = { agent ->
                         if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
