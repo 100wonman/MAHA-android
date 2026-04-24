@@ -3,28 +3,51 @@
 package com.maha.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private data class ModelListRowItem(
+    val modelName: String,
+    val displayName: String,
+    val description: String,
+    val supportedGenerationMethods: List<String>,
+    val stabilityStatus: String,
+    val recommendedWorker: String,
+    val estimatedDailyLimit: Int,
+    val isGenerateContentSupported: Boolean,
+    val tags: List<String>,
+    val sourceType: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +59,43 @@ fun ModelCatalogScreen(
     onMenuClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
-    val manualCatalog = GeminiModelType.getCatalog()
+    var selectedModel by remember { mutableStateOf<ModelListRowItem?>(null) }
+
+    val manualRows = GeminiModelType.getCatalog().map { item ->
+        ModelListRowItem(
+            modelName = item.modelName,
+            displayName = item.displayName,
+            description = item.description,
+            supportedGenerationMethods = listOf("generateContent"),
+            stabilityStatus = item.stabilityStatus,
+            recommendedWorker = item.recommendedWorker,
+            estimatedDailyLimit = item.estimatedDailyLimit,
+            isGenerateContentSupported = true,
+            tags = listOf("수동 등록", "텍스트 생성"),
+            sourceType = "수동"
+        )
+    }
+
+    val discoveredRows = discoveredModels.map { model ->
+        ModelListRowItem(
+            modelName = model.modelName,
+            displayName = model.displayName.ifBlank { model.modelName },
+            description = model.description,
+            supportedGenerationMethods = model.supportedGenerationMethods,
+            stabilityStatus = "API 검색",
+            recommendedWorker = if (model.isGenerateContentSupported) {
+                "직접 확인 필요"
+            } else {
+                "Worker 선택 불가"
+            },
+            estimatedDailyLimit = 100,
+            isGenerateContentSupported = model.isGenerateContentSupported,
+            tags = model.tags,
+            sourceType = "API"
+        )
+    }
+
+    val allRows = (manualRows + discoveredRows).distinctBy { it.modelName }
 
     Scaffold(
         topBar = {
@@ -71,11 +130,11 @@ fun ModelCatalogScreen(
                 .background(androidx.compose.ui.graphics.Color(0xFF070B12))
                 .padding(innerPadding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
                 StatusPanel(
-                    title = "Usage Tracking",
+                    title = "모델 사용량 안내",
                     status = "WAITING",
                     message = "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 Google AI Studio 기준으로 확인해야 합니다."
                 )
@@ -84,9 +143,9 @@ fun ModelCatalogScreen(
             item {
                 PrimaryActionButton(
                     text = if (isSearchingModels) {
-                        "Searching API Models..."
+                        "API 모델 검색 중..."
                     } else {
-                        "Search API Models"
+                        "API 모델 검색"
                     },
                     enabled = !isSearchingModels,
                     onClick = onSearchApiModelsClick
@@ -96,7 +155,7 @@ fun ModelCatalogScreen(
             if (modelSearchMessage.isNotBlank()) {
                 item {
                     StatusPanel(
-                        title = "API Model Search Result",
+                        title = "API 모델 검색 결과",
                         status = if (modelSearchMessage.contains("failed", ignoreCase = true)) {
                             "FAILED"
                         } else {
@@ -109,33 +168,26 @@ fun ModelCatalogScreen(
 
             item {
                 Text(
-                    text = "Manual Models",
+                    text = "모델 목록",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                    color = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
 
-            items(manualCatalog) { item ->
-                ModelCatalogCard(item = item)
-            }
-
-            item {
-                Text(
-                    text = "Discovered API Models",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
-                )
-            }
-
-            if (discoveredModels.isEmpty()) {
+            if (allRows.isEmpty()) {
                 item {
-                    EmptyInfoCard(text = "No API models discovered yet. Press Search API Models.")
+                    EmptyInfoCard(text = "표시할 모델이 없습니다.")
                 }
             } else {
-                items(discoveredModels) { model ->
-                    DiscoveredModelCard(model = model)
+                items(allRows) { row ->
+                    ModelSimpleRow(
+                        item = row,
+                        onClick = {
+                            selectedModel = row
+                        }
+                    )
                 }
             }
 
@@ -148,156 +200,254 @@ fun ModelCatalogScreen(
             }
         }
     }
+
+    if (selectedModel != null) {
+        ModelDetailDialog(
+            item = selectedModel!!,
+            onDismiss = {
+                selectedModel = null
+            }
+        )
+    }
 }
 
 @Composable
-fun ModelCatalogCard(
-    item: ModelCatalogItem
+private fun ModelSimpleRow(
+    item: ModelListRowItem,
+    onClick: () -> Unit
+) {
+    val usage = ModelUsageManager.getTodayUsage(item.modelName)
+    val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = item.modelName,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                    )
+
+                    Text(
+                        text = "${item.sourceType} · 오늘 ${usage.requestCount}회",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
+                    )
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    SmallStatusChip(
+                        text = if (item.isGenerateContentSupported) "사용 가능" else "선택 불가",
+                        status = if (item.isGenerateContentSupported) "SUCCESS" else "WAITING"
+                    )
+
+                    if (isBlocked) {
+                        SmallStatusChip(
+                            text = "일시 제한",
+                            status = "FAILED"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelDetailDialog(
+    item: ModelListRowItem,
+    onDismiss: () -> Unit
 ) {
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
     val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
     val blockedUntilText = ModelUsageManager.getBlockedUntilText(item.modelName)
     val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = item.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
-            )
-
-            SelectionContainer {
-                Text(
-                    text = item.modelName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-                )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
             }
-
+        },
+        title = {
             Text(
-                text = item.description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                text = "모델 상세 정보",
+                fontWeight = FontWeight.Bold
             )
-
-            InfoRow(label = "Stability", value = item.stabilityStatus)
-            InfoRow(label = "Recommended Worker", value = item.recommendedWorker)
-            InfoRow(label = "Estimated Daily Limit", value = item.estimatedDailyLimit.toString())
-            InfoRow(label = "Today Requests", value = usage.requestCount.toString())
-            InfoRow(label = "Today Success", value = usage.successCount.toString())
-            InfoRow(label = "Today Failure", value = usage.failureCount.toString())
-            InfoRow(label = "Rate Limited", value = usage.rateLimitCount.toString())
-            InfoRow(label = "Estimated Remaining", value = estimatedRemaining.toString())
-
-            if (usage.lastUsedAt.isNotBlank()) {
-                InfoRow(label = "Last Used At", value = usage.lastUsedAt)
-            }
-
-            StatusPanel(
-                title = "Model Status",
-                status = if (isBlocked) "FAILED" else "SUCCESS",
-                message = if (isBlocked) {
-                    "일시 제한 상태입니다. 재시도 가능 예상 시각: $blockedUntilText"
-                } else {
-                    "사용 가능 상태입니다."
+        },
+        text = {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    SelectionContainer {
+                        Text(
+                            text = item.modelName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+
+                item {
+                    DetailText(label = "표시 이름", value = item.displayName)
+                }
+
+                item {
+                    DetailText(
+                        label = "설명",
+                        value = item.description.ifBlank { "설명이 없습니다." }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "지원 메서드",
+                        value = item.supportedGenerationMethods.joinToString(", ").ifBlank { "알 수 없음" }
+                    )
+                }
+
+                item {
+                    DetailText(label = "안정성 상태", value = item.stabilityStatus)
+                }
+
+                item {
+                    DetailText(label = "권장 Worker", value = item.recommendedWorker)
+                }
+
+                item {
+                    DetailText(
+                        label = "사용 가능 여부",
+                        value = if (item.isGenerateContentSupported) {
+                            "Worker 텍스트 생성에 사용 가능"
+                        } else {
+                            "Worker 텍스트 생성에 사용하지 않음"
+                        }
+                    )
+                }
+
+                item {
+                    DetailText(label = "오늘 사용량", value = "${usage.requestCount}회")
+                }
+
+                item {
+                    DetailText(label = "성공 / 실패", value = "${usage.successCount} / ${usage.failureCount}")
+                }
+
+                item {
+                    DetailText(label = "Rate Limit 발생", value = "${usage.rateLimitCount}회")
+                }
+
+                item {
+                    DetailText(label = "추정 일일 한도", value = "${item.estimatedDailyLimit}회")
+                }
+
+                item {
+                    DetailText(label = "추정 잔량", value = "${estimatedRemaining}회")
+                }
+
+                if (usage.lastUsedAt.isNotBlank()) {
+                    item {
+                        DetailText(label = "마지막 사용", value = usage.lastUsedAt)
+                    }
+                }
+
+                item {
+                    DetailText(
+                        label = "일시 제한 여부",
+                        value = if (isBlocked) {
+                            "제한 중 · $blockedUntilText 이후 재시도 가능"
+                        } else {
+                            "제한 없음"
+                        }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "태그",
+                        value = item.tags.joinToString(", ").ifBlank { "없음" }
+                    )
+                }
+
+                item {
+                    HorizontalDivider()
+                }
+
+                item {
+                    Text(
+                        text = "주의: 추정 잔량은 MAHA 앱 내부 기록 기준입니다. 공식 quota와 다를 수 있습니다.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun DetailText(
+    label: String,
+    value: String
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        SelectionContainer {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }
 }
 
 @Composable
-fun DiscoveredModelCard(
-    model: DiscoveredModel
+private fun SmallStatusChip(
+    text: String,
+    status: String
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    val color = getStatusColor(status)
+
+    Surface(
+        color = color.copy(alpha = 0.22f)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = model.displayName.ifBlank { model.modelName },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
-            )
-
-            SelectionContainer {
-                Text(
-                    text = model.modelName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-                )
-            }
-
-            if (model.description.isNotBlank()) {
-                Text(
-                    text = model.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
-                )
-            }
-
-            InfoRow(
-                label = "generateContent",
-                value = if (model.isGenerateContentSupported) "SUPPORTED" else "NOT SUPPORTED"
-            )
-
-            InfoRow(
-                label = "Methods",
-                value = model.supportedGenerationMethods.joinToString(", ").ifBlank { "Unknown" }
-            )
-
-            InfoRow(
-                label = "Input Token Limit",
-                value = model.inputTokenLimit.toString()
-            )
-
-            InfoRow(
-                label = "Output Token Limit",
-                value = model.outputTokenLimit.toString()
-            )
-
-            InfoRow(
-                label = "Tags",
-                value = model.tags.joinToString(", ")
-            )
-
-            InfoRow(
-                label = "Last Fetched At",
-                value = model.lastFetchedAt
-            )
-
-            StatusPanel(
-                title = "Selection Status",
-                status = if (model.isGenerateContentSupported) "SUCCESS" else "WAITING",
-                message = if (model.isGenerateContentSupported) {
-                    "이 모델은 generateContent를 지원합니다. 다음 단계에서 Worker 선택 후보에 연결할 수 있습니다."
-                } else {
-                    "이 모델은 현재 Worker 텍스트 생성 후보로 사용하지 않습니다."
-                }
-            )
-        }
+        Text(
+            text = text,
+            color = color,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+        )
     }
 }
