@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLEncoder
 
@@ -20,6 +21,11 @@ object GoogleModelProvider : ModelProvider {
     private const val API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
     private const val MAX_RETRY_COUNT = 1
     private const val RETRY_DELAY_MS = 1_200L
+
+    private const val ERROR_RATE_LIMITED = "GOOGLE_RATE_LIMITED"
+    private const val ERROR_SERVER = "GOOGLE_SERVER_ERROR"
+    private const val ERROR_TIMEOUT = "GOOGLE_TIMEOUT"
+    private const val ERROR_GENERAL = "GOOGLE_API_CALL_FAILED"
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
         val apiKey = ApiKeyManager.getGoogleApiKey()
@@ -44,7 +50,7 @@ object GoogleModelProvider : ModelProvider {
             }.getOrElse { exception ->
                 Log.e(TAG, "Gemini API exception: ${exception.message}", exception)
                 ModelResponse(
-                    outputText = "GOOGLE_API_CALL_FAILED",
+                    outputText = ERROR_GENERAL,
                     status = "FAILED"
                 )
             }
@@ -58,7 +64,7 @@ object GoogleModelProvider : ModelProvider {
     ): ModelResponse {
         var attempt = 0
         var lastResponse = ModelResponse(
-            outputText = "GOOGLE_API_CALL_FAILED",
+            outputText = ERROR_GENERAL,
             status = "FAILED"
         )
 
@@ -76,13 +82,13 @@ object GoogleModelProvider : ModelProvider {
 
             lastResponse = result.response
 
-            if (!shouldRetry(result.httpStatusCode) || attempt >= MAX_RETRY_COUNT) {
+            if (!shouldRetry(result) || attempt >= MAX_RETRY_COUNT) {
                 return lastResponse
             }
 
             Log.d(
                 TAG,
-                "Gemini retry scheduled. statusCode=${result.httpStatusCode}, delayMs=$RETRY_DELAY_MS"
+                "Gemini retry scheduled. statusCode=${result.httpStatusCode}, errorType=${result.response.outputText}, delayMs=$RETRY_DELAY_MS"
             )
 
             delay(RETRY_DELAY_MS)
@@ -101,6 +107,7 @@ object GoogleModelProvider : ModelProvider {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
         val maskedApiKey = maskApiKey(apiKey)
         val safeModelName = GeminiModelType.sanitize(modelName)
+        val readTimeoutMs = getReadTimeoutMs(safeModelName)
 
         val urlText = "$API_BASE_URL/$safeModelName:generateContent?key=$maskedApiKey"
         val realUrl = "$API_BASE_URL/$safeModelName:generateContent?key=$encodedApiKey"
@@ -108,6 +115,7 @@ object GoogleModelProvider : ModelProvider {
         Log.d(TAG, "Gemini request attempt: $attempt")
         Log.d(TAG, "Gemini request URL: $urlText")
         Log.d(TAG, "Gemini selected model: $safeModelName")
+        Log.d(TAG, "Gemini read timeout ms: $readTimeoutMs")
 
         val url = URL(realUrl)
         val connection = url.openConnection() as HttpURLConnection
@@ -115,7 +123,7 @@ object GoogleModelProvider : ModelProvider {
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = 20_000
-            connection.readTimeout = 30_000
+            connection.readTimeout = readTimeoutMs
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             connection.setRequestProperty("Accept", "application/json")
@@ -142,11 +150,34 @@ object GoogleModelProvider : ModelProvider {
             Log.d(TAG, "Gemini response type: ${classifyHttpFailure(responseCode)}")
             Log.d(TAG, "Gemini response body: $responseText")
 
+            if (responseCode == 429) {
+                val retryDelay = extractRetryDelay(responseText)
+                Log.d(TAG, "Gemini retryDelay: ${retryDelay.ifBlank { "not provided" }}")
+
+                return GeminiCallResult(
+                    httpStatusCode = responseCode,
+                    response = ModelResponse(
+                        outputText = ERROR_RATE_LIMITED,
+                        status = "FAILED"
+                    )
+                )
+            }
+
+            if (responseCode == 500) {
+                return GeminiCallResult(
+                    httpStatusCode = responseCode,
+                    response = ModelResponse(
+                        outputText = ERROR_SERVER,
+                        status = "FAILED"
+                    )
+                )
+            }
+
             if (responseCode !in 200..299) {
                 return GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
-                        outputText = "GOOGLE_API_CALL_FAILED",
+                        outputText = ERROR_GENERAL,
                         status = "FAILED"
                     )
                 )
@@ -167,11 +198,25 @@ object GoogleModelProvider : ModelProvider {
                 GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
-                        outputText = "GOOGLE_API_CALL_FAILED",
+                        outputText = ERROR_GENERAL,
                         status = "FAILED"
                     )
                 )
             }
+        } catch (exception: SocketTimeoutException) {
+            Log.e(
+                TAG,
+                "Gemini timeout exception. model=$safeModelName, readTimeoutMs=$readTimeoutMs, message=${exception.message}",
+                exception
+            )
+
+            return GeminiCallResult(
+                httpStatusCode = -1,
+                response = ModelResponse(
+                    outputText = ERROR_TIMEOUT,
+                    status = "FAILED"
+                )
+            )
         } finally {
             connection.disconnect()
         }
@@ -228,12 +273,38 @@ object GoogleModelProvider : ModelProvider {
         return outputBuilder.toString()
     }
 
-    private fun shouldRetry(statusCode: Int): Boolean {
-        return statusCode == 429 ||
-                statusCode == 500 ||
-                statusCode == 502 ||
-                statusCode == 503 ||
-                statusCode == 504
+    private fun shouldRetry(result: GeminiCallResult): Boolean {
+        return result.httpStatusCode == 500 ||
+                result.response.outputText == ERROR_TIMEOUT
+    }
+
+    private fun getReadTimeoutMs(modelName: String): Int {
+        return when (GeminiModelType.sanitize(modelName)) {
+            GeminiModelType.FLASH_LITE -> 30_000
+            GeminiModelType.FLASH -> 45_000
+            GeminiModelType.GEMMA_4_26B_A4B_IT -> 60_000
+            GeminiModelType.GEMMA_4_31B_IT -> 75_000
+            else -> 45_000
+        }
+    }
+
+    private fun extractRetryDelay(responseText: String): String {
+        return runCatching {
+            val root = JSONObject(responseText)
+            val error = root.optJSONObject("error") ?: return@runCatching ""
+
+            val details = error.optJSONArray("details") ?: return@runCatching ""
+
+            for (index in 0 until details.length()) {
+                val detail = details.optJSONObject(index) ?: continue
+                val retryDelay = detail.optString("retryDelay", "")
+                if (retryDelay.isNotBlank()) {
+                    return@runCatching retryDelay
+                }
+            }
+
+            ""
+        }.getOrDefault("")
     }
 
     private fun classifyHttpFailure(statusCode: Int): String {
@@ -248,6 +319,7 @@ object GoogleModelProvider : ModelProvider {
             502 -> "BAD_GATEWAY"
             503 -> "SERVICE_UNAVAILABLE"
             504 -> "GATEWAY_TIMEOUT"
+            -1 -> "TIMEOUT"
             else -> "HTTP_ERROR"
         }
     }

@@ -1,4 +1,87 @@
 ==============================
+[2026-04-25 01:05] API 오류 유형별 처리 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Gemini/Gemma API 오류 유형별 처리를 구현한다.
+
+목표:
+- GOOGLE_API_CALL_FAILED로 뭉쳐 있던 실패를 오류 유형별로 분리한다
+- HTTP 429, 500, timeout을 구분한다
+- 모델별 read timeout을 적용한다
+- Run All 중 치명적 오류 발생 시 이후 Worker 실행을 중단한다
+
+구현 내용:
+- HTTP 429 → GOOGLE_RATE_LIMITED 반환
+- HTTP 500 → GOOGLE_SERVER_ERROR 반환
+- SocketTimeoutException → GOOGLE_TIMEOUT 반환
+- 그 외 실패 → GOOGLE_API_CALL_FAILED 반환
+- 429 응답 body에 retryDelay가 있으면 로그에 출력
+- 500 또는 timeout 발생 시 1회 retry
+- 모델별 read timeout 적용
+  - gemini-2.5-flash-lite: 30초
+  - gemini-2.5-flash: 45초
+  - gemma-4-26b-a4b-it: 60초
+  - gemma-4-31b-it: 75초
+- Run All 중 GOOGLE_RATE_LIMITED / GOOGLE_SERVER_ERROR / GOOGLE_TIMEOUT 발생 시 이후 Worker 실행 중단
+
+조건:
+- API Key 전체값은 로그에 출력하지 않는다
+- 기존 성공 응답 흐름 유지
+- 기존 Dummy Provider 흐름 유지
+- 기존 Worker별 modelName 구조 유지
+- Gemma 실패 시 Gemini로 자동 fallback하지 않는다
+- UI 변경은 최소화한다
+- 빌드 가능한 상태를 유지한다
+
+변경 파일:
+- GoogleModelProvider.kt [수정]
+- ExecutionEngine.kt [수정]
+- 필요 시 ModelResponse.kt [수정]
+- 필요 시 RunDetailScreen.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(성공 / 에러 후 성공 / 실패)
+
+[적용 내용]
+- HTTP 429 rate limit 오류 분리
+- HTTP 500 server error 분리
+- SocketTimeoutException timeout 오류 분리
+- 모델별 read timeout 적용
+- 500 / timeout 1회 retry 적용
+- Run All 중 치명적 오류 발생 시 이후 Worker 중단 처리
+- Logcat 오류 기록 강화
+
+[문제 및 해결]
+- 기존에는 모든 Google API 실패가 GOOGLE_API_CALL_FAILED로 표시됨
+- 원인 파악이 어려워 429 / 500 / timeout을 구분하도록 개선
+
+-> attempt 1 → HTTP 500
+retry 1.2초 대기
+attempt 2 → HTTP 500
+
+-> 75초 timeout 부족 문제가 아님
+앱 네트워크 문제도 아님
+API Key 문제도 아님
+요청은 정상적으로 Google 서버까지 도달함
+서버가 gemma-4-31b-it 처리 중 INTERNAL 반환
+
+-> gemma-4-31b-it
+고품질 테스트 모델 / 현재 API 500 오류 가능성 있음
+
+[다음 작업 예정]
+오류 유형별 동작 검증 및 All Run 안정성 테스트
+
+==============================
 [2026-04-25 00:45] API 오류 유형별 처리 전략 설계
 ==============================
 

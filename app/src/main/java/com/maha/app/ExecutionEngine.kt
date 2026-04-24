@@ -10,6 +10,10 @@ object ExecutionEngine {
     private const val RUN_ALL_PRE_CALL_DELAY_MS = 700L
     private const val WORKER_BETWEEN_CALL_DELAY_MS = 900L
 
+    private const val ERROR_RATE_LIMITED = "GOOGLE_RATE_LIMITED"
+    private const val ERROR_SERVER = "GOOGLE_SERVER_ERROR"
+    private const val ERROR_TIMEOUT = "GOOGLE_TIMEOUT"
+
     suspend fun runSingleAgent(
         agent: Agent,
         validAgents: List<Agent>,
@@ -129,7 +133,7 @@ object ExecutionEngine {
             ) ?: throw IllegalStateException("Invalid empty run")
         }
 
-        enabledAgents.forEachIndexed { index, agent ->
+        for ((index, agent) in enabledAgents.withIndex()) {
             val stepNumber = index + 1
             val safeModelName = GeminiModelType.sanitize(agent.modelName)
 
@@ -178,6 +182,16 @@ object ExecutionEngine {
                 )
             )
 
+            if (shouldStopRunAll(modelResponse)) {
+                logList.add(
+                    ExecutionLog(
+                        message = "Run All stopped because ${agent.name} returned ${modelResponse.outputText}. Remaining workers were not executed.",
+                        timestamp = getCurrentTimeText()
+                    )
+                )
+                break
+            }
+
             currentInput = modelResponse.outputText
 
             if (index < enabledAgents.lastIndex) {
@@ -202,6 +216,12 @@ object ExecutionEngine {
             ),
             validAgents = safeAgents
         ) ?: throw IllegalStateException("Invalid run")
+    }
+
+    private fun shouldStopRunAll(modelResponse: ModelResponse): Boolean {
+        return modelResponse.outputText == ERROR_RATE_LIMITED ||
+                modelResponse.outputText == ERROR_SERVER ||
+                modelResponse.outputText == ERROR_TIMEOUT
     }
 
     private fun generateUniqueRunId(existingRuns: List<Run>): String {
