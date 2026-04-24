@@ -1,4 +1,52 @@
 ==============================
+[2026-04-24  (17:00)] GoogleModelProvider 준비
+==============================
+
+[지시문 전체] - [구현 모드]
+
+이번 단계는 Google AI Studio / Gemini API Provider를 붙일 준비만 한다.
+실제 API 호출은 아직 하지 않는다.
+API Key 입력, 네트워크 호출, UI 변경, 저장 구조 변경은 하지 않는다.
+
+목표:
+- GoogleModelProvider.kt 추가
+- GoogleModelProvider는 ModelProvider 인터페이스를 구현한다
+- 현재는 실제 네트워크 호출 대신 "GOOGLE_PROVIDER_NOT_CONNECTED" 더미 응답을 반환한다
+- ModelRouter에서 providerName 또는 modelName 기준으로 GoogleModelProvider를 선택할 수 있는 구조만 추가한다
+- 기존 DummyModelProvider 흐름은 유지한다
+- 기존 앱 실행 결과가 깨지면 안 된다
+
+조건:
+- 변경된 파일만 출력
+- 변경된 파일은 각 파일 전체 코드로 제공
+- 변경 없는 파일은 출력하지 말 것
+- 부분 수정 방식 금지
+- 기존 기능 유지
+- 빌드 가능한 코드로 제공
+
+[구현 모드]
+이번 단계는 Google Provider 선택 구조만 추가한다. 기본값은 계속 Dummy라서 기존 실행 결과는 유지된다.
+
+ModelRequest.kt [수정]
+GoogleModelProvider.kt [추가]
+ModelRouter.kt [수정]
+
+[결과]
+성공 (빌드 및 실행 정상)
+
+[적용 내용]
+- GoogleModelProvider 추가
+- ModelRouter에서 Google provider 선택 가능 구조 추가
+- 기본 provider는 Dummy 유지
+- 기존 실행 흐름 및 결과 변화 없음
+
+[문제 및 해결]
+없음
+
+[다음 작업 예정]
+API Key 보관 방식 설계 후 Google Gemini 실제 호출 연결
+
+==============================
 [2026-04-24  (16:14)] ModelRouter 구조 추가
 ==============================
 

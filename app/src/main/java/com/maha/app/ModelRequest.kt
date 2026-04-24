@@ -7,5 +7,7 @@ data class ModelRequest(
     val agentName: String,
     val inputText: String,
     val stepNumber: Int,
-    val runType: String
+    val runType: String,
+    val providerName: String = "DUMMY",
+    val modelName: String = "dummy"
 )
