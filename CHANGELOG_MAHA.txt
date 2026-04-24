@@ -1,4 +1,53 @@
 ==============================
+[2026-04-24 23:40] Worker별 Gemini 모델 전략 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 Worker별 역할에 따라 Gemini 모델을 다르게 사용하는 전략을 설계한다.
+
+목표:
+- Planner / Writer / Researcher 각각 다른 Gemini 모델을 사용할 수 있게 설계한다
+- 속도, 비용, 품질 기준에 따라 모델 선택 기준을 정리한다
+- 기존 Agent.modelName 구조를 활용한다
+- ExecutionEngine → ModelRequest → GoogleModelProvider 흐름은 유지한다
+
+설계 대상:
+- Worker 역할별 기본 모델
+- Worker별 모델 선택 기준
+- 모델 fallback 기준
+- Settings 또는 Worker 설정 화면 확장 방향
+- 향후 모델 목록 자동 조회 확장 방향
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- 코딩 초보 기준으로 설명
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- 기존 Google 호출 성공 흐름 유지
+- modelName 구조를 중심으로 설계
+
+[결과]
+(7단계 설명)
+Worker별 모델 선택은 Agent.modelName에 저장하고,
+Planner/Researcher는 gemini-2.5-flash,
+Writer는 gemini-2.5-flash-lite를 기본 전략으로 둔다.
+
+[적용 내용]
+- Worker 역할별 모델 전략 설계
+- Planner / Writer / Researcher 모델 선택 기준 정리
+- Agent.modelName 기반 모델 분기 유지 방향 정리
+- 기본 모델 및 fallback 기준 정리
+- 향후 모델 목록 자동 조회 확장 방향 정리
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Worker별 모델 전략 구현
+
+==============================
 [2026-04-24 23:25] Android 인터넷 권한 추가
 ==============================
 

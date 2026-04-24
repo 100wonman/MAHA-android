@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -200,11 +201,13 @@ fun RunResultDetailItem(result: RunResult) {
                         color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                     )
 
-                    Text(
-                        text = result.inputText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = result.inputText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                        )
+                    }
                 }
             }
 
@@ -225,11 +228,13 @@ fun RunResultDetailItem(result: RunResult) {
                         color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                     )
 
-                    Text(
-                        text = result.outputText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = result.outputText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                        )
+                    }
                 }
             }
         }
@@ -260,11 +265,13 @@ fun ExecutionLogDetailItem(log: ExecutionLog) {
                 status = logStatus
             )
 
-            Text(
-                text = log.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
-            )
+            SelectionContainer {
+                Text(
+                    text = log.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                )
+            }
         }
     }
 }
