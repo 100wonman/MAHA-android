@@ -69,6 +69,8 @@ fun MAHAApp() {
 
     var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
+    var modelSelectionAgentId by remember { mutableStateOf<String?>(null) }
+
     var isScenarioScreenOpen by remember { mutableStateOf(false) }
     var isSettingsScreenOpen by remember { mutableStateOf(false) }
     var isModelCatalogScreenOpen by remember { mutableStateOf(false) }
@@ -129,6 +131,7 @@ fun MAHAApp() {
 
         selectedAgentId = null
         selectedRun = null
+        modelSelectionAgentId = null
         isScenarioScreenOpen = false
         isSettingsScreenOpen = false
         isModelCatalogScreenOpen = false
@@ -192,6 +195,10 @@ fun MAHAApp() {
             selectedAgentId = null
         }
 
+        if (modelSelectionAgentId != null && agentList.none { it.id == modelSelectionAgentId }) {
+            modelSelectionAgentId = null
+        }
+
         if (runningAgentId != null && agentList.none { it.id == runningAgentId }) {
             runningAgentId = null
         }
@@ -208,6 +215,7 @@ fun MAHAApp() {
     }
 
     val selectedAgent = agentList.find { it.id == selectedAgentId }
+    val modelSelectionAgent = agentList.find { it.id == modelSelectionAgentId }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -233,6 +241,7 @@ fun MAHAApp() {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
+                            modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
@@ -254,6 +263,7 @@ fun MAHAApp() {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
+                            modelSelectionAgentId = null
                             isScenarioScreenOpen = true
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
@@ -275,6 +285,7 @@ fun MAHAApp() {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
+                            modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = true
@@ -298,6 +309,7 @@ fun MAHAApp() {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
+                            modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = true
                             isModelCatalogScreenOpen = false
@@ -321,6 +333,7 @@ fun MAHAApp() {
                         onClick = {
                             if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                                 selectedAgentId = null
+                                modelSelectionAgentId = null
                                 isScenarioScreenOpen = false
                                 isSettingsScreenOpen = false
                                 isModelCatalogScreenOpen = false
@@ -350,6 +363,8 @@ fun MAHAApp() {
             isModelCatalogScreenOpen -> {
                 ModelCatalogScreen(
                     discoveredModels = discoveredModelList,
+                    selectedModelName = modelSelectionAgent?.modelName ?: GeminiModelType.DEFAULT,
+                    isSelectionMode = modelSelectionAgent != null,
                     isSearchingModels = isSearchingModels,
                     modelSearchMessage = modelSearchMessage,
                     onSearchApiModelsClick = {
@@ -357,13 +372,13 @@ fun MAHAApp() {
 
                         scope.launch {
                             isSearchingModels = true
-                            modelSearchMessage = "Searching API models..."
+                            modelSearchMessage = "API 모델을 검색하는 중입니다..."
 
                             try {
                                 val models = GoogleModelDiscoveryProvider.fetchModels()
 
                                 if (models.isEmpty()) {
-                                    modelSearchMessage = "API model search failed or returned no models. Manual models are still available."
+                                    modelSearchMessage = "API 모델 검색 실패 또는 결과 없음. 수동 모델은 계속 사용할 수 있습니다."
                                 } else {
                                     ModelCatalogManager.saveDiscoveredModels(context, models)
 
@@ -377,14 +392,30 @@ fun MAHAApp() {
                                     }
 
                                     modelSearchMessage =
-                                        "API model search completed. Total: ${models.size}, generateContent supported: $generateContentCount"
+                                        "API 모델 검색 완료. 전체: ${models.size}, 사용 가능: $generateContentCount"
                                 }
                             } catch (exception: Exception) {
                                 modelSearchMessage =
-                                    "API model search failed: ${exception.message ?: "unknown error"}"
+                                    "API 모델 검색 실패: ${exception.message ?: "알 수 없는 오류"}"
                             } finally {
                                 isSearchingModels = false
                             }
+                        }
+                    },
+                    onSelectModelClick = { modelName ->
+                        val targetAgentId = modelSelectionAgentId ?: return@ModelCatalogScreen
+                        val safeModelName = GeminiModelType.sanitize(modelName)
+                        val index = agentList.indexOfFirst { it.id == targetAgentId }
+
+                        if (index != -1) {
+                            val updatedAgent = agentList[index].copy(
+                                modelName = safeModelName
+                            )
+
+                            agentList[index] = sanitizeAgent(updatedAgent)
+                            selectedAgentId = targetAgentId
+                            modelSelectionAgentId = null
+                            isModelCatalogScreenOpen = false
                         }
                     },
                     onMenuClick = {
@@ -392,6 +423,10 @@ fun MAHAApp() {
                     },
                     onBackClick = {
                         isModelCatalogScreenOpen = false
+                        if (modelSelectionAgentId != null) {
+                            selectedAgentId = modelSelectionAgentId
+                            modelSelectionAgentId = null
+                        }
                     }
                 )
             }
@@ -440,6 +475,7 @@ fun MAHAApp() {
 
                         selectedAgentId = null
                         selectedRun = null
+                        modelSelectionAgentId = null
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
 
@@ -501,6 +537,7 @@ fun MAHAApp() {
 
                         selectedAgentId = null
                         selectedRun = null
+                        modelSelectionAgentId = null
 
                         syncExecutionStateMap(
                             agents = agentList,
@@ -552,6 +589,28 @@ fun MAHAApp() {
                     },
                     onRunItemClick = { run ->
                         selectedRun = runList.find { it.runId == run.runId }
+                    },
+                    onOpenModelCatalogClick = { agentToEdit ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentDetailScreen
+                        }
+
+                        val safeAgent = sanitizeAgent(agentToEdit)
+                        val index = agentList.indexOfFirst { it.id == safeAgent.id }
+
+                        if (index != -1) {
+                            agentList[index] = safeAgent
+                        }
+
+                        modelSelectionAgentId = safeAgent.id
+                        selectedAgentId = null
+                        selectedRun = null
+                        isScenarioScreenOpen = false
+                        isSettingsScreenOpen = false
+                        isModelCatalogScreenOpen = true
+
+                        discoveredModelList.clear()
+                        discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
                     },
                     onBackClick = {
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {

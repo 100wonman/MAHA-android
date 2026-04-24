@@ -10,12 +10,23 @@ object GeminiModelType {
     const val GEMMA_4_26B_A4B_IT = "gemma-4-26b-a4b-it"
 
     fun sanitize(modelName: String): String {
-        return when (modelName.trim()) {
+        val trimmedModelName = modelName.trim().removePrefix("models/")
+
+        return when (trimmedModelName) {
             FLASH -> FLASH
             FLASH_LITE -> FLASH_LITE
             GEMMA_4_31B_IT -> GEMMA_4_31B_IT
             GEMMA_4_26B_A4B_IT -> GEMMA_4_26B_A4B_IT
-            else -> DEFAULT
+            else -> {
+                val discoveredModel = ModelCatalogManager
+                    .getDiscoveredModels()
+                    .firstOrNull { model ->
+                        model.modelName == trimmedModelName &&
+                                model.isGenerateContentSupported
+                    }
+
+                discoveredModel?.modelName ?: DEFAULT
+            }
         }
     }
 

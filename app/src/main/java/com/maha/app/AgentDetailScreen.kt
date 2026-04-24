@@ -18,7 +18,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -47,6 +46,7 @@ fun AgentDetailScreen(
     onDeleteClick: (Agent) -> Unit,
     onRunClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
+    onOpenModelCatalogClick: (Agent) -> Unit,
     onBackClick: () -> Unit
 ) {
     var editedName by remember(agent.id) { mutableStateOf(agent.name) }
@@ -69,6 +69,7 @@ fun AgentDetailScreen(
             val latestResult = runList.firstOrNull()?.results?.firstOrNull()
             latestResult?.status ?: "WAITING"
         }
+
         else -> "WAITING"
     }
 
@@ -78,6 +79,10 @@ fun AgentDetailScreen(
         "FAILED" -> "가장 최근 실행이 실패했습니다."
         else -> "실행 전 대기 상태입니다."
     }
+
+    val selectedModelUsage = ModelUsageManager.getTodayUsage(editedModelName)
+    val selectedModelBlocked = ModelUsageManager.isModelBlocked(editedModelName)
+    val selectedModelBlockedUntil = ModelUsageManager.getBlockedUntilText(editedModelName)
 
     Scaffold(
         topBar = {
@@ -166,24 +171,36 @@ fun AgentDetailScreen(
                         InfoRow(label = "Input Format", value = agent.inputFormat)
                         InfoRow(label = "Output Format", value = agent.outputFormat)
                         InfoRow(label = "Current Model", value = editedModelName)
+                        InfoRow(label = "Today Model Usage", value = selectedModelUsage.requestCount.toString())
 
-                        Text(
-                            text = "Gemini / Gemma Model",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
-                        )
-
-                        GeminiModelType.getCatalog().forEach { item ->
-                            GeminiModelRadioRow(
-                                item = item,
-                                selected = editedModelName == item.modelName,
-                                enabled = !isAnyExecutionRunning,
-                                onClick = {
-                                    editedModelName = item.modelName
-                                }
+                        if (selectedModelBlocked) {
+                            StatusPanel(
+                                title = "Model Status",
+                                status = "FAILED",
+                                message = "현재 선택 모델은 일시 제한 상태입니다. 재시도 가능 예상 시각: $selectedModelBlockedUntil"
+                            )
+                        } else {
+                            StatusPanel(
+                                title = "Model Status",
+                                status = "SUCCESS",
+                                message = "현재 선택 모델은 사용 가능 상태입니다."
                             )
                         }
+
+                        SecondaryActionButton(
+                            text = "모델 카탈로그에서 선택",
+                            enabled = !isAnyExecutionRunning,
+                            onClick = {
+                                val currentAgent = agent.copy(
+                                    name = editedName,
+                                    description = editedDescription,
+                                    isEnabled = editedIsEnabled,
+                                    modelName = GeminiModelType.sanitize(editedModelName)
+                                )
+                                onSaveClick(currentAgent)
+                                onOpenModelCatalogClick(currentAgent)
+                            }
+                        )
 
                         StatusPanel(
                             title = "Run Status",
@@ -275,71 +292,6 @@ fun AgentDetailScreen(
                         }
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun GeminiModelRadioRow(
-    item: ModelCatalogItem,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val usage = ModelUsageManager.getTodayUsage(item.modelName)
-    val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
-    val blockedUntilText = ModelUsageManager.getBlockedUntilText(item.modelName)
-    val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(
-            selected = selected,
-            enabled = enabled && !isBlocked,
-            onClick = onClick
-        )
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = item.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
-            )
-
-            Text(
-                text = item.modelName,
-                style = MaterialTheme.typography.bodySmall,
-                color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-            )
-
-            Text(
-                text = item.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-            )
-
-            Text(
-                text = "Recommended: ${item.recommendedWorker} / Today: ${usage.requestCount} / Estimated remaining: $estimatedRemaining",
-                style = MaterialTheme.typography.bodySmall,
-                color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
-            )
-
-            if (isBlocked) {
-                Text(
-                    text = "TEMP BLOCKED until $blockedUntilText",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = androidx.compose.ui.graphics.Color(0xFFEF4444)
-                )
             }
         }
     }

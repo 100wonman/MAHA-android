@@ -53,13 +53,18 @@ private data class ModelListRowItem(
 @Composable
 fun ModelCatalogScreen(
     discoveredModels: List<DiscoveredModel>,
+    selectedModelName: String,
+    isSelectionMode: Boolean,
     isSearchingModels: Boolean,
     modelSearchMessage: String,
     onSearchApiModelsClick: () -> Unit,
+    onSelectModelClick: (String) -> Unit,
     onMenuClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
     var selectedModel by remember { mutableStateOf<ModelListRowItem?>(null) }
+
+    val safeSelectedModelName = GeminiModelType.sanitize(selectedModelName)
 
     val manualRows = GeminiModelType.getCatalog().map { item ->
         ModelListRowItem(
@@ -83,11 +88,7 @@ fun ModelCatalogScreen(
             description = model.description,
             supportedGenerationMethods = model.supportedGenerationMethods,
             stabilityStatus = "API 검색",
-            recommendedWorker = if (model.isGenerateContentSupported) {
-                "직접 확인 필요"
-            } else {
-                "Worker 선택 불가"
-            },
+            recommendedWorker = if (model.isGenerateContentSupported) "직접 확인 필요" else "Worker 선택 불가",
             estimatedDailyLimit = 100,
             isGenerateContentSupported = model.isGenerateContentSupported,
             tags = model.tags,
@@ -102,7 +103,7 @@ fun ModelCatalogScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Model Catalog",
+                        text = if (isSelectionMode) "Worker 모델 선택" else "Model Catalog",
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -134,19 +135,19 @@ fun ModelCatalogScreen(
         ) {
             item {
                 StatusPanel(
-                    title = "모델 사용량 안내",
+                    title = if (isSelectionMode) "Worker 모델 선택" else "모델 사용량 안내",
                     status = "WAITING",
-                    message = "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 Google AI Studio 기준으로 확인해야 합니다."
+                    message = if (isSelectionMode) {
+                        "generateContent를 지원하는 모델만 Worker에 선택할 수 있습니다."
+                    } else {
+                        "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 Google AI Studio 기준으로 확인해야 합니다."
+                    }
                 )
             }
 
             item {
                 PrimaryActionButton(
-                    text = if (isSearchingModels) {
-                        "API 모델 검색 중..."
-                    } else {
-                        "API 모델 검색"
-                    },
+                    text = if (isSearchingModels) "API 모델 검색 중..." else "API 모델 검색",
                     enabled = !isSearchingModels,
                     onClick = onSearchApiModelsClick
                 )
@@ -156,11 +157,7 @@ fun ModelCatalogScreen(
                 item {
                     StatusPanel(
                         title = "API 모델 검색 결과",
-                        status = if (modelSearchMessage.contains("failed", ignoreCase = true)) {
-                            "FAILED"
-                        } else {
-                            "SUCCESS"
-                        },
+                        status = if (modelSearchMessage.contains("failed", ignoreCase = true)) "FAILED" else "SUCCESS",
                         message = modelSearchMessage
                     )
                 }
@@ -184,6 +181,7 @@ fun ModelCatalogScreen(
                 items(allRows) { row ->
                     ModelSimpleRow(
                         item = row,
+                        isSelected = row.modelName == safeSelectedModelName,
                         onClick = {
                             selectedModel = row
                         }
@@ -204,6 +202,12 @@ fun ModelCatalogScreen(
     if (selectedModel != null) {
         ModelDetailDialog(
             item = selectedModel!!,
+            isSelected = selectedModel!!.modelName == safeSelectedModelName,
+            isSelectionMode = isSelectionMode,
+            onSelectModelClick = {
+                onSelectModelClick(selectedModel!!.modelName)
+                selectedModel = null
+            },
             onDismiss = {
                 selectedModel = null
             }
@@ -214,6 +218,7 @@ fun ModelCatalogScreen(
 @Composable
 private fun ModelSimpleRow(
     item: ModelListRowItem,
+    isSelected: Boolean,
     onClick: () -> Unit
 ) {
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
@@ -224,7 +229,11 @@ private fun ModelSimpleRow(
             .fillMaxWidth()
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
+            containerColor = if (isSelected) {
+                androidx.compose.ui.graphics.Color(0xFF24324A)
+            } else {
+                androidx.compose.ui.graphics.Color(0xFF1A2230)
+            }
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -259,6 +268,13 @@ private fun ModelSimpleRow(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (isSelected) {
+                        SmallStatusChip(
+                            text = "선택됨",
+                            status = "SUCCESS"
+                        )
+                    }
+
                     SmallStatusChip(
                         text = if (item.isGenerateContentSupported) "사용 가능" else "선택 불가",
                         status = if (item.isGenerateContentSupported) "SUCCESS" else "WAITING"
@@ -279,6 +295,9 @@ private fun ModelSimpleRow(
 @Composable
 private fun ModelDetailDialog(
     item: ModelListRowItem,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onSelectModelClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
@@ -289,8 +308,30 @@ private fun ModelDetailDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
+            if (isSelectionMode) {
+                TextButton(
+                    enabled = item.isGenerateContentSupported && !isSelected,
+                    onClick = onSelectModelClick
+                ) {
+                    Text(
+                        text = when {
+                            isSelected -> "이미 선택됨"
+                            !item.isGenerateContentSupported -> "선택 불가"
+                            else -> "이 모델 선택"
+                        }
+                    )
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text(text = "닫기")
+                }
+            }
+        },
+        dismissButton = {
+            if (isSelectionMode) {
+                TextButton(onClick = onDismiss) {
+                    Text(text = "닫기")
+                }
             }
         },
         title = {
@@ -347,6 +388,13 @@ private fun ModelDetailDialog(
                         } else {
                             "Worker 텍스트 생성에 사용하지 않음"
                         }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "현재 선택 여부",
+                        value = if (isSelected) "선택됨" else "선택되지 않음"
                     )
                 }
 
