@@ -65,6 +65,7 @@ fun MAHAApp() {
     val runList = remember { mutableStateListOf<Run>() }
     val scenarioList = remember { mutableStateListOf<Scenario>() }
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
+    val discoveredModelList = remember { mutableStateListOf<DiscoveredModel>() }
 
     var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
@@ -76,6 +77,8 @@ fun MAHAApp() {
     var runningAgentId by remember { mutableStateOf<String?>(null) }
     var savedGoogleApiKey by remember { mutableStateOf("") }
     var savedProvider by remember { mutableStateOf(ModelProviderType.DUMMY) }
+    var isSearchingModels by remember { mutableStateOf(false) }
+    var modelSearchMessage by remember { mutableStateOf("") }
     var promptText by remember {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
@@ -83,9 +86,13 @@ fun MAHAApp() {
     LaunchedEffect(Unit) {
         ApiKeyManager.initialize(context)
         ModelUsageManager.initialize(context)
+        ModelCatalogManager.initialize(context)
 
         savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
         savedProvider = ApiKeyManager.getSelectedProvider(context)
+
+        discoveredModelList.clear()
+        discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
 
         val loadedAgents = StorageManager.loadAgents(context)
         val safeAgents = if (loadedAgents.isEmpty()) {
@@ -127,6 +134,8 @@ fun MAHAApp() {
         isModelCatalogScreenOpen = false
         isRunAllRunning = false
         runningAgentId = null
+        isSearchingModels = false
+        modelSearchMessage = ""
         isDataLoaded = true
     }
 
@@ -221,7 +230,7 @@ fun MAHAApp() {
                             selectedAgent == null &&
                             selectedRun == null,
                     onClick = {
-                        if (!isRunAllRunning && runningAgentId == null) {
+                        if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = false
@@ -242,7 +251,7 @@ fun MAHAApp() {
                     },
                     selected = isScenarioScreenOpen,
                     onClick = {
-                        if (!isRunAllRunning && runningAgentId == null) {
+                        if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = true
@@ -263,12 +272,14 @@ fun MAHAApp() {
                     },
                     selected = isModelCatalogScreenOpen,
                     onClick = {
-                        if (!isRunAllRunning && runningAgentId == null) {
+                        if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = true
+                            discoveredModelList.clear()
+                            discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -284,7 +295,7 @@ fun MAHAApp() {
                     },
                     selected = isSettingsScreenOpen,
                     onClick = {
-                        if (!isRunAllRunning && runningAgentId == null) {
+                        if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = false
@@ -308,7 +319,7 @@ fun MAHAApp() {
                         },
                         selected = selectedRun?.runId == runList.firstOrNull()?.runId,
                         onClick = {
-                            if (!isRunAllRunning && runningAgentId == null) {
+                            if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                                 selectedAgentId = null
                                 isScenarioScreenOpen = false
                                 isSettingsScreenOpen = false
@@ -338,6 +349,44 @@ fun MAHAApp() {
 
             isModelCatalogScreenOpen -> {
                 ModelCatalogScreen(
+                    discoveredModels = discoveredModelList,
+                    isSearchingModels = isSearchingModels,
+                    modelSearchMessage = modelSearchMessage,
+                    onSearchApiModelsClick = {
+                        if (isSearchingModels) return@ModelCatalogScreen
+
+                        scope.launch {
+                            isSearchingModels = true
+                            modelSearchMessage = "Searching API models..."
+
+                            try {
+                                val models = GoogleModelDiscoveryProvider.fetchModels()
+
+                                if (models.isEmpty()) {
+                                    modelSearchMessage = "API model search failed or returned no models. Manual models are still available."
+                                } else {
+                                    ModelCatalogManager.saveDiscoveredModels(context, models)
+
+                                    discoveredModelList.clear()
+                                    discoveredModelList.addAll(
+                                        ModelCatalogManager.getDiscoveredModels(context)
+                                    )
+
+                                    val generateContentCount = models.count {
+                                        it.isGenerateContentSupported
+                                    }
+
+                                    modelSearchMessage =
+                                        "API model search completed. Total: ${models.size}, generateContent supported: $generateContentCount"
+                                }
+                            } catch (exception: Exception) {
+                                modelSearchMessage =
+                                    "API model search failed: ${exception.message ?: "unknown error"}"
+                            } finally {
+                                isSearchingModels = false
+                            }
+                        }
+                    },
                     onMenuClick = {
                         scope.launch { drawerState.open() }
                     },
@@ -375,7 +424,9 @@ fun MAHAApp() {
                         scope.launch { drawerState.open() }
                     },
                     onScenarioClick = { scenario ->
-                        if (isRunAllRunning || runningAgentId != null) return@ScenarioListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@ScenarioListScreen
+                        }
 
                         val safeScenarioAgents = normalizeAgents(scenario.agents)
                         val finalAgents = if (safeScenarioAgents.isEmpty()) {
@@ -414,13 +465,15 @@ fun MAHAApp() {
                         },
                         validAgents = agentList
                     ),
-                    isAnyExecutionRunning = isRunAllRunning || runningAgentId != null,
+                    isAnyExecutionRunning = isRunAllRunning || runningAgentId != null || isSearchingModels,
                     isCurrentAgentRunning = runningAgentId == selectedAgent.id,
                     onMenuClick = {
                         scope.launch { drawerState.open() }
                     },
                     onSaveClick = { updatedAgent ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentDetailScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentDetailScreen
+                        }
 
                         val safeUpdatedAgent = sanitizeAgent(updatedAgent)
                         val index = agentList.indexOfFirst { it.id == safeUpdatedAgent.id }
@@ -431,7 +484,9 @@ fun MAHAApp() {
                         }
                     },
                     onDeleteClick = { agentToDelete ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentDetailScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentDetailScreen
+                        }
 
                         val remainingAgents = agentList.filter { it.id != agentToDelete.id }
 
@@ -467,7 +522,9 @@ fun MAHAApp() {
                         scenarioList.addAll(safeScenarios)
                     },
                     onRunClick = { agentToRun ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentDetailScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentDetailScreen
+                        }
 
                         scope.launch {
                             runningAgentId = agentToRun.id
@@ -497,7 +554,9 @@ fun MAHAApp() {
                         selectedRun = runList.find { it.runId == run.runId }
                     },
                     onBackClick = {
-                        if (isRunAllRunning || runningAgentId != null) return@AgentDetailScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentDetailScreen
+                        }
                         selectedAgentId = null
                     }
                 )
@@ -508,7 +567,7 @@ fun MAHAApp() {
                     agentList = agentList,
                     runList = runList,
                     executionStateMap = executionStateMap,
-                    isRunAllRunning = isRunAllRunning,
+                    isRunAllRunning = isRunAllRunning || isSearchingModels,
                     promptText = promptText,
                     onPromptTextChange = { newPrompt ->
                         promptText = newPrompt
@@ -521,13 +580,16 @@ fun MAHAApp() {
                             agent.id.isNotBlank() &&
                             agentList.any { it.id == agent.id } &&
                             !isRunAllRunning &&
-                            runningAgentId == null
+                            runningAgentId == null &&
+                            !isSearchingModels
                         ) {
                             selectedAgentId = agent.id
                         }
                     },
                     onAddAgentClick = {
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
 
                         val newAgent = createNewAgent(existingAgents = agentList)
                         agentList.add(newAgent)
@@ -535,7 +597,9 @@ fun MAHAApp() {
                         selectedAgentId = newAgent.id
                     },
                     onSaveScenarioClick = {
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
 
                         val safeAgents = normalizeAgents(agentList)
                         val newScenario = Scenario(
@@ -549,31 +613,41 @@ fun MAHAApp() {
                         scenarioList.add(0, newScenario)
                     },
                     onOpenScenarioListClick = {
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
                         isScenarioScreenOpen = true
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
                     },
                     onMoveUpClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
                         moveAgentUp(
                             targetAgent = agent,
                             agentList = agentList
                         )
                     },
                     onMoveDownClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
                         moveAgentDown(
                             targetAgent = agent,
                             agentList = agentList
                         )
                     },
                     onRunItemClick = { run ->
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
                         selectedRun = runList.find { it.runId == run.runId }
                     },
                     onRunAllClick = {
-                        if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
 
                         scope.launch {
                             isRunAllRunning = true

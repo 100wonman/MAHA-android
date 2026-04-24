@@ -1,4 +1,61 @@
 ==============================
+[2026-04-25 02:20] Google API 모델 검색 구조 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 Google API 모델 검색 및 전체 모델 선택 구조를 설계한다.
+
+목표:
+- Settings 또는 Models 화면에 “API 모델 검색” 버튼을 추가한다
+- Google listModels API를 호출해 API Key로 접근 가능한 모델 목록을 가져온다
+- 가져온 모델을 앱 내부 모델 카탈로그에 저장한다
+- generateContent 지원 모델은 Worker 선택 후보로 표시한다
+- Search grounding, Image, Live, Audio 등 특수 기능 모델은 태그로 구분한다
+- 사용자가 모델을 직접 테스트할 수 있게 한다
+
+설계 대상:
+- listModels API 호출 방식
+- API Key 사용 방식
+- 모델 목록 저장 방식
+- supportedGenerationMethods 기반 필터링
+- generateContent 지원 모델 분류
+- Search grounding 지원 모델 표시 방식
+- 이미지/라이브/오디오 모델 제외 또는 별도 표시 기준
+- AgentDetailScreen 모델 선택 UI 변경 방향
+- ModelCatalogScreen의 API 모델 검색 버튼
+- 모델별 rate limit 수동 입력 또는 추정 표시 방식
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- 기존 수동 모델 카탈로그 유지
+- listModels 실패 시 수동 모델 목록으로 fallback
+- 기존 Worker별 modelName 구조 유지
+- 기존 Google/Gemma 호출 구조 유지
+- API Key 하드코딩 금지
+- 무료 잔량 직접 조회 기능은 구현하지 않는다
+- rate limit은 수동/추정 정보로 표시한다
+
+[결과]
+(성공 / 가독성 훼손이 심함 / 영문)
+
+[적용 내용]
+- Google listModels 기반 모델 검색 구조 설계
+- generateContent 지원 모델 필터링 기준 정리
+- Search grounding / Image / Live / Audio 모델 분류 기준 정리
+- 수동 모델 목록과 자동 모델 목록 병행 방식 정리
+- Worker 모델 선택 후보 확장 방향 정리
+
+[문제 및 해결]
+- 수동 모델 목록만으로는 최신 모델과 quota가 넉넉한 모델을 빠뜨릴 수 있음
+- 해결 방향: API 모델 검색 버튼을 추가해 listModels 결과를 앱 카탈로그에 반영
+- 단, 실제 무료 잔량은 API로 직접 조회하지 않고 수동/추정 정보로 표시
+
+[다음 작업 예정]
+Google API 모델 검색 및 자동 카탈로그 갱신 구현
+
+==============================
 [2026-04-25 02:00] Google API 모델 검색 구조 설계
 ==============================
 
