@@ -9,5 +9,6 @@ data class Agent(
     val status: String,
     val inputFormat: String,
     val outputFormat: String,
-    val isEnabled: Boolean
+    val isEnabled: Boolean,
+    val modelName: String = GeminiModelType.DEFAULT
 )

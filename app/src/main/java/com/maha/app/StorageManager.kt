@@ -182,7 +182,8 @@ object StorageManager {
             description = agent.description.ifBlank { "설명이 없습니다." },
             status = agent.status.ifBlank { "Enabled" },
             inputFormat = agent.inputFormat.ifBlank { "Input Text" },
-            outputFormat = agent.outputFormat.ifBlank { "Output Text" }
+            outputFormat = agent.outputFormat.ifBlank { "Output Text" },
+            modelName = GeminiModelType.sanitize(agent.modelName)
         )
     }
 
@@ -197,6 +198,7 @@ object StorageManager {
             put("inputFormat", safeAgent.inputFormat)
             put("outputFormat", safeAgent.outputFormat)
             put("isEnabled", safeAgent.isEnabled)
+            put("modelName", GeminiModelType.sanitize(safeAgent.modelName))
         }
     }
 
@@ -212,7 +214,10 @@ object StorageManager {
                 status = json.optString("status", "Enabled"),
                 inputFormat = json.optString("inputFormat", "Input Text"),
                 outputFormat = json.optString("outputFormat", "Output Text"),
-                isEnabled = json.optBoolean("isEnabled", true)
+                isEnabled = json.optBoolean("isEnabled", true),
+                modelName = GeminiModelType.sanitize(
+                    json.optString("modelName", GeminiModelType.DEFAULT)
+                )
             )
         ).takeIf { it.id.isNotBlank() }
     }

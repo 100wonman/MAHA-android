@@ -18,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -51,11 +52,15 @@ fun AgentDetailScreen(
     var editedName by remember(agent.id) { mutableStateOf(agent.name) }
     var editedDescription by remember(agent.id) { mutableStateOf(agent.description) }
     var editedIsEnabled by remember(agent.id) { mutableStateOf(agent.isEnabled) }
+    var editedModelName by remember(agent.id) {
+        mutableStateOf(GeminiModelType.sanitize(agent.modelName))
+    }
 
-    LaunchedEffect(agent.id, agent.name, agent.description, agent.isEnabled) {
+    LaunchedEffect(agent.id, agent.name, agent.description, agent.isEnabled, agent.modelName) {
         editedName = agent.name
         editedDescription = agent.description
         editedIsEnabled = agent.isEnabled
+        editedModelName = GeminiModelType.sanitize(agent.modelName)
     }
 
     val currentRunState = when {
@@ -160,6 +165,34 @@ fun AgentDetailScreen(
                         InfoRow(label = "Status", value = agent.status)
                         InfoRow(label = "Input Format", value = agent.inputFormat)
                         InfoRow(label = "Output Format", value = agent.outputFormat)
+                        InfoRow(label = "Current Gemini Model", value = editedModelName)
+
+                        Text(
+                            text = "Gemini Model",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                        )
+
+                        GeminiModelRadioRow(
+                            title = GeminiModelType.FLASH,
+                            description = "품질 우선 모델입니다. Planner / Researcher에 권장됩니다.",
+                            selected = editedModelName == GeminiModelType.FLASH,
+                            enabled = !isAnyExecutionRunning,
+                            onClick = {
+                                editedModelName = GeminiModelType.FLASH
+                            }
+                        )
+
+                        GeminiModelRadioRow(
+                            title = GeminiModelType.FLASH_LITE,
+                            description = "속도 우선 경량 모델입니다. Writer에 권장됩니다.",
+                            selected = editedModelName == GeminiModelType.FLASH_LITE,
+                            enabled = !isAnyExecutionRunning,
+                            onClick = {
+                                editedModelName = GeminiModelType.FLASH_LITE
+                            }
+                        )
 
                         StatusPanel(
                             title = "Run Status",
@@ -178,7 +211,8 @@ fun AgentDetailScreen(
                         val updatedAgent = agent.copy(
                             name = editedName,
                             description = editedDescription,
-                            isEnabled = editedIsEnabled
+                            isEnabled = editedIsEnabled,
+                            modelName = GeminiModelType.sanitize(editedModelName)
                         )
                         onSaveClick(updatedAgent)
                     }
@@ -203,7 +237,8 @@ fun AgentDetailScreen(
                         val currentAgent = agent.copy(
                             name = editedName,
                             description = editedDescription,
-                            isEnabled = editedIsEnabled
+                            isEnabled = editedIsEnabled,
+                            modelName = GeminiModelType.sanitize(editedModelName)
                         )
                         onSaveClick(currentAgent)
                         onRunClick(currentAgent)
@@ -250,6 +285,45 @@ fun AgentDetailScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun GeminiModelRadioRow(
+    title: String,
+    description: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            enabled = enabled,
+            onClick = onClick
+        )
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+            )
+
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
+            )
         }
     }
 }

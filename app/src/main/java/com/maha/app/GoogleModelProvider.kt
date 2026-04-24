@@ -16,9 +16,6 @@ import java.net.URLEncoder
 object GoogleModelProvider : ModelProvider {
 
     private const val TAG = "GoogleModelProvider"
-    private const val DEFAULT_MODEL_NAME = "gemini-2.5-flash"
-    private const val FLASH_MODEL_NAME = "gemini-2.5-flash"
-    private const val FLASH_LITE_MODEL_NAME = "gemini-2.5-flash-lite"
     private const val API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
@@ -32,7 +29,7 @@ object GoogleModelProvider : ModelProvider {
             )
         }
 
-        val safeModelName = sanitizeModelName(request.modelName)
+        val safeModelName = GeminiModelType.sanitize(request.modelName)
 
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -58,8 +55,8 @@ object GoogleModelProvider : ModelProvider {
     ): ModelResponse {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
         val maskedApiKey = maskApiKey(apiKey)
+        val safeModelName = GeminiModelType.sanitize(modelName)
 
-        val safeModelName = sanitizeModelName(modelName)
         val urlText = "$API_BASE_URL/$safeModelName:generateContent?key=$maskedApiKey"
         val realUrl = "$API_BASE_URL/$safeModelName:generateContent?key=$encodedApiKey"
 
@@ -172,14 +169,6 @@ object GoogleModelProvider : ModelProvider {
         }
 
         return outputBuilder.toString()
-    }
-
-    private fun sanitizeModelName(modelName: String): String {
-        return when (modelName.trim()) {
-            FLASH_MODEL_NAME -> FLASH_MODEL_NAME
-            FLASH_LITE_MODEL_NAME -> FLASH_LITE_MODEL_NAME
-            else -> DEFAULT_MODEL_NAME
-        }
     }
 
     private fun maskApiKey(apiKey: String): String {

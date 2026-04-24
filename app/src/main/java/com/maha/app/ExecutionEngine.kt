@@ -27,7 +27,8 @@ object ExecutionEngine {
                 agentName = currentAgent.name,
                 inputText = inputText,
                 stepNumber = 1,
-                runType = "SINGLE"
+                runType = "SINGLE",
+                modelName = GeminiModelType.sanitize(currentAgent.modelName)
             )
         )
 
@@ -125,12 +126,13 @@ object ExecutionEngine {
 
         enabledAgents.forEachIndexed { index, agent ->
             val stepNumber = index + 1
+            val safeModelName = GeminiModelType.sanitize(agent.modelName)
 
             onStateChange(agent.id, "RUNNING")
 
             logList.add(
                 ExecutionLog(
-                    message = "${agent.name} is RUNNING with input: $currentInput",
+                    message = "${agent.name} is RUNNING with model $safeModelName and input: $currentInput",
                     timestamp = getCurrentTimeText()
                 )
             )
@@ -143,7 +145,8 @@ object ExecutionEngine {
                     agentName = agent.name,
                     inputText = currentInput,
                     stepNumber = stepNumber,
-                    runType = "RUN_ALL"
+                    runType = "RUN_ALL",
+                    modelName = safeModelName
                 )
             )
 
@@ -228,7 +231,8 @@ object ExecutionEngine {
             description = safeDescription,
             status = safeStatus,
             inputFormat = safeInputFormat,
-            outputFormat = safeOutputFormat
+            outputFormat = safeOutputFormat,
+            modelName = GeminiModelType.sanitize(agent.modelName)
         )
     }
 

@@ -1,4 +1,80 @@
 ==============================
+[2026-04-24 23:50] Worker별 Gemini 모델 전략 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Worker별 Gemini 모델 선택 전략을 구현한다.
+
+목표:
+- Agent.modelName에 Worker별 Gemini 모델명을 저장한다
+- AgentDetailScreen에서 Gemini 모델을 선택할 수 있게 한다
+- 선택된 modelName이 ExecutionEngine → ModelRequest → GoogleModelProvider로 전달되게 한다
+- 잘못된 모델명 또는 빈 값이면 gemini-2.5-flash로 fallback한다
+
+구현 내용:
+- GeminiModelType.kt 추가
+- Agent.modelName 필드 확인 또는 추가
+- AgentDetailScreen에 모델 선택 UI 추가
+- StorageManager가 modelName을 저장/복원하도록 확인 또는 수정
+- ExecutionEngine이 Agent.modelName을 ModelRequest.modelName에 전달
+- GoogleModelProvider가 ModelRequest.modelName으로 endpoint 구성
+- modelName 검증 및 fallback 처리
+
+조건:
+- 지원 모델은 우선 아래 2개만 사용
+  - gemini-2.5-flash
+  - gemini-2.5-flash-lite
+- 기본 모델은 gemini-2.5-flash
+- Planner / Researcher는 gemini-2.5-flash 권장
+- Writer는 gemini-2.5-flash-lite 권장
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- 기존 Google API Key 저장 구조 유지
+- 기존 Google 호출 성공 흐름 유지
+- listModels API 자동 조회는 이번 단계에서 구현하지 않는다
+
+변경 예상 파일:
+- GeminiModelType.kt [추가]
+- Agent.kt [수정]
+- AgentDetailScreen.kt [수정]
+- StorageManager.kt [수정]
+- ExecutionEngine.kt [수정]
+- GoogleModelProvider.kt [수정]
+- 필요 시 MainActivity.kt [보존]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- 빌드 가능한 코드로 제공
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(성공 / 각 워커 하위 창에서 모델 선택, 변경 가능)
+
+[구현 모드]
+
+이번 단계는 Agent.modelName을 기준으로 Worker별 모델 선택값을 저장하고, 실행 시 ModelRequest.modelName으로 전달하는 구조까지 연결한다. UI는 Worker 상세 화면에만 추가한다.
+
+[적용 내용]
+- GeminiModelType 추가
+- Agent.modelName 기반 Worker별 모델 저장 구조 적용
+- AgentDetailScreen에 모델 선택 UI 추가
+- StorageManager modelName 저장/복원 반영
+- ExecutionEngine에서 ModelRequest.modelName 전달
+- GoogleModelProvider에서 modelName 기반 endpoint 호출
+- 잘못된 modelName fallback 처리 추가
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Worker별 모델 선택 및 실제 호출 검증
+
+==============================
 [2026-04-24 23:40] Worker별 Gemini 모델 전략 설계
 ==============================
 
