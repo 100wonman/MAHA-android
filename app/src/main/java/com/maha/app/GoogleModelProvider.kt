@@ -48,7 +48,6 @@ object GoogleModelProvider : ModelProvider {
     ): ModelResponse {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
         val url = URL("$API_BASE_URL/$MODEL_NAME:generateContent?key=$encodedApiKey")
-
         val connection = url.openConnection() as HttpURLConnection
 
         try {
@@ -71,7 +70,9 @@ object GoogleModelProvider : ModelProvider {
             val responseText = if (responseCode in 200..299) {
                 connection.inputStream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
             } else {
-                connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use(BufferedReader::readText)
+                connection.errorStream
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use(BufferedReader::readText)
                     ?: ""
             }
 
@@ -84,10 +85,17 @@ object GoogleModelProvider : ModelProvider {
 
             val outputText = parseGeminiResponse(responseText)
 
-            return ModelResponse(
-                outputText = outputText.ifBlank { "GOOGLE_API_CALL_FAILED" },
-                status = if (outputText.isNotBlank()) "SUCCESS" else "FAILED"
-            )
+            return if (outputText.isNotBlank()) {
+                ModelResponse(
+                    outputText = outputText,
+                    status = "SUCCESS"
+                )
+            } else {
+                ModelResponse(
+                    outputText = "GOOGLE_API_CALL_FAILED",
+                    status = "FAILED"
+                )
+            }
         } finally {
             connection.disconnect()
         }
@@ -127,13 +135,15 @@ object GoogleModelProvider : ModelProvider {
 
         val outputBuilder = StringBuilder()
 
-        for (i in 0 until parts.length()) {
-            val part = parts.optJSONObject(i) ?: continue
+        for (index in 0 until parts.length()) {
+            val part = parts.optJSONObject(index) ?: continue
             val text = part.optString("text", "")
+
             if (text.isNotBlank()) {
                 if (outputBuilder.isNotEmpty()) {
                     outputBuilder.append("\n")
                 }
+
                 outputBuilder.append(text)
             }
         }
