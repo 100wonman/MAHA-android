@@ -1,4 +1,56 @@
 ==============================
+[2026-04-24 23:25] Android 인터넷 권한 추가
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Google Gemini API 호출을 위해 Android 인터넷 권한을 추가한다.
+
+목표:
+- 앱에서 외부 네트워크 요청이 가능하도록 INTERNET permission을 추가한다
+- 기존 Gemini API 호출부는 수정하지 않는다
+- 기존 Provider 선택 구조와 Dummy 흐름은 유지한다
+
+현재 확인된 원인:
+- Logcat에서 SecurityException 발생
+- 메시지: Permission denied (missing INTERNET permission?)
+- GoogleModelProvider 호출 URL과 모델명은 정상 출력됨
+- 실패 위치는 네트워크 요청 시작 단계
+
+변경 파일:
+- AndroidManifest.xml [수정]
+
+구현 조건:
+- manifest 최상위 manifest 태그 내부에 아래 권한 추가
+  <uses-permission android:name="android.permission.INTERNET" />
+- application 태그 내부가 아니라 manifest 태그 바로 아래에 추가
+- 기존 application 설정 유지
+- UI 변경 금지
+- Kotlin 파일 변경 금지
+
+추가 조건:
+- 변경된 파일만 출력
+- 파일 전체 코드 제공
+- 부분 수정 금지
+- 빌드 가능한 코드로 제공
+
+[결과]
+(성공 / api로 대답 받음)
+
+[적용 내용]
+- AndroidManifest.xml에 INTERNET permission 추가
+- Gemini API 외부 네트워크 요청 가능 상태로 변경
+
+[문제 및 해결]
+- GoogleModelProvider에서 SecurityException 발생
+- 원인: AndroidManifest.xml에 INTERNET permission 누락
+- 해결: INTERNET permission 추가
+
+[다음 작업 예정]
+Google Provider 실제 응답 재검증
+
+==============================
 [2026-04-24 23:15] Worker 모델명 기반 Gemini 호출 연결
 ==============================
 
