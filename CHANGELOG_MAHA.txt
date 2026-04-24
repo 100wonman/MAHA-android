@@ -1,4 +1,51 @@
 ==============================
+[2026-04-24 21:20] Provider 전환 옵션 설계
+==============================
+
+[지시문 전체] - [설계 모드]
+
+이번 단계는 Dummy Provider와 Google Provider를 사용자가 선택할 수 있게 만드는 구조를 설계한다.
+
+목표:
+- 현재 기본 실행은 Dummy Provider 유지
+- 사용자가 설정 화면에서 Provider를 선택할 수 있게 준비
+- 선택값을 저장하는 구조 추가
+- ModelRouter가 저장된 Provider 선택값을 읽어 분기하도록 설계
+
+이번 단계에서는 아직 구현 코드를 작성하지 않는다.
+
+설계 대상:
+- Provider 선택값 저장 방식
+- Provider enum 또는 상수 구조
+- ModelRouter 분기 방식
+- 설정 화면 UI 변경 범위
+- API Key가 없을 때 Google 선택 시 처리 방식
+
+조건:
+- 코딩 초보 기준으로 설명
+- 구현 단계에서 수정할 파일 목록 제시
+- 기존 Dummy 흐름 유지
+- Google Provider는 API Key가 있을 때만 정상 호출
+- API Key가 없으면 GOOGLE_API_KEY_NOT_SET 반환 유지
+
+[결과]
+(8가지 설명)
+한줄요약 : Provider 선택값은 SharedPreferences에 DUMMY/GOOGLE로 저장하고,
+ModelRouter는 이 값을 읽어 Dummy 또는 Google로 안전하게 분기한다.
+
+[적용 내용]
+- Provider 선택 구조 설계
+- 설정 화면에서 Provider 선택 가능하도록 변경 범위 정리
+- ModelRouter 분기 방식 정리
+- API Key 미설정 시 처리 기준 정리
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Provider 전환 옵션 구현
+
+==============================
 [2026-04-24 (20:35)] Google Gemini 실제 호출 연결
 ==============================
 
