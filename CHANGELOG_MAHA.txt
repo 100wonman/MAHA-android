@@ -1,4 +1,80 @@
 ==============================
+[2026-04-25 01:15] 모델 카탈로그 및 사용량 추적 1차 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 모델 카탈로그와 앱 내부 사용량 추적의 1차 구현을 진행한다.
+
+목표:
+- 수동 모델 카탈로그를 앱 안에 표시한다
+- 모델별 오늘 사용량을 앱 내부에서 추적한다
+- 429 발생 시 해당 모델을 일시 제한 상태로 저장한다
+- Worker 모델 선택 화면에서 모델 상태를 확인할 수 있게 한다
+
+구현 내용:
+- ModelCatalogItem 추가
+- ModelUsage 추가
+- ModelUsageManager 추가
+- ModelCatalogScreen 추가
+- GeminiModelType에 모델 카탈로그 목록 추가
+- GoogleModelProvider에서 호출 성공/실패/429 발생 시 사용량 기록
+- 429 응답의 retryDelay 또는 기본 30초로 blockedUntil 저장
+- AgentDetailScreen에서 모델별 상태/오늘 사용량/차단 여부 표시
+- MainActivity 또는 내비게이션 구조에 Models 화면 추가
+
+조건:
+- listModels API 자동 조회는 이번 단계에서 구현하지 않음
+- 무료 잔량은 “추정”으로만 표시
+- 공식 잔량 조회 기능은 구현하지 않음
+- 기존 Worker별 modelName 구조 유지
+- 기존 Google/Gemma 호출 구조 유지
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- 기존 성공 응답 흐름 유지
+
+변경 예상 파일:
+- ModelCatalogItem.kt
+- ModelUsage.kt
+- ModelUsageManager.kt
+- ModelCatalogScreen.kt
+- GeminiModelType.kt
+- GoogleModelProvider.kt
+- AgentDetailScreen.kt
+- MainActivity.kt
+- 필요 시 ExecutionEngine.kt
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 빌드 가능 상태 유지
+
+[결과]
+(성공 / 에러 후 성공 / 실패)
+
+[적용 내용]
+- 수동 모델 카탈로그 추가
+- 모델별 앱 내부 사용량 추적 구조 추가
+- 429 발생 시 모델 일시 제한 상태 저장
+- Models 화면 추가
+- Worker 모델 선택 화면에 사용량/상태 정보 표시
+
+[문제 및 해결]
+- 공식 API로 실제 무료 잔량을 직접 조회하기 어려움
+- 해결: 앱 내부 사용량 기반 추정값과 429 기반 차단 상태를 표시
+
+-> [구현 모드]
+이번 단계는 범위가 넓다. ModelUsageManager는 앱 시작 시 초기화하고, GoogleModelProvider가 호출 결과를 기록하며, Models 화면과 Worker 상세 화면에서 같은 사용량 상태를 보여주게 만든다.
+
+11s 동안 생각함
+
+코드가 길어서 다음 응답에서 변경 파일 전체 코드를 이어서 제공하겠다.
+
+[다음 작업 예정]
+모델 카탈로그 UI 검증 및 Run All 실행 전 예상 호출 수 표시
+
+==============================
 [2026-04-25 01:10] 모델 카탈로그 및 사용량 추적 구조 설계
 ==============================
 
