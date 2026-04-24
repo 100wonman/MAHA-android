@@ -4,6 +4,7 @@ package com.maha.app
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,6 +18,8 @@ object GoogleModelProvider : ModelProvider {
 
     private const val TAG = "GoogleModelProvider"
     private const val API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+    private const val MAX_RETRY_COUNT = 1
+    private const val RETRY_DELAY_MS = 1_200L
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
         val apiKey = ApiKeyManager.getGoogleApiKey()
@@ -33,7 +36,7 @@ object GoogleModelProvider : ModelProvider {
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                callGeminiApi(
+                callGeminiApiWithRetry(
                     apiKey = apiKey,
                     modelName = safeModelName,
                     prompt = request.inputText
@@ -48,11 +51,53 @@ object GoogleModelProvider : ModelProvider {
         }
     }
 
-    private fun callGeminiApi(
+    private suspend fun callGeminiApiWithRetry(
         apiKey: String,
         modelName: String,
         prompt: String
     ): ModelResponse {
+        var attempt = 0
+        var lastResponse = ModelResponse(
+            outputText = "GOOGLE_API_CALL_FAILED",
+            status = "FAILED"
+        )
+
+        while (attempt <= MAX_RETRY_COUNT) {
+            val result = callGeminiApiOnce(
+                apiKey = apiKey,
+                modelName = modelName,
+                prompt = prompt,
+                attempt = attempt + 1
+            )
+
+            if (result.response.status == "SUCCESS") {
+                return result.response
+            }
+
+            lastResponse = result.response
+
+            if (!shouldRetry(result.httpStatusCode) || attempt >= MAX_RETRY_COUNT) {
+                return lastResponse
+            }
+
+            Log.d(
+                TAG,
+                "Gemini retry scheduled. statusCode=${result.httpStatusCode}, delayMs=$RETRY_DELAY_MS"
+            )
+
+            delay(RETRY_DELAY_MS)
+            attempt += 1
+        }
+
+        return lastResponse
+    }
+
+    private fun callGeminiApiOnce(
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        attempt: Int
+    ): GeminiCallResult {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
         val maskedApiKey = maskApiKey(apiKey)
         val safeModelName = GeminiModelType.sanitize(modelName)
@@ -60,6 +105,7 @@ object GoogleModelProvider : ModelProvider {
         val urlText = "$API_BASE_URL/$safeModelName:generateContent?key=$maskedApiKey"
         val realUrl = "$API_BASE_URL/$safeModelName:generateContent?key=$encodedApiKey"
 
+        Log.d(TAG, "Gemini request attempt: $attempt")
         Log.d(TAG, "Gemini request URL: $urlText")
         Log.d(TAG, "Gemini selected model: $safeModelName")
 
@@ -93,26 +139,37 @@ object GoogleModelProvider : ModelProvider {
             }
 
             Log.d(TAG, "Gemini HTTP status code: $responseCode")
+            Log.d(TAG, "Gemini response type: ${classifyHttpFailure(responseCode)}")
             Log.d(TAG, "Gemini response body: $responseText")
 
             if (responseCode !in 200..299) {
-                return ModelResponse(
-                    outputText = "GOOGLE_API_CALL_FAILED",
-                    status = "FAILED"
+                return GeminiCallResult(
+                    httpStatusCode = responseCode,
+                    response = ModelResponse(
+                        outputText = "GOOGLE_API_CALL_FAILED",
+                        status = "FAILED"
+                    )
                 )
             }
 
             val outputText = parseGeminiResponse(responseText)
 
             return if (outputText.isNotBlank()) {
-                ModelResponse(
-                    outputText = outputText,
-                    status = "SUCCESS"
+                GeminiCallResult(
+                    httpStatusCode = responseCode,
+                    response = ModelResponse(
+                        outputText = outputText,
+                        status = "SUCCESS"
+                    )
                 )
             } else {
-                ModelResponse(
-                    outputText = "GOOGLE_API_CALL_FAILED",
-                    status = "FAILED"
+                Log.d(TAG, "Gemini parse result is empty.")
+                GeminiCallResult(
+                    httpStatusCode = responseCode,
+                    response = ModelResponse(
+                        outputText = "GOOGLE_API_CALL_FAILED",
+                        status = "FAILED"
+                    )
                 )
             }
         } finally {
@@ -171,8 +228,37 @@ object GoogleModelProvider : ModelProvider {
         return outputBuilder.toString()
     }
 
+    private fun shouldRetry(statusCode: Int): Boolean {
+        return statusCode == 429 ||
+                statusCode == 500 ||
+                statusCode == 502 ||
+                statusCode == 503 ||
+                statusCode == 504
+    }
+
+    private fun classifyHttpFailure(statusCode: Int): String {
+        return when (statusCode) {
+            200, 201, 202 -> "SUCCESS"
+            400 -> "BAD_REQUEST"
+            401 -> "UNAUTHORIZED_OR_INVALID_API_KEY"
+            403 -> "FORBIDDEN_OR_PERMISSION_DENIED"
+            404 -> "MODEL_OR_ENDPOINT_NOT_FOUND"
+            429 -> "RATE_LIMIT_OR_QUOTA_EXCEEDED"
+            500 -> "SERVER_ERROR"
+            502 -> "BAD_GATEWAY"
+            503 -> "SERVICE_UNAVAILABLE"
+            504 -> "GATEWAY_TIMEOUT"
+            else -> "HTTP_ERROR"
+        }
+    }
+
     private fun maskApiKey(apiKey: String): String {
         val prefix = apiKey.take(4)
         return "$prefix****"
     }
+
+    private data class GeminiCallResult(
+        val httpStatusCode: Int,
+        val response: ModelResponse
+    )
 }

@@ -1,4 +1,80 @@
 ==============================
+[2026-04-25 00:15] 연속 Worker 호출 안정성 개선
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 연속 Worker 호출 안정성을 높이기 위해 Gemini API 실패 원인을 세분화하고 최소 retry/delay 처리를 추가한다.
+
+목표:
+- GOOGLE_API_CALL_FAILED만 표시하지 않고 HTTP 상태 코드와 원인 유형을 구분한다
+- Worker 간 연속 호출 시 짧은 delay를 추가한다
+- 429 또는 일시적 실패에 대해 최소 retry를 적용한다
+- modelName이 잘못된 경우 기본 모델 gemini-2.5-flash로 fallback한다
+
+구현 내용:
+- GoogleModelProvider에서 HTTP 상태 코드 로그 출력
+- 실패 응답 body 로그 출력
+- 429, 500, 502, 503, 504 발생 시 1회 재시도
+- 재시도 전 짧은 delay 적용
+- ExecutionEngine에서 Worker 호출 사이에 짧은 delay 적용
+- modelName 검증 유지
+
+조건:
+- API Key 전체값은 로그에 출력하지 않는다
+- 기존 성공 응답 흐름 유지
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- 기존 Worker별 modelName 구조 유지
+- UI 변경 금지
+- 과도한 retry 금지
+- 실패 시 최종 사용자 출력은 기존처럼 GOOGLE_API_CALL_FAILED 유지해도 된다
+- 단, Logcat에는 원인 파악 가능한 상태 코드와 body를 남긴다
+
+변경 예상 파일:
+- GoogleModelProvider.kt [수정]
+- ExecutionEngine.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- 빌드 가능한 코드로 제공
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(성공)
+
+[구현 모드]
+
+이번 단계는 UI를 건드리지 않고 Gemini 호출 실패 로그 세분화 + 1회 재시도 + Worker 간 호출 간격만 추가한다.
+
+[적용 내용]
+- Gemini API 실패 상태 코드 로그 추가
+- 실패 응답 body 로그 추가
+- 일시적 실패에 대한 1회 retry 추가
+- Worker 간 연속 호출 delay 추가
+- modelName fallback 유지
+
+[문제 및 해결]
+- Planner는 성공하지만 이후 Writer/Researcher에서 API 호출 실패가 자주 발생
+- 원인 후보: 연속 호출, rate limit, prompt 누적, 일시적 서버 응답, modelName 저장 오류
+- 해결 방향: 상태 코드 확인 가능하도록 로그 강화 후 retry/delay 적용
+
+-> HTTP 429
+RATE_LIMIT_OR_QUOTA_EXCEEDED
+RESOURCE_EXHAUSTED
+무료 티어 요청 한도 초과
+gemini-2.5-flash 일일 무료 요청 한도: 20
+재시도 가능 시간: 약 47초 후
+--> 즉, 앱 구조 문제라기보다 무료 quota / rate limit 문제다.
+
+[다음 작업 예정]
+All Run 안정성 재검증 및 prompt 전달량 제한 설계
+
+==============================
 [2026-04-24 23:50] Worker별 Gemini 모델 전략 구현
 ==============================
 

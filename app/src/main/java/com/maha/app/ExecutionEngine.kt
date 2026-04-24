@@ -6,6 +6,10 @@ import kotlinx.coroutines.delay
 
 object ExecutionEngine {
 
+    private const val SINGLE_RUN_PRE_DELAY_MS = 500L
+    private const val RUN_ALL_PRE_CALL_DELAY_MS = 700L
+    private const val WORKER_BETWEEN_CALL_DELAY_MS = 900L
+
     suspend fun runSingleAgent(
         agent: Agent,
         validAgents: List<Agent>,
@@ -16,10 +20,11 @@ object ExecutionEngine {
         val currentAgent = sanitizeAgent(agent)
         val timeText = getCurrentTimeText()
         val inputText = inputPrompt.ifBlank { "User request for ${currentAgent.name}" }
+        val safeModelName = GeminiModelType.sanitize(currentAgent.modelName)
 
         onStateChange(currentAgent.id, "RUNNING")
 
-        delay(500)
+        delay(SINGLE_RUN_PRE_DELAY_MS)
 
         val modelResponse = ModelRouter.generate(
             ModelRequest(
@@ -28,7 +33,7 @@ object ExecutionEngine {
                 inputText = inputText,
                 stepNumber = 1,
                 runType = "SINGLE",
-                modelName = GeminiModelType.sanitize(currentAgent.modelName)
+                modelName = safeModelName
             )
         )
 
@@ -46,7 +51,7 @@ object ExecutionEngine {
 
         val logs = listOf(
             ExecutionLog(
-                message = "${currentAgent.name} is RUNNING with input: $inputText",
+                message = "${currentAgent.name} is RUNNING with model $safeModelName and input: $inputText",
                 timestamp = timeText
             ),
             ExecutionLog(
@@ -137,7 +142,7 @@ object ExecutionEngine {
                 )
             )
 
-            delay(700)
+            delay(RUN_ALL_PRE_CALL_DELAY_MS)
 
             val modelResponse = ModelRouter.generate(
                 ModelRequest(
@@ -175,7 +180,9 @@ object ExecutionEngine {
 
             currentInput = modelResponse.outputText
 
-            delay(300)
+            if (index < enabledAgents.lastIndex) {
+                delay(WORKER_BETWEEN_CALL_DELAY_MS)
+            }
         }
 
         logList.add(
