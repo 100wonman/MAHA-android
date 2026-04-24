@@ -1,4 +1,58 @@
 ==============================
+[2026-04-24 23:00] Worker별 Gemini 모델 선택 구조 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 Worker별 Gemini 모델 선택 구조를 설계한다.
+
+목표:
+- 각 Worker가 사용할 Gemini 모델을 선택할 수 있게 설계한다
+- 기본 모델은 gemini-2.5-flash로 한다
+- 경량 모델로 gemini-2.5-flash-lite 선택을 지원한다
+- 모델 선택값을 저장한다
+- GoogleModelProvider가 저장된 모델명을 사용해 호출할 수 있게 준비한다
+
+설계 대상:
+- Worker별 모델 선택값 저장 방식
+- 기본 모델값
+- 지원 모델 상수 구조
+- Settings 또는 Worker 설정 UI 변경 범위
+- GoogleModelProvider와 모델명 연결 방식
+- 향후 listModels API 확장 가능성
+- 무료 사용량/Rate limit 표시 가능 범위
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- 코딩 초보 기준으로 설명
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- Google API 호출부는 다음 구현 단계에서 처리
+- 처음에는 수동 모델 목록만 사용
+- 자동 모델 목록 조회는 후속 단계로 분리
+
+[결과]
+(10단계 설명)
+Worker별 Gemini 모델명은 Agent.modelName으로 저장하고,
+ExecutionEngine이 ModelRequest에 전달한 뒤,
+GoogleModelProvider가 그 modelName으로 Gemini API endpoint를 호출하게 만든다.
+
+[적용 내용]
+- Worker별 Gemini 모델 선택 구조 설계
+- 기본 모델 및 경량 모델 기준 정리
+- 모델 선택값 저장 방식 정리
+- GoogleModelProvider 호출부와 연결 방식 정리
+- 향후 listModels API 확장 방향 정리
+- 무료 사용량/Rate limit 표시 가능 범위 정리
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Worker별 Gemini 모델 선택 UI 및 저장 구조 구현
+
+==============================
 [2026-04-24 22:35] Settings 저장 UI 및 프롬프트 입력 흐름 수정
 ==============================
 

@@ -2,6 +2,7 @@
 
 package com.maha.app
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -14,13 +15,15 @@ import java.net.URLEncoder
 
 object GoogleModelProvider : ModelProvider {
 
-    private const val MODEL_NAME = "gemini-pro"
+    private const val TAG = "GoogleModelProvider"
+    private const val MODEL_NAME = "gemini-1.5-flash"
     private const val API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
     override suspend fun generate(request: ModelRequest): ModelResponse {
         val apiKey = ApiKeyManager.getGoogleApiKey()
 
         if (apiKey.isBlank()) {
+            Log.d(TAG, "Google API key is not set.")
             return ModelResponse(
                 outputText = "GOOGLE_API_KEY_NOT_SET",
                 status = "SUCCESS"
@@ -33,7 +36,8 @@ object GoogleModelProvider : ModelProvider {
                     apiKey = apiKey,
                     prompt = request.inputText
                 )
-            }.getOrElse {
+            }.getOrElse { exception ->
+                Log.e(TAG, "Gemini API exception: ${exception.message}", exception)
                 ModelResponse(
                     outputText = "GOOGLE_API_CALL_FAILED",
                     status = "FAILED"
@@ -47,7 +51,13 @@ object GoogleModelProvider : ModelProvider {
         prompt: String
     ): ModelResponse {
         val encodedApiKey = URLEncoder.encode(apiKey, "UTF-8")
-        val url = URL("$API_BASE_URL/$MODEL_NAME:generateContent?key=$encodedApiKey")
+        val maskedApiKey = maskApiKey(apiKey)
+        val urlText = "$API_BASE_URL/$MODEL_NAME:generateContent?key=$maskedApiKey"
+        val realUrl = "$API_BASE_URL/$MODEL_NAME:generateContent?key=$encodedApiKey"
+
+        Log.d(TAG, "Gemini request URL: $urlText")
+
+        val url = URL(realUrl)
         val connection = url.openConnection() as HttpURLConnection
 
         try {
@@ -75,6 +85,9 @@ object GoogleModelProvider : ModelProvider {
                     ?.use(BufferedReader::readText)
                     ?: ""
             }
+
+            Log.d(TAG, "Gemini HTTP status code: $responseCode")
+            Log.d(TAG, "Gemini response body: $responseText")
 
             if (responseCode !in 200..299) {
                 return ModelResponse(
@@ -111,6 +124,7 @@ object GoogleModelProvider : ModelProvider {
         }
 
         val contentObject = JSONObject().apply {
+            put("role", "user")
             put("parts", partsArray)
         }
 
@@ -149,5 +163,10 @@ object GoogleModelProvider : ModelProvider {
         }
 
         return outputBuilder.toString()
+    }
+
+    private fun maskApiKey(apiKey: String): String {
+        val prefix = apiKey.take(4)
+        return "$prefix****"
     }
 }
