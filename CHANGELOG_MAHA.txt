@@ -1,4 +1,66 @@
 ==============================
+[2026-04-24 HH:mm] Provider 전환 옵션 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Provider 전환 옵션을 구현한다.
+
+목표:
+- Settings 화면에서 Dummy / Google Provider를 선택할 수 있게 한다
+- 선택값을 저장한다
+- ModelRouter가 저장된 Provider 선택값을 읽어 Dummy 또는 Google Provider로 분기한다
+- 기본값은 항상 Dummy로 유지한다
+
+구현 내용:
+- ModelProviderType.kt 추가
+- ApiKeyManager.kt에 Provider 선택값 저장/조회 함수 추가
+- SettingsScreen.kt에 Provider 선택 UI 추가
+- ModelRouter.kt에서 저장된 Provider 선택값 기반으로 분기
+
+조건:
+- Provider 저장값은 문자열 "DUMMY", "GOOGLE" 사용
+- 기본 Provider는 "DUMMY"
+- 알 수 없는 Provider 값이면 Dummy로 fallback
+- Google 선택 상태에서 API Key가 없으면 기존처럼 GOOGLE_API_KEY_NOT_SET 반환
+- 기존 API Key 저장 기능 유지
+- 기존 Dummy 기본 실행 흐름 유지
+- UI는 간단한 RadioButton 방식 사용
+- 실제 Gemini API 호출 로직은 이전 단계 구현을 유지하고 수정하지 않는다
+
+변경 파일:
+- ModelProviderType.kt [추가]
+- ApiKeyManager.kt [수정]
+- SettingsScreen.kt [수정]
+- ModelRouter.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- 기존 기능 유지
+- 빌드 가능한 코드로 제공
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(에러 후 성공 / mainactivity.kt 수정 누락 / 더미, 구글 선택 옵션 생성)
+
+[적용 내용]
+- Provider 선택값 저장 구조 추가
+- Settings 화면에 Provider 선택 UI 추가
+- ModelRouter에 저장값 기반 Provider 분기 추가
+- 기본 Dummy fallback 유지
+- Google 선택 시 API Key 미설정 처리 흐름 유지
+
+[문제 및 해결]
+(있으면 기록)
+
+[다음 작업 예정]
+Google Provider 실제 응답 검증 및 모델명 최신화 여부 검토
+
+==============================
 [2026-04-24 21:20] Provider 전환 옵션 설계
 ==============================
 

@@ -74,10 +74,12 @@ fun MAHAApp() {
     var isRunAllRunning by remember { mutableStateOf(false) }
     var runningAgentId by remember { mutableStateOf<String?>(null) }
     var savedGoogleApiKey by remember { mutableStateOf("") }
+    var savedProvider by remember { mutableStateOf(ModelProviderType.DUMMY) }
 
     LaunchedEffect(Unit) {
         ApiKeyManager.initialize(context)
         savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+        savedProvider = ApiKeyManager.getSelectedProvider(context)
 
         val loadedAgents = StorageManager.loadAgents(context)
         val safeAgents = if (loadedAgents.isEmpty()) {
@@ -243,7 +245,7 @@ fun MAHAApp() {
                     label = {
                         DrawerItemTitle(
                             title = "Settings",
-                            subtitle = "API Key 설정"
+                            subtitle = "Provider / API Key 설정"
                         )
                     },
                     selected = isSettingsScreenOpen,
@@ -254,6 +256,7 @@ fun MAHAApp() {
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = true
                             savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+                            savedProvider = ApiKeyManager.getSelectedProvider(context)
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -300,12 +303,17 @@ fun MAHAApp() {
             isSettingsScreenOpen -> {
                 SettingsScreen(
                     savedGoogleApiKey = savedGoogleApiKey,
+                    savedProvider = savedProvider,
                     onMenuClick = {
                         scope.launch { drawerState.open() }
                     },
                     onSaveGoogleApiKeyClick = { apiKey ->
                         ApiKeyManager.saveGoogleApiKey(context, apiKey)
                         savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+                    },
+                    onSaveProviderClick = { provider ->
+                        ApiKeyManager.saveSelectedProvider(context, provider)
+                        savedProvider = ApiKeyManager.getSelectedProvider(context)
                     },
                     onBackClick = {
                         isSettingsScreenOpen = false
