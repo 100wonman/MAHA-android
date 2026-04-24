@@ -49,6 +49,8 @@ object GoogleModelProvider : ModelProvider {
                 )
             }.getOrElse { exception ->
                 Log.e(TAG, "Gemini API exception: ${exception.message}", exception)
+                ModelUsageManager.recordFailure(safeModelName)
+
                 ModelResponse(
                     outputText = ERROR_GENERAL,
                     status = "FAILED"
@@ -151,8 +153,16 @@ object GoogleModelProvider : ModelProvider {
             Log.d(TAG, "Gemini response body: $responseText")
 
             if (responseCode == 429) {
-                val retryDelay = extractRetryDelay(responseText)
-                Log.d(TAG, "Gemini retryDelay: ${retryDelay.ifBlank { "not provided" }}")
+                val retryDelayText = extractRetryDelay(responseText)
+                val blockedUntilMillis = System.currentTimeMillis() + retryDelayToMillis(retryDelayText)
+
+                Log.d(TAG, "Gemini retryDelay: ${retryDelayText.ifBlank { "not provided" }}")
+                Log.d(TAG, "Gemini blockedUntilMillis: $blockedUntilMillis")
+
+                ModelUsageManager.recordRateLimit(
+                    modelName = safeModelName,
+                    blockedUntilMillis = blockedUntilMillis
+                )
 
                 return GeminiCallResult(
                     httpStatusCode = responseCode,
@@ -164,6 +174,8 @@ object GoogleModelProvider : ModelProvider {
             }
 
             if (responseCode == 500) {
+                ModelUsageManager.recordFailure(safeModelName)
+
                 return GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
@@ -174,6 +186,8 @@ object GoogleModelProvider : ModelProvider {
             }
 
             if (responseCode !in 200..299) {
+                ModelUsageManager.recordFailure(safeModelName)
+
                 return GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
@@ -186,6 +200,8 @@ object GoogleModelProvider : ModelProvider {
             val outputText = parseGeminiResponse(responseText)
 
             return if (outputText.isNotBlank()) {
+                ModelUsageManager.recordSuccess(safeModelName)
+
                 GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
@@ -195,6 +211,8 @@ object GoogleModelProvider : ModelProvider {
                 )
             } else {
                 Log.d(TAG, "Gemini parse result is empty.")
+                ModelUsageManager.recordFailure(safeModelName)
+
                 GeminiCallResult(
                     httpStatusCode = responseCode,
                     response = ModelResponse(
@@ -209,6 +227,8 @@ object GoogleModelProvider : ModelProvider {
                 "Gemini timeout exception. model=$safeModelName, readTimeoutMs=$readTimeoutMs, message=${exception.message}",
                 exception
             )
+
+            ModelUsageManager.recordFailure(safeModelName)
 
             return GeminiCallResult(
                 httpStatusCode = -1,
@@ -292,12 +312,12 @@ object GoogleModelProvider : ModelProvider {
         return runCatching {
             val root = JSONObject(responseText)
             val error = root.optJSONObject("error") ?: return@runCatching ""
-
             val details = error.optJSONArray("details") ?: return@runCatching ""
 
             for (index in 0 until details.length()) {
                 val detail = details.optJSONObject(index) ?: continue
                 val retryDelay = detail.optString("retryDelay", "")
+
                 if (retryDelay.isNotBlank()) {
                     return@runCatching retryDelay
                 }
@@ -305,6 +325,20 @@ object GoogleModelProvider : ModelProvider {
 
             ""
         }.getOrDefault("")
+    }
+
+    private fun retryDelayToMillis(retryDelayText: String): Long {
+        if (retryDelayText.isBlank()) return 30_000L
+
+        val seconds = retryDelayText
+            .removeSuffix("s")
+            .toLongOrNull()
+
+        return if (seconds != null && seconds > 0L) {
+            seconds * 1_000L
+        } else {
+            30_000L
+        }
     }
 
     private fun classifyHttpFailure(statusCode: Int): String {

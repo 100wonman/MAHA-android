@@ -174,45 +174,16 @@ fun AgentDetailScreen(
                             color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                         )
 
-                        GeminiModelRadioRow(
-                            title = GeminiModelType.FLASH,
-                            description = "기본 품질 모델입니다. Planner / Researcher에 권장됩니다.",
-                            selected = editedModelName == GeminiModelType.FLASH,
-                            enabled = !isAnyExecutionRunning,
-                            onClick = {
-                                editedModelName = GeminiModelType.FLASH
-                            }
-                        )
-
-                        GeminiModelRadioRow(
-                            title = GeminiModelType.FLASH_LITE,
-                            description = "속도 우선 경량 모델입니다. Writer에 권장됩니다.",
-                            selected = editedModelName == GeminiModelType.FLASH_LITE,
-                            enabled = !isAnyExecutionRunning,
-                            onClick = {
-                                editedModelName = GeminiModelType.FLASH_LITE
-                            }
-                        )
-
-                        GeminiModelRadioRow(
-                            title = GeminiModelType.GEMMA_4_31B_IT,
-                            description = "Gemma 4 고품질 테스트 모델입니다. 계획/분석 Worker 테스트에 사용합니다.",
-                            selected = editedModelName == GeminiModelType.GEMMA_4_31B_IT,
-                            enabled = !isAnyExecutionRunning,
-                            onClick = {
-                                editedModelName = GeminiModelType.GEMMA_4_31B_IT
-                            }
-                        )
-
-                        GeminiModelRadioRow(
-                            title = GeminiModelType.GEMMA_4_26B_A4B_IT,
-                            description = "Gemma 4 효율형 테스트 모델입니다. Writer/요약 Worker 테스트에 사용합니다.",
-                            selected = editedModelName == GeminiModelType.GEMMA_4_26B_A4B_IT,
-                            enabled = !isAnyExecutionRunning,
-                            onClick = {
-                                editedModelName = GeminiModelType.GEMMA_4_26B_A4B_IT
-                            }
-                        )
+                        GeminiModelType.getCatalog().forEach { item ->
+                            GeminiModelRadioRow(
+                                item = item,
+                                selected = editedModelName == item.modelName,
+                                enabled = !isAnyExecutionRunning,
+                                onClick = {
+                                    editedModelName = item.modelName
+                                }
+                            )
+                        }
 
                         StatusPanel(
                             title = "Run Status",
@@ -311,39 +282,65 @@ fun AgentDetailScreen(
 
 @Composable
 fun GeminiModelRadioRow(
-    title: String,
-    description: String,
+    item: ModelCatalogItem,
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val usage = ModelUsageManager.getTodayUsage(item.modelName)
+    val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
+    val blockedUntilText = ModelUsageManager.getBlockedUntilText(item.modelName)
+    val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(
             selected = selected,
-            enabled = enabled,
+            enabled = enabled && !isBlocked,
             onClick = onClick
         )
 
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 8.dp)
+                .padding(start = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = title,
+                text = item.displayName,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
             )
 
             Text(
-                text = description,
+                text = item.modelName,
                 style = MaterialTheme.typography.bodySmall,
                 color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
             )
+
+            Text(
+                text = item.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
+            )
+
+            Text(
+                text = "Recommended: ${item.recommendedWorker} / Today: ${usage.requestCount} / Estimated remaining: $estimatedRemaining",
+                style = MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+            )
+
+            if (isBlocked) {
+                Text(
+                    text = "TEMP BLOCKED until $blockedUntilText",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = androidx.compose.ui.graphics.Color(0xFFEF4444)
+                )
+            }
         }
     }
 }

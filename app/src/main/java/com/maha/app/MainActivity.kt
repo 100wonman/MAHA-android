@@ -70,6 +70,7 @@ fun MAHAApp() {
     var selectedRun by remember { mutableStateOf<Run?>(null) }
     var isScenarioScreenOpen by remember { mutableStateOf(false) }
     var isSettingsScreenOpen by remember { mutableStateOf(false) }
+    var isModelCatalogScreenOpen by remember { mutableStateOf(false) }
     var isDataLoaded by remember { mutableStateOf(false) }
     var isRunAllRunning by remember { mutableStateOf(false) }
     var runningAgentId by remember { mutableStateOf<String?>(null) }
@@ -81,6 +82,8 @@ fun MAHAApp() {
 
     LaunchedEffect(Unit) {
         ApiKeyManager.initialize(context)
+        ModelUsageManager.initialize(context)
+
         savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
         savedProvider = ApiKeyManager.getSelectedProvider(context)
 
@@ -121,6 +124,7 @@ fun MAHAApp() {
         selectedRun = null
         isScenarioScreenOpen = false
         isSettingsScreenOpen = false
+        isModelCatalogScreenOpen = false
         isRunAllRunning = false
         runningAgentId = null
         isDataLoaded = true
@@ -211,13 +215,18 @@ fun MAHAApp() {
                             subtitle = "워커 목록과 실행 관리"
                         )
                     },
-                    selected = !isScenarioScreenOpen && !isSettingsScreenOpen && selectedAgent == null && selectedRun == null,
+                    selected = !isScenarioScreenOpen &&
+                            !isSettingsScreenOpen &&
+                            !isModelCatalogScreenOpen &&
+                            selectedAgent == null &&
+                            selectedRun == null,
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null) {
                             selectedAgentId = null
                             selectedRun = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -238,6 +247,28 @@ fun MAHAApp() {
                             selectedRun = null
                             isScenarioScreenOpen = true
                             isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
+                            scope.launch { drawerState.close() }
+                        }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
+                NavigationDrawerItem(
+                    label = {
+                        DrawerItemTitle(
+                            title = "Models",
+                            subtitle = "모델 목록과 사용량 확인"
+                        )
+                    },
+                    selected = isModelCatalogScreenOpen,
+                    onClick = {
+                        if (!isRunAllRunning && runningAgentId == null) {
+                            selectedAgentId = null
+                            selectedRun = null
+                            isScenarioScreenOpen = false
+                            isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = true
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -258,6 +289,7 @@ fun MAHAApp() {
                             selectedRun = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = true
+                            isModelCatalogScreenOpen = false
                             savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
                             savedProvider = ApiKeyManager.getSelectedProvider(context)
                             scope.launch { drawerState.close() }
@@ -280,6 +312,7 @@ fun MAHAApp() {
                                 selectedAgentId = null
                                 isScenarioScreenOpen = false
                                 isSettingsScreenOpen = false
+                                isModelCatalogScreenOpen = false
                                 selectedRun = runList.firstOrNull()
                                 scope.launch { drawerState.close() }
                             }
@@ -299,6 +332,17 @@ fun MAHAApp() {
                     },
                     onBackClick = {
                         selectedRun = null
+                    }
+                )
+            }
+
+            isModelCatalogScreenOpen -> {
+                ModelCatalogScreen(
+                    onMenuClick = {
+                        scope.launch { drawerState.open() }
+                    },
+                    onBackClick = {
+                        isModelCatalogScreenOpen = false
                     }
                 )
             }
@@ -346,6 +390,7 @@ fun MAHAApp() {
                         selectedAgentId = null
                         selectedRun = null
                         isSettingsScreenOpen = false
+                        isModelCatalogScreenOpen = false
 
                         syncExecutionStateMap(
                             agents = agentList,
@@ -392,7 +437,11 @@ fun MAHAApp() {
 
                         agentList.clear()
                         agentList.addAll(
-                            if (remainingAgents.isEmpty()) createDefaultAgents() else normalizeAgents(remainingAgents)
+                            if (remainingAgents.isEmpty()) {
+                                createDefaultAgents()
+                            } else {
+                                normalizeAgents(remainingAgents)
+                            }
                         )
 
                         selectedAgentId = null
@@ -468,7 +517,12 @@ fun MAHAApp() {
                         scope.launch { drawerState.open() }
                     },
                     onAgentClick = { agent ->
-                        if (agent.id.isNotBlank() && agentList.any { it.id == agent.id } && !isRunAllRunning && runningAgentId == null) {
+                        if (
+                            agent.id.isNotBlank() &&
+                            agentList.any { it.id == agent.id } &&
+                            !isRunAllRunning &&
+                            runningAgentId == null
+                        ) {
                             selectedAgentId = agent.id
                         }
                     },
@@ -498,6 +552,7 @@ fun MAHAApp() {
                         if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
                         isScenarioScreenOpen = true
                         isSettingsScreenOpen = false
+                        isModelCatalogScreenOpen = false
                     },
                     onMoveUpClick = { agent ->
                         if (isRunAllRunning || runningAgentId != null) return@AgentListScreen
@@ -624,7 +679,8 @@ private fun createDefaultAgents(): List<Agent> {
             status = "Enabled",
             inputFormat = "User Request",
             outputFormat = "Plan Text",
-            isEnabled = true
+            isEnabled = true,
+            modelName = GeminiModelType.FLASH
         ),
         Agent(
             id = "agent_002",
@@ -633,7 +689,8 @@ private fun createDefaultAgents(): List<Agent> {
             status = "Enabled",
             inputFormat = "Plan Text",
             outputFormat = "Research Notes",
-            isEnabled = true
+            isEnabled = true,
+            modelName = GeminiModelType.FLASH
         ),
         Agent(
             id = "agent_003",
@@ -642,7 +699,8 @@ private fun createDefaultAgents(): List<Agent> {
             status = "Enabled",
             inputFormat = "Research Notes",
             outputFormat = "Final Answer",
-            isEnabled = true
+            isEnabled = true,
+            modelName = GeminiModelType.FLASH_LITE
         )
     )
 }
@@ -656,7 +714,8 @@ private fun createNewAgent(existingAgents: List<Agent>): Agent {
             status = "Enabled",
             inputFormat = "Input Text",
             outputFormat = "Output Text",
-            isEnabled = true
+            isEnabled = true,
+            modelName = GeminiModelType.DEFAULT
         )
     )
 }
@@ -708,7 +767,8 @@ private fun sanitizeAgent(agent: Agent): Agent {
         description = safeDescription,
         status = safeStatus,
         inputFormat = safeInputFormat,
-        outputFormat = safeOutputFormat
+        outputFormat = safeOutputFormat,
+        modelName = GeminiModelType.sanitize(agent.modelName)
     )
 }
 
