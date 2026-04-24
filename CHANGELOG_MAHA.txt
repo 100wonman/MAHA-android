@@ -1,4 +1,58 @@
 ==============================
+[2026-04-25 00:35] Gemma 4 모델 선택지 추가 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 Gemma 4 모델을 MAHA의 Worker 모델 선택 구조에 추가하는 방안을 설계한다.
+
+목표:
+- Gemini API에서 호출 가능한 Gemma 4 모델을 Worker 모델 선택지에 추가한다
+- gemma-4-31b-it과 gemma-4-26b-a4b-it을 테스트 후보로 둔다
+- 기존 gemini-2.5-flash / gemini-2.5-flash-lite 선택지는 유지한다
+- Worker 역할별 Gemma 모델 사용 기준을 정리한다
+- 무료 quota 분산 전략을 검토한다
+
+설계 대상:
+- GeminiModelType에 추가할 모델 상수
+- Worker별 추천 모델 전략
+- Gemma 4 31B와 26B A4B 사용 기준
+- 기존 Gemini 모델과 Gemma 모델의 fallback 기준
+- GoogleModelProvider에서 동일 endpoint 방식으로 호출 가능한지 확인
+- Settings 또는 AgentDetailScreen 표시 문구
+- 무료 quota / rate limit 분산 테스트 방식
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- 기존 Google 호출 성공 흐름 유지
+- 기존 Worker별 modelName 구조 유지
+- 기존 Dummy Provider 흐름 유지
+- 기존 Provider 선택 구조 유지
+- API Key 하드코딩 금지
+- Gemma 모델은 우선 수동 선택 모델로만 추가하는 방향으로 설계
+
+[결과]
+(성공 / 수정 필요 / 실패)
+
+[적용 내용]
+- Gemma 4 모델 선택지 추가 방향 설계
+- gemma-4-31b-it / gemma-4-26b-a4b-it 모델 ID 정리
+- Worker별 Gemma 모델 사용 기준 정리
+- 기존 Gemini 모델과 Gemma 모델 fallback 기준 검토
+- 무료 quota 분산 테스트 방향 정리
+
+[문제 및 해결]
+- gemini-2.5-flash에서 HTTP 429 quota 초과 확인
+- 해결 방향: Gemma 4 모델 선택지를 추가해 모델별 quota 분산 가능성 테스트
+
+Gemma 4는 기존 Agent.modelName 구조에 수동 모델 2개를 추가하고,
+GoogleModelProvider는 같은 generateContent endpoint에서 modelName만 바꿔 호출하는 방식으로 설계한다.
+
+[다음 작업 예정]
+Gemma 4 모델 선택지 구현
+
+==============================
 [2026-04-25 00:25] Gemini API rate limit 처리 전략 설계
 ==============================
 
