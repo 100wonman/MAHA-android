@@ -147,7 +147,7 @@ fun AgentListScreen(
 
             item {
                 SecondaryActionButton(
-                    text = "전체 Worker를 Gemini 3.1 Flash-Lite로 변경",
+                    text = "전체 Worker를 Fallback 모델로 변경",
                     enabled = !isRunAllRunning && agentList.isNotEmpty(),
                     onClick = onApplyGemini31FlashLiteToAllClick
                 )

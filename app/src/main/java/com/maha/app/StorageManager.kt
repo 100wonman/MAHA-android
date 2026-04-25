@@ -13,10 +13,12 @@ object StorageManager {
     private const val KEY_AGENTS = "agents_json_v3"
     private const val KEY_SCENARIOS = "scenarios_json_v3"
     private const val KEY_RUNS = "runs_json_v3"
+    private const val KEY_EXECUTION_HISTORY_LOGS = "execution_history_logs_json_v1"
 
     private const val KEY_AGENTS_BACKUP = "agents_json_v3_backup"
     private const val KEY_SCENARIOS_BACKUP = "scenarios_json_v3_backup"
     private const val KEY_RUNS_BACKUP = "runs_json_v3_backup"
+    private const val KEY_EXECUTION_HISTORY_LOGS_BACKUP = "execution_history_logs_json_v1_backup"
 
     fun saveAgents(context: Context, agents: List<Agent>) {
         val safeAgents = agents
@@ -127,6 +129,54 @@ object StorageManager {
         }
     }
 
+    fun saveExecutionHistoryLogs(
+        context: Context,
+        logs: List<ExecutionHistoryLog>
+    ) {
+        val safeLogs = logs
+            .filter { it.id.isNotBlank() }
+            .distinctBy { it.id }
+            .take(300)
+
+        val jsonArray = JSONArray()
+        safeLogs.forEach { log ->
+            jsonArray.put(executionHistoryLogToJson(log))
+        }
+
+        saveJsonWithBackup(
+            context = context,
+            key = KEY_EXECUTION_HISTORY_LOGS,
+            backupKey = KEY_EXECUTION_HISTORY_LOGS_BACKUP,
+            value = jsonArray.toString()
+        )
+    }
+
+    fun loadExecutionHistoryLogs(context: Context): List<ExecutionHistoryLog> {
+        return loadJsonArrayWithBackup(
+            context = context,
+            key = KEY_EXECUTION_HISTORY_LOGS,
+            backupKey = KEY_EXECUTION_HISTORY_LOGS_BACKUP
+        ) { jsonArray ->
+            val result = mutableListOf<ExecutionHistoryLog>()
+
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.optJSONObject(i) ?: continue
+                result.add(jsonToExecutionHistoryLog(item))
+            }
+
+            result.distinctBy { it.id }
+        }
+    }
+
+    fun clearExecutionHistoryLogs(context: Context) {
+        saveJsonWithBackup(
+            context = context,
+            key = KEY_EXECUTION_HISTORY_LOGS,
+            backupKey = KEY_EXECUTION_HISTORY_LOGS_BACKUP,
+            value = "[]"
+        )
+    }
+
     private fun saveJsonWithBackup(
         context: Context,
         key: String,
@@ -205,7 +255,7 @@ object StorageManager {
             put("outputFormat", safeAgent.outputFormat)
             put("isEnabled", safeAgent.isEnabled)
             put("providerName", safeAgent.providerName)
-            put("modelName", GeminiModelType.sanitize(safeAgent.modelName))
+            put("modelName", safeAgent.modelName)
         }
     }
 
@@ -432,6 +482,38 @@ object StorageManager {
                 results = results,
                 logs = logs
             )
+        )
+    }
+
+    private fun executionHistoryLogToJson(log: ExecutionHistoryLog): JSONObject {
+        return JSONObject().apply {
+            put("id", log.id)
+            put("runId", log.runId)
+            put("executedAt", log.executedAt)
+            put("workerName", log.workerName)
+            put("providerName", log.providerName)
+            put("modelName", log.modelName)
+            put("status", log.status)
+            put("latencyMs", log.latencyMs)
+            put("errorMessage", log.errorMessage)
+            put("inputText", log.inputText)
+            put("outputText", log.outputText)
+        }
+    }
+
+    private fun jsonToExecutionHistoryLog(json: JSONObject): ExecutionHistoryLog {
+        return ExecutionHistoryLog(
+            id = json.optString("id", "history_log_${System.currentTimeMillis()}"),
+            runId = json.optString("runId", ""),
+            executedAt = json.optString("executedAt", ""),
+            workerName = json.optString("workerName", "Unknown Worker"),
+            providerName = json.optString("providerName", ModelProviderType.DUMMY),
+            modelName = json.optString("modelName", ""),
+            status = json.optString("status", "UNKNOWN"),
+            latencyMs = json.optLong("latencyMs", 0L),
+            errorMessage = json.optString("errorMessage", ""),
+            inputText = json.optString("inputText", ""),
+            outputText = json.optString("outputText", "")
         )
     }
 

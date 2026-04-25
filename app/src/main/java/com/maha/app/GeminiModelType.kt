@@ -7,7 +7,7 @@ object GeminiModelType {
 
     const val FLASH = "gemini-2.5-flash"
     const val FLASH_LITE = "gemini-2.5-flash-lite"
-    const val GEMINI_3_1_FLASH_LITE = "gemini-3.1-flash-lite"
+    const val GEMINI_3_1_FLASH_LITE = "gemini-flash-lite-latest"
     const val GEMMA_4_31B_IT = "gemma-4-31b-it"
     const val GEMMA_4_26B_A4B_IT = "gemma-4-26b-a4b-it"
 
@@ -35,35 +35,6 @@ object GeminiModelType {
         }
 
         return trimmedModelName
-    }
-
-    fun findGemini31FlashLiteModelName(): String {
-        val discoveredModel = ModelCatalogManager
-            .getDiscoveredModels()
-            .firstOrNull { model ->
-                model.providerName == ModelProviderType.GOOGLE &&
-                        model.isGenerateContentSupported &&
-                        model.modelName.contains("gemini", ignoreCase = true) &&
-                        model.modelName.contains("3.1", ignoreCase = true) &&
-                        model.modelName.contains("flash-lite", ignoreCase = true)
-            }
-
-        if (discoveredModel != null) {
-            return discoveredModel.modelName.trim().removePrefix("models/")
-        }
-
-        val catalogModel = getCatalog().firstOrNull { item ->
-            item.providerName == ModelProviderType.GOOGLE &&
-                    item.modelName.contains("gemini", ignoreCase = true) &&
-                    item.modelName.contains("3.1", ignoreCase = true) &&
-                    item.modelName.contains("flash-lite", ignoreCase = true)
-        }
-
-        if (catalogModel != null) {
-            return catalogModel.modelName.trim().removePrefix("models/")
-        }
-
-        return GEMINI_3_1_FLASH_LITE
     }
 
     fun recommendedForAgent(agentName: String): String {
@@ -95,8 +66,8 @@ object GeminiModelType {
             ),
             ModelCatalogItem(
                 modelName = GEMINI_3_1_FLASH_LITE,
-                displayName = "Gemini 3.1 Flash-Lite",
-                description = "Google fallback 상황에서 전체 Worker에 일괄 적용하기 위한 경량 모델입니다.",
+                displayName = "Gemini 3.1 Flash Lite",
+                description = "Google AI Dashboard에서 Gemini 3.1 Flash Lite로 집계되는 최신 Flash Lite 모델입니다.",
                 stabilityStatus = "Fallback",
                 recommendedWorker = "All Workers",
                 estimatedDailyLimit = 250,

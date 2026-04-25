@@ -1,4 +1,4 @@
-//ExecutionEngine.kt
+// ExecutionEngine.kt
 
 package com.maha.app
 
@@ -23,7 +23,8 @@ object ExecutionEngine {
         validAgents: List<Agent>,
         existingRuns: List<Run>,
         inputPrompt: String = "",
-        onStateChange: (agentId: String, state: String) -> Unit
+        onStateChange: (agentId: String, state: String) -> Unit,
+        onExecutionHistoryLog: (ExecutionHistoryLog) -> Unit = {}
     ): Run {
         val currentAgent = sanitizeAgent(agent)
         val timeText = getCurrentTimeText()
@@ -34,6 +35,8 @@ object ExecutionEngine {
         onStateChange(currentAgent.id, "RUNNING")
 
         delay(SINGLE_RUN_PRE_DELAY_MS)
+
+        val startTime = System.currentTimeMillis()
 
         val modelResponse = ModelRouter.generate(
             ModelRequest(
@@ -47,6 +50,8 @@ object ExecutionEngine {
             )
         )
 
+        val latencyMs = System.currentTimeMillis() - startTime
+
         val result = sanitizeRunResult(
             RunResult(
                 agentId = currentAgent.id,
@@ -59,13 +64,31 @@ object ExecutionEngine {
             )
         ) ?: throw IllegalStateException("Invalid run result")
 
+        val runId = generateUniqueRunId(existingRuns)
+
+        onExecutionHistoryLog(
+            ExecutionHistoryLog(
+                id = generateUniqueHistoryLogId(),
+                runId = runId,
+                executedAt = getCurrentTimeText(),
+                workerName = currentAgent.name,
+                providerName = safeProviderName,
+                modelName = safeModelName,
+                status = modelResponse.status,
+                latencyMs = latencyMs,
+                errorMessage = if (modelResponse.status == "SUCCESS") "" else modelResponse.outputText,
+                inputText = inputText,
+                outputText = modelResponse.outputText
+            )
+        )
+
         val logs = listOf(
             ExecutionLog(
                 message = "${currentAgent.name} is RUNNING with provider $safeProviderName, model $safeModelName and input: $inputText",
                 timestamp = timeText
             ),
             ExecutionLog(
-                message = "${currentAgent.name} finished with ${modelResponse.status} and output: ${modelResponse.outputText}",
+                message = "${currentAgent.name} finished with ${modelResponse.status} in ${latencyMs}ms and output: ${modelResponse.outputText}",
                 timestamp = getCurrentTimeText()
             )
         )
@@ -74,7 +97,7 @@ object ExecutionEngine {
 
         val run = sanitizeRunWithAgents(
             run = Run(
-                runId = generateUniqueRunId(existingRuns),
+                runId = runId,
                 title = "Single Run - ${currentAgent.name}",
                 timestamp = timeText,
                 results = listOf(result),
@@ -92,7 +115,8 @@ object ExecutionEngine {
         agents: List<Agent>,
         existingRuns: List<Run>,
         inputPrompt: String = "",
-        onStateChange: (agentId: String, state: String) -> Unit
+        onStateChange: (agentId: String, state: String) -> Unit,
+        onExecutionHistoryLog: (ExecutionHistoryLog) -> Unit = {}
     ): Run {
         val safeAgents = normalizeAgents(agents)
 
@@ -155,6 +179,8 @@ object ExecutionEngine {
 
             delay(RUN_ALL_PRE_CALL_DELAY_MS)
 
+            val startTime = System.currentTimeMillis()
+
             val modelResponse = ModelRouter.generate(
                 ModelRequest(
                     agentId = agent.id,
@@ -167,6 +193,9 @@ object ExecutionEngine {
                 )
             )
 
+            val latencyMs = System.currentTimeMillis() - startTime
+            val executedAt = getCurrentTimeText()
+
             val result = sanitizeRunResult(
                 RunResult(
                     agentId = agent.id,
@@ -174,18 +203,34 @@ object ExecutionEngine {
                     status = modelResponse.status,
                     inputText = currentInput,
                     outputText = modelResponse.outputText,
-                    timestamp = getCurrentTimeText(),
+                    timestamp = executedAt,
                     order = stepNumber
                 )
             ) ?: throw IllegalStateException("Invalid run result")
 
             resultList.add(result)
 
+            onExecutionHistoryLog(
+                ExecutionHistoryLog(
+                    id = generateUniqueHistoryLogId(),
+                    runId = runId,
+                    executedAt = executedAt,
+                    workerName = agent.name,
+                    providerName = safeProviderName,
+                    modelName = safeModelName,
+                    status = modelResponse.status,
+                    latencyMs = latencyMs,
+                    errorMessage = if (modelResponse.status == "SUCCESS") "" else modelResponse.outputText,
+                    inputText = currentInput,
+                    outputText = modelResponse.outputText
+                )
+            )
+
             onStateChange(agent.id, modelResponse.status)
 
             logList.add(
                 ExecutionLog(
-                    message = "${agent.name} finished with ${modelResponse.status} and output: ${modelResponse.outputText}",
+                    message = "${agent.name} finished with ${modelResponse.status} in ${latencyMs}ms and output: ${modelResponse.outputText}",
                     timestamp = getCurrentTimeText()
                 )
             )
@@ -246,6 +291,10 @@ object ExecutionEngine {
         }
 
         return candidate
+    }
+
+    private fun generateUniqueHistoryLogId(): String {
+        return "history_log_${System.currentTimeMillis()}"
     }
 
     private fun normalizeAgents(source: List<Agent>): List<Agent> {

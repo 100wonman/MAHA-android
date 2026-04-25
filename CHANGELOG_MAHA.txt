@@ -1,4 +1,72 @@
 ==============================
+[2026-04-26 01:20] Fallback 모델 설정 구조 설계 및 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 fallback 일괄 변경 모델을 하드코딩하지 않고 사용자가 설정할 수 있게 수정한다.
+
+현재 문제:
+- “전체 Worker를 Gemini 3.1 Flash-Lite로 변경” 기능이 고정 modelName에 의존함
+- Google AI Dashboard에서는 Gemini 3.1 Flash Lite로 표시되지만 실제 API 호출 modelName은 gemini-flash-lite-latest일 수 있음
+- 모델 목록에서 특정 모델이 사라지면 일괄 변경 기능이 실패함
+
+목표:
+- fallback Provider와 fallback Model을 사용자가 설정할 수 있게 한다
+- 전체 Worker 일괄 변경 버튼은 저장된 fallback 설정값을 사용한다
+- 하드코딩된 gemini-3.1-flash-lite 의존을 제거한다
+
+==============================
+[2026-04-25 HH:mm] Fallback 모델 설정 구조 설계 및 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 fallback 일괄 변경 모델을 하드코딩하지 않고 사용자가 설정할 수 있게 수정한다.
+
+현재 문제:
+- “전체 Worker를 Gemini 3.1 Flash-Lite로 변경” 기능이 고정 modelName에 의존함
+- Google AI Dashboard에서는 Gemini 3.1 Flash Lite로 표시되지만 실제 API 호출 modelName은 gemini-flash-lite-latest일 수 있음
+- 모델 목록에서 특정 모델이 사라지면 일괄 변경 기능이 실패함
+
+목표:
+- fallback Provider와 fallback Model을 사용자가 설정할 수 있게 한다
+- 전체 Worker 일괄 변경 버튼은 저장된 fallback 설정값을 사용한다
+- 하드코딩된 gemini-3.1-flash-lite 의존을 제거한다
+
+[결과]
+(성공 / 에러 후 성공 / 실패)
+
+[적용 내용]
+- fallback Provider 설정 추가
+- fallback Model 설정 추가
+- 전체 Worker 일괄 변경 버튼이 저장된 fallback 설정값을 사용하도록 수정
+- 고정 Gemini 3.1 Flash-Lite modelName 의존 제거
+- 확인 다이얼로그에 실제 적용 Provider / Model 표시
+- 버튼 문구를 “전체 Worker를 Fallback 모델로 변경”으로 수정
+
+[결과]
+(성공 / 수정 작업 지연 1시간)
+
+[적용 내용]
+- fallback Provider 설정 추가
+- fallback Model 설정 추가
+- 전체 Worker 일괄 변경 버튼이 저장된 fallback 설정값을 사용하도록 수정
+- 고정 Gemini 3.1 Flash-Lite modelName 의존 제거
+- 확인 다이얼로그에 실제 적용 Provider / Model 표시
+- 버튼 문구를 “전체 Worker를 Fallback 모델로 변경”으로 수정
+
+[문제 및 해결]
+- 표시명과 실제 API modelName이 다를 수 있음
+- gemini-flash-lite-latest 호출 시 Google AI Dashboard의 Gemini 3.1 Flash Lite 사용량이 증가하는 것으로 확인됨
+- 해결: fallback modelName을 사용자가 직접 설정할 수 있게 변경
+
+[다음 작업 예정]
+실행 로그 화면 및 Android 뒤로가기 동작 재검증
+
+==============================
 [2026-04-25 23:40] Gemini 3.1 Flash-Lite 일괄 변경 버튼 수정
 ==============================
 

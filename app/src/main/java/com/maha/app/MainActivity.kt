@@ -3,7 +3,9 @@
 package com.maha.app
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +70,7 @@ fun MAHAApp() {
     val scenarioList = remember { mutableStateListOf<Scenario>() }
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
     val discoveredModelList = remember { mutableStateListOf<DiscoveredModel>() }
+    val executionHistoryLogList = remember { mutableStateListOf<ExecutionHistoryLog>() }
 
     var selectedAgentId by remember { mutableStateOf<String?>(null) }
     var selectedRun by remember { mutableStateOf<Run?>(null) }
@@ -76,15 +79,22 @@ fun MAHAApp() {
     var isScenarioScreenOpen by remember { mutableStateOf(false) }
     var isSettingsScreenOpen by remember { mutableStateOf(false) }
     var isModelCatalogScreenOpen by remember { mutableStateOf(false) }
+    var isExecutionLogScreenOpen by remember { mutableStateOf(false) }
+
     var isDataLoaded by remember { mutableStateOf(false) }
     var isRunAllRunning by remember { mutableStateOf(false) }
     var runningAgentId by remember { mutableStateOf<String?>(null) }
+
     var savedGoogleApiKey by remember { mutableStateOf("") }
     var savedProvider by remember { mutableStateOf(ModelProviderType.DUMMY) }
+
     var isSearchingModels by remember { mutableStateOf(false) }
     var modelSearchMessage by remember { mutableStateOf("") }
+
     var pendingRunPrecheck by remember { mutableStateOf<RunPrecheckResult?>(null) }
-    var isApplyGemini31FlashLiteDialogOpen by remember { mutableStateOf(false) }
+    var isApplyFallbackModelDialogOpen by remember { mutableStateOf(false) }
+    var lastBackPressedTime by remember { mutableStateOf(0L) }
+
     var promptText by remember {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
@@ -99,6 +109,9 @@ fun MAHAApp() {
 
         discoveredModelList.clear()
         discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
+
+        executionHistoryLogList.clear()
+        executionHistoryLogList.addAll(StorageManager.loadExecutionHistoryLogs(context))
 
         val loadedAgents = StorageManager.loadAgents(context)
         val safeAgents = if (loadedAgents.isEmpty()) {
@@ -136,15 +149,19 @@ fun MAHAApp() {
         selectedAgentId = null
         selectedRun = null
         modelSelectionAgentId = null
+
         isScenarioScreenOpen = false
         isSettingsScreenOpen = false
         isModelCatalogScreenOpen = false
+        isExecutionLogScreenOpen = false
+
         isRunAllRunning = false
         runningAgentId = null
         isSearchingModels = false
         modelSearchMessage = ""
         pendingRunPrecheck = null
-        isApplyGemini31FlashLiteDialogOpen = false
+        isApplyFallbackModelDialogOpen = false
+
         isDataLoaded = true
     }
 
@@ -223,6 +240,42 @@ fun MAHAApp() {
     val selectedAgent = agentList.find { it.id == selectedAgentId }
     val modelSelectionAgent = agentList.find { it.id == modelSelectionAgentId }
 
+    BackHandler {
+        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+            Toast.makeText(context, "실행 중에는 이동할 수 없습니다.", Toast.LENGTH_SHORT).show()
+            return@BackHandler
+        }
+
+        when {
+            pendingRunPrecheck != null -> pendingRunPrecheck = null
+            isApplyFallbackModelDialogOpen -> isApplyFallbackModelDialogOpen = false
+            selectedRun != null -> selectedRun = null
+            selectedAgentId != null -> selectedAgentId = null
+
+            isModelCatalogScreenOpen -> {
+                isModelCatalogScreenOpen = false
+                if (modelSelectionAgentId != null) {
+                    selectedAgentId = modelSelectionAgentId
+                    modelSelectionAgentId = null
+                }
+            }
+
+            isScenarioScreenOpen -> isScenarioScreenOpen = false
+            isSettingsScreenOpen -> isSettingsScreenOpen = false
+            isExecutionLogScreenOpen -> isExecutionLogScreenOpen = false
+
+            else -> {
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressedTime <= 2000L) {
+                    (context as? ComponentActivity)?.finish()
+                } else {
+                    lastBackPressedTime = now
+                    Toast.makeText(context, "한 번 더 누르면 종료됩니다.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -241,6 +294,7 @@ fun MAHAApp() {
                     selected = !isScenarioScreenOpen &&
                             !isSettingsScreenOpen &&
                             !isModelCatalogScreenOpen &&
+                            !isExecutionLogScreenOpen &&
                             selectedAgent == null &&
                             selectedRun == null,
                     onClick = {
@@ -251,6 +305,7 @@ fun MAHAApp() {
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -273,6 +328,7 @@ fun MAHAApp() {
                             isScenarioScreenOpen = true
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -295,8 +351,38 @@ fun MAHAApp() {
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = true
+                            isExecutionLogScreenOpen = false
+
                             discoveredModelList.clear()
                             discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
+
+                            scope.launch { drawerState.close() }
+                        }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
+                NavigationDrawerItem(
+                    label = {
+                        DrawerItemTitle(
+                            title = "Logs",
+                            subtitle = "실행 이력 확인"
+                        )
+                    },
+                    selected = isExecutionLogScreenOpen,
+                    onClick = {
+                        if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
+                            selectedAgentId = null
+                            selectedRun = null
+                            modelSelectionAgentId = null
+                            isScenarioScreenOpen = false
+                            isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = true
+
+                            executionHistoryLogList.clear()
+                            executionHistoryLogList.addAll(StorageManager.loadExecutionHistoryLogs(context))
+
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -319,8 +405,11 @@ fun MAHAApp() {
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = true
                             isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
+
                             savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
                             savedProvider = ApiKeyManager.getSelectedProvider(context)
+
                             scope.launch { drawerState.close() }
                         }
                     },
@@ -343,6 +432,7 @@ fun MAHAApp() {
                                 isScenarioScreenOpen = false
                                 isSettingsScreenOpen = false
                                 isModelCatalogScreenOpen = false
+                                isExecutionLogScreenOpen = false
                                 selectedRun = runList.firstOrNull()
                                 scope.launch { drawerState.close() }
                             }
@@ -379,6 +469,13 @@ fun MAHAApp() {
                                 inputPrompt = promptText,
                                 onStateChange = { agentId, state ->
                                     executionStateMap[agentId] = state
+                                },
+                                onExecutionHistoryLog = { log ->
+                                    executionHistoryLogList.add(0, log)
+                                    StorageManager.saveExecutionHistoryLogs(
+                                        context = context,
+                                        logs = executionHistoryLogList.toList()
+                                    )
                                 }
                             )
 
@@ -401,10 +498,13 @@ fun MAHAApp() {
             )
         }
 
-        if (isApplyGemini31FlashLiteDialogOpen) {
+        if (isApplyFallbackModelDialogOpen) {
+            val fallbackProvider = ApiKeyManager.getFallbackProvider(context)
+            val fallbackModel = ApiKeyManager.getFallbackModel(context)
+
             AlertDialog(
                 onDismissRequest = {
-                    isApplyGemini31FlashLiteDialogOpen = false
+                    isApplyFallbackModelDialogOpen = false
                 },
                 title = {
                     Text(text = "전체 Worker 모델 변경")
@@ -413,8 +513,9 @@ fun MAHAApp() {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(text = "모든 Worker의 Provider를 GOOGLE로 변경합니다.")
-                        Text(text = "모든 Worker의 modelName을 gemini-3.1-flash-lite로 변경합니다.")
+                        Text(text = "모든 Worker의 Provider / Model을 Fallback 설정값으로 변경합니다.")
+                        Text(text = "Provider: $fallbackProvider")
+                        Text(text = "Model: $fallbackModel")
                         Text(text = "기존 Worker별 Provider / Model 설정은 덮어쓰기됩니다.")
                     }
                 },
@@ -423,8 +524,8 @@ fun MAHAApp() {
                         onClick = {
                             val updatedAgents = agentList.map { agent ->
                                 agent.copy(
-                                    providerName = ModelProviderType.GOOGLE,
-                                    modelName = "gemini-3.1-flash-lite"
+                                    providerName = fallbackProvider,
+                                    modelName = fallbackModel
                                 )
                             }
 
@@ -438,7 +539,7 @@ fun MAHAApp() {
                                 executionStateMap = executionStateMap
                             )
 
-                            isApplyGemini31FlashLiteDialogOpen = false
+                            isApplyFallbackModelDialogOpen = false
                         }
                     ) {
                         Text(text = "확인 후 변경")
@@ -447,7 +548,7 @@ fun MAHAApp() {
                 dismissButton = {
                     TextButton(
                         onClick = {
-                            isApplyGemini31FlashLiteDialogOpen = false
+                            isApplyFallbackModelDialogOpen = false
                         }
                     ) {
                         Text(text = "취소")
@@ -465,6 +566,22 @@ fun MAHAApp() {
                     },
                     onBackClick = {
                         selectedRun = null
+                    }
+                )
+            }
+
+            isExecutionLogScreenOpen -> {
+                ExecutionLogScreen(
+                    logs = executionHistoryLogList,
+                    onMenuClick = {
+                        scope.launch { drawerState.open() }
+                    },
+                    onBackClick = {
+                        isExecutionLogScreenOpen = false
+                    },
+                    onClearLogsClick = {
+                        executionHistoryLogList.clear()
+                        StorageManager.clearExecutionHistoryLogs(context)
                     }
                 )
             }
@@ -496,14 +613,9 @@ fun MAHAApp() {
                                     ModelCatalogManager.saveDiscoveredModels(context, allModels)
 
                                     discoveredModelList.clear()
-                                    discoveredModelList.addAll(
-                                        ModelCatalogManager.getDiscoveredModels(context)
-                                    )
+                                    discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
 
-                                    val usableCount = allModels.count {
-                                        it.isGenerateContentSupported
-                                    }
-
+                                    val usableCount = allModels.count { it.isGenerateContentSupported }
                                     val googleCount = googleModels.size
                                     val nvidiaCount = nvidiaModels.size
 
@@ -533,14 +645,13 @@ fun MAHAApp() {
 
                         val index = agentList.indexOfFirst { it.id == targetAgentId }
                         if (index != -1) {
-                            val selectedAgent = agentList[index]
+                            val targetAgent = agentList[index]
 
-                            val updatedAgent = selectedAgent.copy(
+                            val updatedAgent = targetAgent.copy(
                                 modelName = safeModelName
                             )
 
                             agentList[index] = updatedAgent
-
                             StorageManager.saveAgents(context, agentList.toList())
 
                             selectedAgentId = targetAgentId
@@ -612,6 +723,7 @@ fun MAHAApp() {
                         modelSelectionAgentId = null
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
+                        isExecutionLogScreenOpen = false
 
                         syncExecutionStateMap(
                             agents = agentList,
@@ -709,6 +821,13 @@ fun MAHAApp() {
                                     inputPrompt = promptText,
                                     onStateChange = { agentId, state ->
                                         executionStateMap[agentId] = state
+                                    },
+                                    onExecutionHistoryLog = { log ->
+                                        executionHistoryLogList.add(0, log)
+                                        StorageManager.saveExecutionHistoryLogs(
+                                            context = context,
+                                            logs = executionHistoryLogList.toList()
+                                        )
                                     }
                                 )
 
@@ -741,6 +860,7 @@ fun MAHAApp() {
                         selectedRun = null
                         isScenarioScreenOpen = false
                         isSettingsScreenOpen = false
+                        isExecutionLogScreenOpen = false
                         isModelCatalogScreenOpen = true
 
                         discoveredModelList.clear()
@@ -812,13 +932,14 @@ fun MAHAApp() {
                         isScenarioScreenOpen = true
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
+                        isExecutionLogScreenOpen = false
                     },
                     onApplyGemini31FlashLiteToAllClick = {
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
                             return@AgentListScreen
                         }
 
-                        isApplyGemini31FlashLiteDialogOpen = true
+                        isApplyFallbackModelDialogOpen = true
                     },
                     onMoveUpClick = { agent ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {

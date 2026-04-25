@@ -54,20 +54,20 @@ fun SettingsScreen(
     var nvidiaApiKeyInput by remember { mutableStateOf(ApiKeyManager.getNvidiaApiKey(context)) }
     var selectedProvider by remember { mutableStateOf(savedProvider) }
 
+    var fallbackProvider by remember { mutableStateOf(ApiKeyManager.getFallbackProvider(context)) }
+    var fallbackModel by remember { mutableStateOf(ApiKeyManager.getFallbackModel(context)) }
+
     var apiKeySaveMessage by remember { mutableStateOf("") }
     var nvidiaApiKeySaveMessage by remember { mutableStateOf("") }
     var providerSaveMessage by remember { mutableStateOf("") }
+    var fallbackSaveMessage by remember { mutableStateOf("") }
 
     LaunchedEffect(savedGoogleApiKey) {
         googleApiKeyInput = savedGoogleApiKey
     }
 
     LaunchedEffect(savedProvider) {
-        selectedProvider = when (savedProvider) {
-            ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
-            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
-            else -> ModelProviderType.DUMMY
-        }
+        selectedProvider = sanitizeProviderForSettings(savedProvider)
     }
 
     val hasGoogleKey = googleApiKeyInput.isNotBlank()
@@ -215,6 +215,108 @@ fun SettingsScreen(
                         focusManager.clearFocus(force = true)
                         onSaveProviderClick(selectedProvider)
                         providerSaveMessage = "Current Provider: $selectedProvider"
+                    }
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "Fallback Model Settings",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                        )
+
+                        ProviderRadioRow(
+                            title = "Fallback Google",
+                            description = "전체 Worker 일괄 변경 시 Google Provider를 사용합니다.",
+                            selected = fallbackProvider == ModelProviderType.GOOGLE,
+                            onClick = {
+                                fallbackProvider = ModelProviderType.GOOGLE
+                                fallbackSaveMessage = ""
+                            }
+                        )
+
+                        ProviderRadioRow(
+                            title = "Fallback NVIDIA",
+                            description = "전체 Worker 일괄 변경 시 NVIDIA Provider를 사용합니다.",
+                            selected = fallbackProvider == ModelProviderType.NVIDIA,
+                            onClick = {
+                                fallbackProvider = ModelProviderType.NVIDIA
+                                fallbackSaveMessage = ""
+                            }
+                        )
+
+                        ProviderRadioRow(
+                            title = "Fallback Dummy",
+                            description = "전체 Worker 일괄 변경 시 Dummy Provider를 사용합니다.",
+                            selected = fallbackProvider == ModelProviderType.DUMMY,
+                            onClick = {
+                                fallbackProvider = ModelProviderType.DUMMY
+                                fallbackSaveMessage = ""
+                            }
+                        )
+
+                        OutlinedTextField(
+                            value = fallbackModel,
+                            onValueChange = {
+                                fallbackModel = it
+                                fallbackSaveMessage = ""
+                            },
+                            label = { Text("Fallback Model Name") },
+                            placeholder = { Text("gemini-flash-lite-latest") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        InfoRow(
+                            label = "Fallback Provider",
+                            value = fallbackProvider
+                        )
+
+                        InfoRow(
+                            label = "Fallback Model",
+                            value = fallbackModel.ifBlank { "gemini-flash-lite-latest" }
+                        )
+
+                        if (fallbackSaveMessage.isNotBlank()) {
+                            StatusPanel(
+                                title = "Fallback Save Result",
+                                status = "SUCCESS",
+                                message = fallbackSaveMessage
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                PrimaryActionButton(
+                    text = "Save Fallback Settings",
+                    enabled = true,
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+
+                        ApiKeyManager.saveFallbackProvider(context, fallbackProvider)
+                        ApiKeyManager.saveFallbackModel(context, fallbackModel)
+
+                        fallbackProvider = ApiKeyManager.getFallbackProvider(context)
+                        fallbackModel = ApiKeyManager.getFallbackModel(context)
+
+                        fallbackSaveMessage = "Fallback saved: $fallbackProvider / $fallbackModel"
                     }
                 )
             }
@@ -390,11 +492,22 @@ fun ProviderRadioRow(
                 color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
             )
 
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-            )
+            if (description.isNotBlank()) {
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
+                )
+            }
         }
+    }
+}
+
+private fun sanitizeProviderForSettings(provider: String): String {
+    return when (provider) {
+        ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+        ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+        ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+        else -> ModelProviderType.DUMMY
     }
 }
