@@ -125,10 +125,16 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = "Model Provider",
+                            text = "기본 Provider",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                        )
+
+                        Text(
+                            text = "Worker에 providerName이 없거나 기존 저장 데이터에 Provider 정보가 없을 때 사용하는 기본값입니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
                         )
 
                         ProviderRadioRow(
@@ -162,20 +168,20 @@ fun SettingsScreen(
                         )
 
                         InfoRow(
-                            label = "Current Provider",
+                            label = "기본 Provider",
                             value = selectedProvider
                         )
 
                         if (providerSaveMessage.isNotBlank()) {
                             StatusPanel(
-                                title = "Provider Save Result",
+                                title = "기본 Provider 저장 결과",
                                 status = "SUCCESS",
                                 message = providerSaveMessage
                             )
                         }
 
                         StatusPanel(
-                            title = "Provider Status",
+                            title = "기본 Provider 상태",
                             status = when {
                                 selectedProvider == ModelProviderType.GOOGLE && !hasGoogleKey -> "WAITING"
                                 selectedProvider == ModelProviderType.NVIDIA && !hasNvidiaKey -> "WAITING"
@@ -183,23 +189,23 @@ fun SettingsScreen(
                             },
                             message = when {
                                 selectedProvider == ModelProviderType.DUMMY -> {
-                                    "Dummy Provider가 선택되어 있습니다. 기존 더미 실행 흐름을 사용합니다."
+                                    "Dummy Provider가 기본값으로 선택되어 있습니다."
                                 }
 
                                 selectedProvider == ModelProviderType.GOOGLE && hasGoogleKey -> {
-                                    "Google Provider가 선택되어 있고 Google API Key가 입력되어 있습니다."
+                                    "Google Provider가 기본값으로 선택되어 있고 Google API Key가 입력되어 있습니다."
                                 }
 
                                 selectedProvider == ModelProviderType.GOOGLE && !hasGoogleKey -> {
-                                    "Google Provider가 선택되어 있지만 API Key가 없습니다. 실행 시 GOOGLE_API_KEY_NOT_SET이 반환됩니다."
+                                    "Google Provider가 기본값으로 선택되어 있지만 API Key가 없습니다."
                                 }
 
                                 selectedProvider == ModelProviderType.NVIDIA && hasNvidiaKey -> {
-                                    "NVIDIA Provider가 선택되어 있고 NVIDIA API Key가 입력되어 있습니다."
+                                    "NVIDIA Provider가 기본값으로 선택되어 있고 NVIDIA API Key가 입력되어 있습니다."
                                 }
 
                                 else -> {
-                                    "NVIDIA Provider가 선택되어 있지만 API Key가 없습니다. 실행 시 NVIDIA_API_KEY_NOT_SET이 반환됩니다."
+                                    "NVIDIA Provider가 기본값으로 선택되어 있지만 API Key가 없습니다."
                                 }
                             }
                         )
@@ -209,12 +215,12 @@ fun SettingsScreen(
 
             item {
                 SecondaryActionButton(
-                    text = "Save Provider",
+                    text = "Save 기본 Provider",
                     enabled = true,
                     onClick = {
                         focusManager.clearFocus(force = true)
                         onSaveProviderClick(selectedProvider)
-                        providerSaveMessage = "Current Provider: $selectedProvider"
+                        providerSaveMessage = "기본 Provider 저장 완료: $selectedProvider"
                     }
                 )
             }
@@ -234,10 +240,16 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = "Fallback Model Settings",
+                            text = "Fallback 일괄 변경 설정",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                        )
+
+                        Text(
+                            text = "Worker 목록 화면의 “전체 Worker를 Fallback 모델로 변경” 버튼을 눌렀을 때 적용할 Provider와 Model입니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
                         )
 
                         ProviderRadioRow(
@@ -294,7 +306,7 @@ fun SettingsScreen(
 
                         if (fallbackSaveMessage.isNotBlank()) {
                             StatusPanel(
-                                title = "Fallback Save Result",
+                                title = "Fallback 일괄 변경 설정 저장 결과",
                                 status = "SUCCESS",
                                 message = fallbackSaveMessage
                             )
@@ -305,7 +317,7 @@ fun SettingsScreen(
 
             item {
                 PrimaryActionButton(
-                    text = "Save Fallback Settings",
+                    text = "Save Fallback 일괄 변경 설정",
                     enabled = true,
                     onClick = {
                         focusManager.clearFocus(force = true)
@@ -316,7 +328,7 @@ fun SettingsScreen(
                         fallbackProvider = ApiKeyManager.getFallbackProvider(context)
                         fallbackModel = ApiKeyManager.getFallbackModel(context)
 
-                        fallbackSaveMessage = "Fallback saved: $fallbackProvider / $fallbackModel"
+                        fallbackSaveMessage = "Fallback 일괄 변경 설정 저장 완료: $fallbackProvider / $fallbackModel"
                     }
                 )
             }
