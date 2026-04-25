@@ -136,6 +136,7 @@ object StorageManager {
         val safeLogs = logs
             .filter { it.id.isNotBlank() }
             .distinctBy { it.id }
+            .sortedByDescending { it.executedAt }
             .take(300)
 
         val jsonArray = JSONArray()
@@ -164,7 +165,9 @@ object StorageManager {
                 result.add(jsonToExecutionHistoryLog(item))
             }
 
-            result.distinctBy { it.id }
+            result
+                .distinctBy { it.id }
+                .sortedByDescending { it.executedAt }
         }
     }
 
@@ -498,6 +501,7 @@ object StorageManager {
             put("errorMessage", log.errorMessage)
             put("inputText", log.inputText)
             put("outputText", log.outputText)
+            put("httpStatusCode", log.httpStatusCode)
         }
     }
 
@@ -513,7 +517,8 @@ object StorageManager {
             latencyMs = json.optLong("latencyMs", 0L),
             errorMessage = json.optString("errorMessage", ""),
             inputText = json.optString("inputText", ""),
-            outputText = json.optString("outputText", "")
+            outputText = json.optString("outputText", ""),
+            httpStatusCode = json.optInt("httpStatusCode", -1)
         )
     }
 

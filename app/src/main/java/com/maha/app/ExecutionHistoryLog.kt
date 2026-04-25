@@ -13,5 +13,6 @@ data class ExecutionHistoryLog(
     val latencyMs: Long,
     val errorMessage: String,
     val inputText: String,
-    val outputText: String
+    val outputText: String,
+    val httpStatusCode: Int = -1
 )
