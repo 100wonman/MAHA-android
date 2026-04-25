@@ -29,6 +29,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+
+private data class RunLogGroup(
+    val runId: String,
+    val executedAt: String,
+    val status: String,
+    val totalLatencyMs: Long,
+    val workerLogs: List<ExecutionHistoryLog>
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,8 +55,21 @@ fun ExecutionLogScreen(
     onClearLogsClick: () -> Unit
 ) {
     var selectedLog by remember { mutableStateOf<ExecutionHistoryLog?>(null) }
+    val expandedRunMap = remember { mutableStateMapOf<String, Boolean>() }
 
-    val sortedLogs = logs.sortedByDescending { it.executedAt }
+    val runGroups = logs
+        .groupBy { it.runId.ifBlank { "UNKNOWN_RUN" } }
+        .map { entry ->
+            val workerLogs = entry.value.sortedBy { it.executedAt }
+            RunLogGroup(
+                runId = entry.key,
+                executedAt = workerLogs.maxOfOrNull { it.executedAt } ?: "",
+                status = calculateRunStatus(workerLogs),
+                totalLatencyMs = workerLogs.sumOf { it.latencyMs },
+                workerLogs = workerLogs
+            )
+        }
+        .sortedByDescending { it.executedAt }
 
     Scaffold(
         topBar = {
@@ -88,14 +110,14 @@ fun ExecutionLogScreen(
                 StatusPanel(
                     title = "Execution History",
                     status = "WAITING",
-                    message = "최신 로그가 위에 표시됩니다. 항목을 누르면 입력, 출력, 오류 상세를 확인할 수 있습니다."
+                    message = "Run 단위로 묶어서 표시합니다. Run 카드를 누르면 Worker별 로그가 펼쳐집니다."
                 )
             }
 
             item {
                 SecondaryActionButton(
                     text = "Clear Logs",
-                    enabled = sortedLogs.isNotEmpty(),
+                    enabled = runGroups.isNotEmpty(),
                     onClick = onClearLogsClick
                 )
             }
@@ -112,15 +134,21 @@ fun ExecutionLogScreen(
                 HorizontalDivider(color = Color(0xFF273244))
             }
 
-            if (sortedLogs.isEmpty()) {
+            if (runGroups.isEmpty()) {
                 item {
                     EmptyInfoCard(text = "No execution logs yet.")
                 }
             } else {
-                items(sortedLogs) { log ->
-                    ExecutionLogRow(
-                        log = log,
-                        onClick = {
+                items(runGroups) { group ->
+                    val expanded = expandedRunMap[group.runId] ?: false
+
+                    RunLogGroupCard(
+                        group = group,
+                        expanded = expanded,
+                        onToggleExpand = {
+                            expandedRunMap[group.runId] = !expanded
+                        },
+                        onWorkerLogClick = { log ->
                             selectedLog = log
                         }
                     )
@@ -140,7 +168,87 @@ fun ExecutionLogScreen(
 }
 
 @Composable
-private fun ExecutionLogRow(
+private fun RunLogGroupCard(
+    group: RunLogGroup,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onWorkerLogClick: (ExecutionHistoryLog) -> Unit
+) {
+    val uiStatus = toRunUiStatus(group.status)
+    val koreanStatus = toRunStatusKorean(group.status)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggleExpand() },
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1A2230)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = group.runId,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF8FAFC)
+                    )
+
+                    Text(
+                        text = group.executedAt,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFD3DBE7)
+                    )
+                }
+
+                Surface(
+                    color = getStatusColor(uiStatus).copy(alpha = 0.24f)
+                ) {
+                    Text(
+                        text = koreanStatus,
+                        color = getStatusColor(uiStatus),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            InfoRow(label = "Workers", value = group.workerLogs.size.toString())
+            InfoRow(label = "Total Latency", value = "${group.totalLatencyMs}ms")
+            InfoRow(label = "Expand", value = if (expanded) "열림" else "닫힘")
+
+            if (expanded) {
+                HorizontalDivider(color = Color(0xFF273244))
+
+                group.workerLogs.forEach { log ->
+                    WorkerLogRow(
+                        log = log,
+                        onClick = {
+                            onWorkerLogClick(log)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkerLogRow(
     log: ExecutionHistoryLog,
     onClick: () -> Unit
 ) {
@@ -152,15 +260,15 @@ private fun ExecutionLogRow(
             .fillMaxWidth()
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A2230)
+            containerColor = Color(0xFF101722)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -172,7 +280,7 @@ private fun ExecutionLogRow(
                 ) {
                     Text(
                         text = log.workerName,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFF8FAFC)
                     )
@@ -190,9 +298,9 @@ private fun ExecutionLogRow(
                     Text(
                         text = displayStatus,
                         color = getStatusColor(uiStatus),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                     )
                 }
             }
@@ -229,7 +337,7 @@ private fun ExecutionLogDetailDialog(
         },
         title = {
             Text(
-                text = "Log Detail",
+                text = "Worker Log Detail",
                 fontWeight = FontWeight.Bold
             )
         },
@@ -237,6 +345,10 @@ private fun ExecutionLogDetailDialog(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    DetailText(label = "Run ID", value = log.runId)
+                }
+
                 item {
                     DetailText(label = "실행 시간", value = log.executedAt)
                 }
@@ -319,6 +431,41 @@ private fun DetailText(
                 color = Color(0xFFE5ECF6)
             )
         }
+    }
+}
+
+private fun calculateRunStatus(workerLogs: List<ExecutionHistoryLog>): String {
+    val joined = workerLogs.joinToString(" ") {
+        "${it.status} ${it.errorMessage} ${it.outputText}"
+    }.uppercase()
+
+    return when {
+        joined.contains("RATE_LIMIT") || joined.contains("RATE_LIMITED") || joined.contains("429") -> "RATE_LIMITED"
+        joined.contains("TIMEOUT") -> "TIMEOUT"
+        joined.contains("SERVER") || joined.contains("500") || joined.contains("502") || joined.contains("503") || joined.contains("504") -> "SERVER_ERROR"
+        workerLogs.any { it.status == "FAILED" } -> "FAILED"
+        workerLogs.isNotEmpty() && workerLogs.all { it.status == "SUCCESS" } -> "SUCCESS"
+        else -> "UNKNOWN"
+    }
+}
+
+private fun toRunStatusKorean(status: String): String {
+    return when (status) {
+        "SUCCESS" -> "성공"
+        "FAILED" -> "실패"
+        "RATE_LIMITED" -> "제한됨"
+        "TIMEOUT" -> "타임아웃"
+        "SERVER_ERROR" -> "서버 오류"
+        else -> "알 수 없음"
+    }
+}
+
+private fun toRunUiStatus(status: String): String {
+    return when (status) {
+        "SUCCESS" -> "SUCCESS"
+        "RATE_LIMITED" -> "RUNNING"
+        "FAILED", "TIMEOUT", "SERVER_ERROR" -> "FAILED"
+        else -> "WAITING"
     }
 }
 
