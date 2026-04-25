@@ -23,12 +23,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +50,8 @@ private data class ModelListRowItem(
     val isGenerateContentSupported: Boolean,
     val tags: List<String>,
     val sourceType: String,
-    val providerName: String
+    val providerName: String,
+    val isFreeCandidate: Boolean
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,8 +68,9 @@ fun ModelCatalogScreen(
     onBackClick: () -> Unit
 ) {
     var selectedModel by remember { mutableStateOf<ModelListRowItem?>(null) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
 
-    val safeSelectedModelName = GeminiModelType.sanitize(selectedModelName)
+    val safeSelectedModelName = selectedModelName.trim().removePrefix("models/")
 
     val manualRows = GeminiModelType.getCatalog().map { item ->
         ModelListRowItem(
@@ -79,7 +84,8 @@ fun ModelCatalogScreen(
             isGenerateContentSupported = true,
             tags = listOf(item.providerName, "수동 등록", "텍스트 생성"),
             sourceType = "수동",
-            providerName = item.providerName
+            providerName = item.providerName,
+            isFreeCandidate = true
         )
     }
 
@@ -90,16 +96,31 @@ fun ModelCatalogScreen(
             description = model.description,
             supportedGenerationMethods = model.supportedGenerationMethods,
             stabilityStatus = "API 검색",
-            recommendedWorker = if (model.isGenerateContentSupported) "직접 확인 필요" else "Worker 선택 불가",
+            recommendedWorker = if (model.isGenerateContentSupported) {
+                "직접 확인 필요"
+            } else {
+                "Worker 선택 불가"
+            },
             estimatedDailyLimit = 100,
             isGenerateContentSupported = model.isGenerateContentSupported,
             tags = model.tags,
             sourceType = "API",
-            providerName = ModelProviderType.GOOGLE
+            providerName = model.providerName,
+            isFreeCandidate = model.isFreeCandidate
         )
     }
 
-    val allRows = (manualRows + discoveredRows).distinctBy { it.modelName }
+    val allRows = (manualRows + discoveredRows)
+        .filter { it.modelName.isNotBlank() }
+        .distinctBy { "${it.providerName}:${it.modelName}" }
+
+    val freeRows = allRows.filter { it.isFreeCandidate }
+
+    val visibleRows = if (selectedTabIndex == 0) {
+        freeRows
+    } else {
+        allRows
+    }
 
     Scaffold(
         topBar = {
@@ -141,9 +162,9 @@ fun ModelCatalogScreen(
                     title = if (isSelectionMode) "Worker 모델 선택" else "모델 사용량 안내",
                     status = "WAITING",
                     message = if (isSelectionMode) {
-                        "generateContent를 지원하는 모델만 Worker에 선택할 수 있습니다."
+                        "모델을 누른 뒤 상세 팝업에서 '이 모델 선택'을 누르면 현재 Worker에 저장됩니다."
                     } else {
-                        "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 각 Provider 콘솔 기준으로 확인해야 합니다."
+                        "이 화면은 보기 전용입니다. Worker에 모델을 적용하려면 Agent Detail에서 '모델 카탈로그에서 선택'으로 들어가야 합니다."
                     }
                 )
             }
@@ -160,15 +181,43 @@ fun ModelCatalogScreen(
                 item {
                     StatusPanel(
                         title = "API 모델 검색 결과",
-                        status = if (modelSearchMessage.contains("failed", ignoreCase = true)) "FAILED" else "SUCCESS",
+                        status = if (modelSearchMessage.contains("실패") || modelSearchMessage.contains("failed", ignoreCase = true)) {
+                            "FAILED"
+                        } else {
+                            "SUCCESS"
+                        },
                         message = modelSearchMessage
                     )
                 }
             }
 
             item {
+                TabRow(
+                    selectedTabIndex = selectedTabIndex,
+                    containerColor = androidx.compose.ui.graphics.Color(0xFF111827),
+                    contentColor = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                ) {
+                    Tab(
+                        selected = selectedTabIndex == 0,
+                        onClick = { selectedTabIndex = 0 },
+                        text = {
+                            Text(text = "무료 후보 (${freeRows.size})")
+                        }
+                    )
+
+                    Tab(
+                        selected = selectedTabIndex == 1,
+                        onClick = { selectedTabIndex = 1 },
+                        text = {
+                            Text(text = "전체 모델 (${allRows.size})")
+                        }
+                    )
+                }
+            }
+
+            item {
                 Text(
-                    text = "모델 목록",
+                    text = if (selectedTabIndex == 0) "무료 사용 가능 후보" else "전체 사용 가능 모델",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
@@ -176,12 +225,12 @@ fun ModelCatalogScreen(
                 )
             }
 
-            if (allRows.isEmpty()) {
+            if (visibleRows.isEmpty()) {
                 item {
-                    EmptyInfoCard(text = "표시할 모델이 없습니다.")
+                    EmptyInfoCard(text = "표시할 모델이 없습니다. API 모델 검색을 먼저 실행하세요.")
                 }
             } else {
-                items(allRows) { row ->
+                items(visibleRows) { row ->
                     ModelSimpleRow(
                         item = row,
                         isSelected = row.modelName == safeSelectedModelName,
@@ -283,6 +332,13 @@ private fun ModelSimpleRow(
                         status = if (item.isGenerateContentSupported) "SUCCESS" else "WAITING"
                     )
 
+                    if (item.isFreeCandidate) {
+                        SmallStatusChip(
+                            text = "무료 후보",
+                            status = "SUCCESS"
+                        )
+                    }
+
                     if (isBlocked) {
                         SmallStatusChip(
                             text = "일시 제한",
@@ -309,32 +365,36 @@ private fun ModelDetailDialog(
     val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
 
     AlertDialog(
+        containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230),
+        titleContentColor = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+        textContentColor = androidx.compose.ui.graphics.Color(0xFFE5ECF6),
         onDismissRequest = onDismiss,
         confirmButton = {
-            if (isSelectionMode) {
-                TextButton(
-                    enabled = item.isGenerateContentSupported && !isSelected,
-                    onClick = onSelectModelClick
-                ) {
-                    Text(
-                        text = when {
-                            isSelected -> "이미 선택됨"
-                            !item.isGenerateContentSupported -> "선택 불가"
-                            else -> "이 모델 선택"
-                        }
-                    )
-                }
-            } else {
-                TextButton(onClick = onDismiss) {
-                    Text(text = "닫기")
-                }
+            TextButton(
+                enabled = isSelectionMode && item.isGenerateContentSupported && !isSelected,
+                onClick = onSelectModelClick
+            ) {
+                Text(
+                    text = when {
+                        !isSelectionMode -> "Agent Detail에서 선택 가능"
+                        isSelected -> "이미 선택됨"
+                        !item.isGenerateContentSupported -> "선택 불가"
+                        else -> "이 모델 선택"
+                    },
+                    color = if (isSelectionMode && item.isGenerateContentSupported && !isSelected) {
+                        androidx.compose.ui.graphics.Color(0xFF93C5FD)
+                    } else {
+                        androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                    }
+                )
             }
         },
         dismissButton = {
-            if (isSelectionMode) {
-                TextButton(onClick = onDismiss) {
-                    Text(text = "닫기")
-                }
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "닫기",
+                    color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                )
             }
         },
         title = {
@@ -352,7 +412,8 @@ private fun ModelDetailDialog(
                         Text(
                             text = "[${item.providerName}] ${item.modelName}",
                             style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                         )
                     }
                 }
@@ -395,6 +456,13 @@ private fun ModelDetailDialog(
                         } else {
                             "Worker 텍스트 생성에 사용하지 않음"
                         }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "무료 후보 여부",
+                        value = if (item.isFreeCandidate) "무료 후보" else "전체 모델"
                     )
                 }
 
@@ -450,13 +518,16 @@ private fun ModelDetailDialog(
                 }
 
                 item {
-                    HorizontalDivider()
+                    HorizontalDivider(
+                        color = androidx.compose.ui.graphics.Color(0xFF334155)
+                    )
                 }
 
                 item {
                     Text(
                         text = "주의: 추정 잔량은 MAHA 앱 내부 기록 기준입니다. 공식 quota와 다를 수 있습니다.",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFCBD5E1)
                     )
                 }
             }
@@ -475,13 +546,15 @@ private fun DetailText(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
         )
 
         SelectionContainer {
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyMedium,
+                color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
             )
         }
     }

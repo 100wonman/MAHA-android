@@ -9,7 +9,7 @@ import org.json.JSONObject
 object ModelCatalogManager {
 
     private const val PREFS_NAME = "maha_model_catalog_prefs"
-    private const val KEY_DISCOVERED_MODELS = "discovered_models_json_v1"
+    private const val KEY_DISCOVERED_MODELS = "discovered_models_json_v2"
 
     private var appContext: Context? = null
 
@@ -22,56 +22,46 @@ object ModelCatalogManager {
         models: List<DiscoveredModel>
     ) {
         initialize(context)
+        saveDiscoveredModels(models)
+    }
+
+    fun saveDiscoveredModels(models: List<DiscoveredModel>) {
+        val context = appContext ?: return
 
         val jsonArray = JSONArray()
 
         models
             .filter { it.modelName.isNotBlank() }
-            .distinctBy { it.modelName }
+            .distinctBy { "${it.providerName}:${it.modelName}" }
             .forEach { model ->
                 jsonArray.put(discoveredModelToJson(model))
             }
 
-        context.applicationContext
+        context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_DISCOVERED_MODELS, jsonArray.toString())
             .apply()
     }
 
+    fun appendDiscoveredModels(models: List<DiscoveredModel>) {
+        val currentModels = getDiscoveredModels()
+        val mergedModels = (currentModels + models)
+            .filter { it.modelName.isNotBlank() }
+            .distinctBy { "${it.providerName}:${it.modelName}" }
+
+        saveDiscoveredModels(mergedModels)
+    }
+
     fun getDiscoveredModels(context: Context): List<DiscoveredModel> {
         initialize(context)
-        return loadDiscoveredModels(context)
+        return getDiscoveredModels()
     }
 
     fun getDiscoveredModels(): List<DiscoveredModel> {
         val context = appContext ?: return emptyList()
-        return loadDiscoveredModels(context)
-    }
 
-    fun getMergedCatalog(context: Context): List<ModelCatalogItem> {
-        val manualItems = GeminiModelType.getCatalog()
-        val discoveredItems = getDiscoveredModels(context)
-            .filter { it.isGenerateContentSupported }
-            .map { discovered ->
-                ModelCatalogItem(
-                    modelName = discovered.modelName,
-                    displayName = discovered.displayName.ifBlank { discovered.modelName },
-                    description = discovered.description.ifBlank {
-                        "API에서 검색된 generateContent 지원 모델입니다."
-                    },
-                    stabilityStatus = "Discovered",
-                    recommendedWorker = "Manual Review",
-                    estimatedDailyLimit = 100
-                )
-            }
-
-        return (manualItems + discoveredItems)
-            .distinctBy { it.modelName }
-    }
-
-    private fun loadDiscoveredModels(context: Context): List<DiscoveredModel> {
-        val jsonString = context.applicationContext
+        val jsonString = context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_DISCOVERED_MODELS, "[]")
             ?: "[]"
@@ -87,8 +77,18 @@ object ModelCatalogManager {
 
             result
                 .filter { it.modelName.isNotBlank() }
-                .distinctBy { it.modelName }
+                .distinctBy { "${it.providerName}:${it.modelName}" }
         }.getOrDefault(emptyList())
+    }
+
+    fun clear() {
+        val context = appContext ?: return
+
+        context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_DISCOVERED_MODELS, "[]")
+            .apply()
     }
 
     private fun discoveredModelToJson(model: DiscoveredModel): JSONObject {
@@ -102,6 +102,8 @@ object ModelCatalogManager {
             put("isGenerateContentSupported", model.isGenerateContentSupported)
             put("lastFetchedAt", model.lastFetchedAt)
             put("tags", stringListToJsonArray(model.tags))
+            put("providerName", model.providerName)
+            put("isFreeCandidate", model.isFreeCandidate)
         }
     }
 
@@ -111,7 +113,7 @@ object ModelCatalogManager {
         )
 
         return DiscoveredModel(
-            modelName = normalizeModelName(json.optString("modelName", "")),
+            modelName = json.optString("modelName", "").removePrefix("models/").trim(),
             displayName = json.optString("displayName", ""),
             description = json.optString("description", ""),
             supportedGenerationMethods = methods,
@@ -119,10 +121,12 @@ object ModelCatalogManager {
             outputTokenLimit = json.optInt("outputTokenLimit", 0),
             isGenerateContentSupported = json.optBoolean(
                 "isGenerateContentSupported",
-                methods.contains("generateContent")
+                methods.contains("generateContent") || methods.contains("chat/completions")
             ),
             lastFetchedAt = json.optString("lastFetchedAt", ""),
-            tags = jsonArrayToStringList(json.optJSONArray("tags") ?: JSONArray())
+            tags = jsonArrayToStringList(json.optJSONArray("tags") ?: JSONArray()),
+            providerName = json.optString("providerName", ModelProviderType.GOOGLE),
+            isFreeCandidate = json.optBoolean("isFreeCandidate", false)
         )
     }
 
@@ -147,9 +151,5 @@ object ModelCatalogManager {
         }
 
         return result
-    }
-
-    private fun normalizeModelName(rawName: String): String {
-        return rawName.removePrefix("models/").trim()
     }
 }

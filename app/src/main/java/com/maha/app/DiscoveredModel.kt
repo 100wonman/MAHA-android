@@ -11,5 +11,7 @@ data class DiscoveredModel(
     val outputTokenLimit: Int,
     val isGenerateContentSupported: Boolean,
     val lastFetchedAt: String,
-    val tags: List<String>
+    val tags: List<String>,
+    val providerName: String = ModelProviderType.GOOGLE,
+    val isFreeCandidate: Boolean = false
 )

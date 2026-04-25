@@ -372,51 +372,75 @@ fun MAHAApp() {
 
                         scope.launch {
                             isSearchingModels = true
-                            modelSearchMessage = "API 모델을 검색하는 중입니다..."
+                            modelSearchMessage = "Google + NVIDIA 모델을 검색하는 중입니다..."
 
                             try {
-                                val models = GoogleModelDiscoveryProvider.fetchModels()
+                                val googleModels = GoogleModelDiscoveryProvider.fetchModels()
+                                val nvidiaModels = NvidiaModelDiscoveryProvider.fetchModels()
 
-                                if (models.isEmpty()) {
-                                    modelSearchMessage = "API 모델 검색 실패 또는 결과 없음. 수동 모델은 계속 사용할 수 있습니다."
+                                val allModels = googleModels + nvidiaModels
+
+                                if (allModels.isEmpty()) {
+                                    modelSearchMessage = "모델 검색 실패 또는 결과 없음"
                                 } else {
-                                    ModelCatalogManager.saveDiscoveredModels(context, models)
+                                    ModelCatalogManager.saveDiscoveredModels(context, allModels)
 
                                     discoveredModelList.clear()
                                     discoveredModelList.addAll(
                                         ModelCatalogManager.getDiscoveredModels(context)
                                     )
 
-                                    val generateContentCount = models.count {
+                                    val usableCount = allModels.count {
                                         it.isGenerateContentSupported
                                     }
 
+                                    val googleCount = googleModels.size
+                                    val nvidiaCount = nvidiaModels.size
+
                                     modelSearchMessage =
-                                        "API 모델 검색 완료. 전체: ${models.size}, 사용 가능: $generateContentCount"
+                                        "검색 완료\n" +
+                                                "Google: $googleCount\n" +
+                                                "NVIDIA: $nvidiaCount\n" +
+                                                "사용 가능: $usableCount"
                                 }
                             } catch (exception: Exception) {
                                 modelSearchMessage =
-                                    "API 모델 검색 실패: ${exception.message ?: "알 수 없는 오류"}"
+                                    "모델 검색 실패: ${exception.message ?: "알 수 없는 오류"}"
                             } finally {
                                 isSearchingModels = false
                             }
                         }
                     },
                     onSelectModelClick = { modelName ->
-                        val targetAgentId = modelSelectionAgentId ?: return@ModelCatalogScreen
-                        val safeModelName = GeminiModelType.sanitize(modelName)
-                        val index = agentList.indexOfFirst { it.id == targetAgentId }
+                        val targetAgentId = modelSelectionAgentId
 
+                        if (targetAgentId == null) {
+                            modelSearchMessage = "에이전트 선택 상태가 없습니다"
+                            return@ModelCatalogScreen
+                        }
+
+                        val safeModelName = modelName.trim().removePrefix("models/")
+
+                        val index = agentList.indexOfFirst { it.id == targetAgentId }
                         if (index != -1) {
-                            val updatedAgent = agentList[index].copy(
+                            val selectedAgent = agentList[index]
+
+                            val updatedAgent = selectedAgent.copy(
                                 modelName = safeModelName
                             )
 
-                            agentList[index] = sanitizeAgent(updatedAgent)
+                            agentList[index] = updatedAgent
+
+                            StorageManager.saveAgents(context, agentList.toList())
+
                             selectedAgentId = targetAgentId
-                            modelSelectionAgentId = null
-                            isModelCatalogScreenOpen = false
+                            modelSearchMessage = "모델 적용 완료: $safeModelName"
+                        } else {
+                            modelSearchMessage = "에이전트를 찾지 못했습니다"
                         }
+
+                        modelSelectionAgentId = null
+                        isModelCatalogScreenOpen = false
                     },
                     onMenuClick = {
                         scope.launch { drawerState.open() }
