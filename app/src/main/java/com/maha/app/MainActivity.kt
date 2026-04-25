@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -19,6 +20,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -81,6 +83,7 @@ fun MAHAApp() {
     var savedProvider by remember { mutableStateOf(ModelProviderType.DUMMY) }
     var isSearchingModels by remember { mutableStateOf(false) }
     var modelSearchMessage by remember { mutableStateOf("") }
+    var pendingRunPrecheck by remember { mutableStateOf<RunPrecheckResult?>(null) }
     var promptText by remember {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
@@ -139,6 +142,7 @@ fun MAHAApp() {
         runningAgentId = null
         isSearchingModels = false
         modelSearchMessage = ""
+        pendingRunPrecheck = null
         isDataLoaded = true
     }
 
@@ -347,6 +351,54 @@ fun MAHAApp() {
             }
         }
     ) {
+        pendingRunPrecheck?.let { precheck ->
+            RunAllPrecheckDialog(
+                precheck = precheck,
+                onConfirmClick = {
+                    if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                        pendingRunPrecheck = null
+                        return@RunAllPrecheckDialog
+                    }
+
+                    pendingRunPrecheck = null
+
+                    scope.launch {
+                        isRunAllRunning = true
+
+                        try {
+                            syncExecutionStateMap(
+                                agents = agentList,
+                                executionStateMap = executionStateMap
+                            )
+
+                            val newRun = ExecutionEngine.runAllAgents(
+                                agents = agentList.toList(),
+                                existingRuns = runList.toList(),
+                                inputPrompt = promptText,
+                                onStateChange = { agentId, state ->
+                                    executionStateMap[agentId] = state
+                                }
+                            )
+
+                            runList.removeAll { it.runId == newRun.runId }
+                            runList.add(0, newRun)
+                        } catch (e: Exception) {
+                            agentList.forEach { agent ->
+                                if (executionStateMap[agent.id] == "RUNNING") {
+                                    executionStateMap[agent.id] = "FAILED"
+                                }
+                            }
+                        } finally {
+                            isRunAllRunning = false
+                        }
+                    }
+                },
+                onCancelClick = {
+                    pendingRunPrecheck = null
+                }
+            )
+        }
+
         when {
             selectedRun != null -> {
                 RunDetailScreen(
@@ -732,41 +784,62 @@ fun MAHAApp() {
                             return@AgentListScreen
                         }
 
-                        scope.launch {
-                            isRunAllRunning = true
-
-                            try {
-                                syncExecutionStateMap(
-                                    agents = agentList,
-                                    executionStateMap = executionStateMap
-                                )
-
-                                val newRun = ExecutionEngine.runAllAgents(
-                                    agents = agentList.toList(),
-                                    existingRuns = runList.toList(),
-                                    inputPrompt = promptText,
-                                    onStateChange = { agentId, state ->
-                                        executionStateMap[agentId] = state
-                                    }
-                                )
-
-                                runList.removeAll { it.runId == newRun.runId }
-                                runList.add(0, newRun)
-                            } catch (e: Exception) {
-                                agentList.forEach { agent ->
-                                    if (executionStateMap[agent.id] == "RUNNING") {
-                                        executionStateMap[agent.id] = "FAILED"
-                                    }
-                                }
-                            } finally {
-                                isRunAllRunning = false
-                            }
-                        }
+                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                            context = context,
+                            agents = agentList.toList(),
+                            fallbackProviderName = savedProvider
+                        )
                     }
                 )
             }
         }
     }
+}
+
+@Composable
+fun RunAllPrecheckDialog(
+    precheck: RunPrecheckResult,
+    onConfirmClick: () -> Unit,
+    onCancelClick: () -> Unit
+) {
+    val warningText = if (precheck.warnings.isEmpty()) {
+        "경고 대상 모델이 없습니다."
+    } else {
+        precheck.warnings.joinToString(separator = "\n") { warning ->
+            "- ${warning.agentName}: ${warning.modelName} / ${warning.status}"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onCancelClick,
+        title = {
+            Text(text = "Run All 실행 전 확인")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = "예상 API 호출 수: ${precheck.estimatedApiCallCount}")
+                Text(text = "실행 대상 Worker: ${precheck.enabledWorkerCount}")
+                Text(text = "비활성 Worker: ${precheck.disabledWorkerCount}")
+                Text(text = warningText)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirmClick
+            ) {
+                Text(text = "확인 후 실행")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancelClick
+            ) {
+                Text(text = "취소")
+            }
+        }
+    )
 }
 
 @Composable

@@ -122,20 +122,18 @@ fun ModelCatalogScreen(
         .filter { it.modelName.isNotBlank() }
         .distinctBy { "${it.providerName}:${it.modelName}" }
 
-    val availableRows = allRows.filter { row ->
-        if (row.providerName != ModelProviderType.NVIDIA) {
-            row.isGenerateContentSupported
-        } else {
-            ModelTestManager.getRecord(
-                context = context,
-                providerName = row.providerName,
-                modelName = row.modelName
-            ).status == NvidiaModelTestStatus.AVAILABLE
-        }
+    val selectableRows = allRows.filter { row ->
+        val record = ModelTestManager.getRecord(
+            context = context,
+            providerName = row.providerName,
+            modelName = row.modelName
+        )
+
+        row.isGenerateContentSupported && canSelectModelByTestStatus(record.status)
     }
 
     val visibleRows = if (selectedTabIndex == 0) {
-        availableRows
+        selectableRows
     } else {
         allRows
     }
@@ -229,7 +227,7 @@ fun ModelCatalogScreen(
                         selected = selectedTabIndex == 0,
                         onClick = { selectedTabIndex = 0 },
                         text = {
-                            Text(text = "호출 가능 (${availableRows.size})")
+                            Text(text = "선택 가능 (${selectableRows.size})")
                         }
                     )
 
@@ -427,12 +425,8 @@ private fun ModelDetailDialog(
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
     val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
     val blockedUntilText = ModelUsageManager.getBlockedUntilText(item.modelName)
-    val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
-    val canSelect = if (item.providerName == ModelProviderType.NVIDIA) {
-        testRecord.status == NvidiaModelTestStatus.AVAILABLE
-    } else {
-        item.isGenerateContentSupported
-    }
+    val canSelect = item.isGenerateContentSupported &&
+            canSelectModelByTestStatus(testRecord.status)
 
     AlertDialog(
         containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230),
@@ -448,8 +442,7 @@ private fun ModelDetailDialog(
                     text = when {
                         !isSelectionMode -> "Agent Detail에서 선택 가능"
                         isSelected -> "이미 선택됨"
-                        !canSelect -> "테스트 후 선택 가능"
-                        else -> "이 모델 선택"
+                        else -> getSelectionButtonText(testRecord.status, canSelect)
                     },
                     color = if (isSelectionMode && canSelect && !isSelected) {
                         androidx.compose.ui.graphics.Color(0xFF93C5FD)
@@ -572,6 +565,7 @@ private fun ModelDetailDialog(
                 }
 
                 item {
+                    val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
                     DetailText(label = "추정 잔량", value = "${estimatedRemaining}회")
                 }
 
@@ -677,5 +671,31 @@ private fun statusToUiStatus(status: String): String {
         NvidiaModelTestStatus.RATE_LIMITED -> "RUNNING"
         NvidiaModelTestStatus.UNTESTED -> "WAITING"
         else -> "FAILED"
+    }
+}
+
+private fun canSelectModelByTestStatus(status: String): Boolean {
+    return status == NvidiaModelTestStatus.AVAILABLE ||
+            status == NvidiaModelTestStatus.UNTESTED ||
+            status == NvidiaModelTestStatus.RATE_LIMITED
+}
+
+private fun getSelectionButtonText(
+    status: String,
+    canSelect: Boolean
+): String {
+    if (canSelect) {
+        return when (status) {
+            NvidiaModelTestStatus.UNTESTED -> "테스트 필요 - 그래도 선택"
+            NvidiaModelTestStatus.RATE_LIMITED -> "제한됨 - 그래도 선택"
+            else -> "이 모델 선택"
+        }
+    }
+
+    return when (status) {
+        NvidiaModelTestStatus.FAILED -> "선택 불가 - 실패"
+        NvidiaModelTestStatus.AUTH_REQUIRED -> "선택 불가 - 권한 필요"
+        NvidiaModelTestStatus.UNSUPPORTED -> "선택 불가 - 지원 안 됨"
+        else -> "선택 불가"
     }
 }
