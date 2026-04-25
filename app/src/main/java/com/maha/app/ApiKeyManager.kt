@@ -8,6 +8,7 @@ object ApiKeyManager {
 
     private const val PREFS_NAME = "maha_api_key_prefs"
     private const val KEY_GOOGLE_API_KEY = "google_api_key"
+    private const val KEY_NVIDIA_API_KEY = "nvidia_api_key"
     private const val KEY_SELECTED_PROVIDER = "selected_provider"
 
     private var appContext: Context? = null
@@ -42,9 +43,36 @@ object ApiKeyManager {
         return getGoogleApiKey().isNotBlank()
     }
 
+    fun saveNvidiaApiKey(context: Context, apiKey: String) {
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_NVIDIA_API_KEY, apiKey.trim())
+            .apply()
+
+        initialize(context)
+    }
+
+    fun getNvidiaApiKey(context: Context): String {
+        return context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_NVIDIA_API_KEY, "")
+            ?: ""
+    }
+
+    fun getNvidiaApiKey(): String {
+        val context = appContext ?: return ""
+        return getNvidiaApiKey(context)
+    }
+
+    fun hasNvidiaApiKey(): Boolean {
+        return getNvidiaApiKey().isNotBlank()
+    }
+
     fun saveSelectedProvider(context: Context, provider: String) {
         val safeProvider = when (provider) {
             ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
             else -> ModelProviderType.DUMMY
         }
 
@@ -65,6 +93,7 @@ object ApiKeyManager {
 
         return when (savedProvider) {
             ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
             else -> ModelProviderType.DUMMY
         }
     }

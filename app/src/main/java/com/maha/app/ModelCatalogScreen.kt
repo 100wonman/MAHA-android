@@ -46,7 +46,8 @@ private data class ModelListRowItem(
     val estimatedDailyLimit: Int,
     val isGenerateContentSupported: Boolean,
     val tags: List<String>,
-    val sourceType: String
+    val sourceType: String,
+    val providerName: String
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,8 +77,9 @@ fun ModelCatalogScreen(
             recommendedWorker = item.recommendedWorker,
             estimatedDailyLimit = item.estimatedDailyLimit,
             isGenerateContentSupported = true,
-            tags = listOf("수동 등록", "텍스트 생성"),
-            sourceType = "수동"
+            tags = listOf(item.providerName, "수동 등록", "텍스트 생성"),
+            sourceType = "수동",
+            providerName = item.providerName
         )
     }
 
@@ -92,7 +94,8 @@ fun ModelCatalogScreen(
             estimatedDailyLimit = 100,
             isGenerateContentSupported = model.isGenerateContentSupported,
             tags = model.tags,
-            sourceType = "API"
+            sourceType = "API",
+            providerName = ModelProviderType.GOOGLE
         )
     }
 
@@ -140,7 +143,7 @@ fun ModelCatalogScreen(
                     message = if (isSelectionMode) {
                         "generateContent를 지원하는 모델만 Worker에 선택할 수 있습니다."
                     } else {
-                        "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 Google AI Studio 기준으로 확인해야 합니다."
+                        "표시되는 사용량과 잔량은 앱 내부 추정값입니다. 공식 quota는 각 Provider 콘솔 기준으로 확인해야 합니다."
                     }
                 )
             }
@@ -252,7 +255,7 @@ private fun ModelSimpleRow(
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
-                        text = item.modelName,
+                        text = "[${item.providerName}] ${item.modelName}",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
@@ -347,11 +350,15 @@ private fun ModelDetailDialog(
                 item {
                     SelectionContainer {
                         Text(
-                            text = item.modelName,
+                            text = "[${item.providerName}] ${item.modelName}",
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+
+                item {
+                    DetailText(label = "Provider", value = item.providerName)
                 }
 
                 item {

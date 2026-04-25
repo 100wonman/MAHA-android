@@ -4,10 +4,15 @@ package com.maha.app
 
 object GeminiModelType {
     const val DEFAULT = "gemini-2.5-flash"
+
     const val FLASH = "gemini-2.5-flash"
     const val FLASH_LITE = "gemini-2.5-flash-lite"
     const val GEMMA_4_31B_IT = "gemma-4-31b-it"
     const val GEMMA_4_26B_A4B_IT = "gemma-4-26b-a4b-it"
+
+    const val NVIDIA_LLAMA_3_1_8B = "meta/llama-3.1-8b-instruct"
+    const val NVIDIA_MISTRAL_7B = "mistralai/mistral-7b-instruct"
+    const val NVIDIA_DEEPSEEK_R1 = "deepseek-ai/deepseek-r1"
 
     fun sanitize(modelName: String): String {
         val trimmedModelName = modelName.trim().removePrefix("models/")
@@ -17,6 +22,9 @@ object GeminiModelType {
             FLASH_LITE -> FLASH_LITE
             GEMMA_4_31B_IT -> GEMMA_4_31B_IT
             GEMMA_4_26B_A4B_IT -> GEMMA_4_26B_A4B_IT
+            NVIDIA_LLAMA_3_1_8B -> NVIDIA_LLAMA_3_1_8B
+            NVIDIA_MISTRAL_7B -> NVIDIA_MISTRAL_7B
+            NVIDIA_DEEPSEEK_R1 -> NVIDIA_DEEPSEEK_R1
             else -> {
                 val discoveredModel = ModelCatalogManager
                     .getDiscoveredModels()
@@ -70,6 +78,30 @@ object GeminiModelType {
                 stabilityStatus = "Test",
                 recommendedWorker = "Writer / Researcher",
                 estimatedDailyLimit = 100
+            ),
+            ModelCatalogItem(
+                modelName = NVIDIA_LLAMA_3_1_8B,
+                displayName = "NVIDIA Llama 3.1 8B Instruct",
+                description = "NVIDIA Provider에서 사용하는 경량 범용 instruct 모델입니다.",
+                stabilityStatus = "NVIDIA",
+                recommendedWorker = "Planner / Writer / Test",
+                estimatedDailyLimit = 100
+            ),
+            ModelCatalogItem(
+                modelName = NVIDIA_MISTRAL_7B,
+                displayName = "NVIDIA Mistral 7B Instruct",
+                description = "NVIDIA Provider에서 사용하는 빠른 instruct 모델입니다.",
+                stabilityStatus = "NVIDIA",
+                recommendedWorker = "Writer / Summary / Test",
+                estimatedDailyLimit = 100
+            ),
+            ModelCatalogItem(
+                modelName = NVIDIA_DEEPSEEK_R1,
+                displayName = "NVIDIA DeepSeek R1",
+                description = "NVIDIA Provider에서 사용하는 추론 테스트용 모델입니다.",
+                stabilityStatus = "NVIDIA",
+                recommendedWorker = "Planner / Researcher / Reasoning",
+                estimatedDailyLimit = 50
             )
         )
     }

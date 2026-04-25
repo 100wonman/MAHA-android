@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,11 +47,15 @@ fun SettingsScreen(
     onSaveProviderClick: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
     var googleApiKeyInput by remember { mutableStateOf(savedGoogleApiKey) }
+    var nvidiaApiKeyInput by remember { mutableStateOf(ApiKeyManager.getNvidiaApiKey(context)) }
     var selectedProvider by remember { mutableStateOf(savedProvider) }
+
     var apiKeySaveMessage by remember { mutableStateOf("") }
+    var nvidiaApiKeySaveMessage by remember { mutableStateOf("") }
     var providerSaveMessage by remember { mutableStateOf("") }
 
     LaunchedEffect(savedGoogleApiKey) {
@@ -60,11 +65,13 @@ fun SettingsScreen(
     LaunchedEffect(savedProvider) {
         selectedProvider = when (savedProvider) {
             ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
             else -> ModelProviderType.DUMMY
         }
     }
 
-    val hasKey = googleApiKeyInput.isNotBlank()
+    val hasGoogleKey = googleApiKeyInput.isNotBlank()
+    val hasNvidiaKey = nvidiaApiKeyInput.isNotBlank()
 
     Scaffold(
         topBar = {
@@ -136,10 +143,20 @@ fun SettingsScreen(
 
                         ProviderRadioRow(
                             title = "Google Gemini Provider",
-                            description = "Google API Key가 있을 때 Gemini 호출을 사용합니다.",
+                            description = "Google API Key가 있을 때 Gemini / Gemma 호출을 사용합니다.",
                             selected = selectedProvider == ModelProviderType.GOOGLE,
                             onClick = {
                                 selectedProvider = ModelProviderType.GOOGLE
+                                providerSaveMessage = ""
+                            }
+                        )
+
+                        ProviderRadioRow(
+                            title = "NVIDIA Provider",
+                            description = "NVIDIA API Key가 있을 때 NVIDIA OpenAI 호환 API를 사용합니다.",
+                            selected = selectedProvider == ModelProviderType.NVIDIA,
+                            onClick = {
+                                selectedProvider = ModelProviderType.NVIDIA
                                 providerSaveMessage = ""
                             }
                         )
@@ -159,22 +176,30 @@ fun SettingsScreen(
 
                         StatusPanel(
                             title = "Provider Status",
-                            status = if (selectedProvider == ModelProviderType.GOOGLE && !hasKey) {
-                                "WAITING"
-                            } else {
-                                "SUCCESS"
+                            status = when {
+                                selectedProvider == ModelProviderType.GOOGLE && !hasGoogleKey -> "WAITING"
+                                selectedProvider == ModelProviderType.NVIDIA && !hasNvidiaKey -> "WAITING"
+                                else -> "SUCCESS"
                             },
                             message = when {
                                 selectedProvider == ModelProviderType.DUMMY -> {
                                     "Dummy Provider가 선택되어 있습니다. 기존 더미 실행 흐름을 사용합니다."
                                 }
 
-                                selectedProvider == ModelProviderType.GOOGLE && hasKey -> {
-                                    "Google Provider가 선택되어 있고 API Key가 입력되어 있습니다."
+                                selectedProvider == ModelProviderType.GOOGLE && hasGoogleKey -> {
+                                    "Google Provider가 선택되어 있고 Google API Key가 입력되어 있습니다."
+                                }
+
+                                selectedProvider == ModelProviderType.GOOGLE && !hasGoogleKey -> {
+                                    "Google Provider가 선택되어 있지만 API Key가 없습니다. 실행 시 GOOGLE_API_KEY_NOT_SET이 반환됩니다."
+                                }
+
+                                selectedProvider == ModelProviderType.NVIDIA && hasNvidiaKey -> {
+                                    "NVIDIA Provider가 선택되어 있고 NVIDIA API Key가 입력되어 있습니다."
                                 }
 
                                 else -> {
-                                    "Google Provider가 선택되어 있지만 API Key가 없습니다. 실행 시 GOOGLE_API_KEY_NOT_SET이 반환됩니다."
+                                    "NVIDIA Provider가 선택되어 있지만 API Key가 없습니다. 실행 시 NVIDIA_API_KEY_NOT_SET이 반환됩니다."
                                 }
                             }
                         )
@@ -215,12 +240,6 @@ fun SettingsScreen(
                             color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
                         )
 
-                        Text(
-                            text = "API Key는 로컬에 저장됩니다. Google Provider를 선택한 경우에만 사용됩니다.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
-                        )
-
                         OutlinedTextField(
                             value = googleApiKeyInput,
                             onValueChange = {
@@ -234,26 +253,16 @@ fun SettingsScreen(
 
                         InfoRow(
                             label = "Google API Key",
-                            value = if (hasKey) "SET" else "NOT SET"
+                            value = if (hasGoogleKey) "SET" else "NOT SET"
                         )
 
                         if (apiKeySaveMessage.isNotBlank()) {
                             StatusPanel(
-                                title = "API Key Save Result",
+                                title = "Google API Key Save Result",
                                 status = "SUCCESS",
                                 message = apiKeySaveMessage
                             )
                         }
-
-                        StatusPanel(
-                            title = "Google API Key Status",
-                            status = if (hasKey) "SUCCESS" else "WAITING",
-                            message = if (hasKey) {
-                                "API Key가 입력되어 있습니다. 저장 버튼을 누르면 로컬에 저장됩니다."
-                            } else {
-                                "Google API Key가 아직 입력되지 않았습니다."
-                            }
-                        )
                     }
                 }
             }
@@ -266,9 +275,74 @@ fun SettingsScreen(
                         focusManager.clearFocus(force = true)
                         onSaveGoogleApiKeyClick(googleApiKeyInput)
                         apiKeySaveMessage = if (googleApiKeyInput.isBlank()) {
-                            "API Key cleared"
+                            "Google API Key cleared"
                         } else {
-                            "API Key saved"
+                            "Google API Key saved"
+                        }
+                    }
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "NVIDIA API Key",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                        )
+
+                        OutlinedTextField(
+                            value = nvidiaApiKeyInput,
+                            onValueChange = {
+                                nvidiaApiKeyInput = it
+                                nvidiaApiKeySaveMessage = ""
+                            },
+                            label = { Text("NVIDIA API Key") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        InfoRow(
+                            label = "NVIDIA API Key",
+                            value = if (hasNvidiaKey) "SET" else "NOT SET"
+                        )
+
+                        if (nvidiaApiKeySaveMessage.isNotBlank()) {
+                            StatusPanel(
+                                title = "NVIDIA API Key Save Result",
+                                status = "SUCCESS",
+                                message = nvidiaApiKeySaveMessage
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                PrimaryActionButton(
+                    text = "Save NVIDIA API Key",
+                    enabled = true,
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+                        ApiKeyManager.saveNvidiaApiKey(context, nvidiaApiKeyInput)
+                        nvidiaApiKeyInput = ApiKeyManager.getNvidiaApiKey(context)
+                        nvidiaApiKeySaveMessage = if (nvidiaApiKeyInput.isBlank()) {
+                            "NVIDIA API Key cleared"
+                        } else {
+                            "NVIDIA API Key saved"
                         }
                     }
                 )
