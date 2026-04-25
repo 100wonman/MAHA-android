@@ -84,6 +84,7 @@ fun MAHAApp() {
     var isSearchingModels by remember { mutableStateOf(false) }
     var modelSearchMessage by remember { mutableStateOf("") }
     var pendingRunPrecheck by remember { mutableStateOf<RunPrecheckResult?>(null) }
+    var isApplyGemini31FlashLiteDialogOpen by remember { mutableStateOf(false) }
     var promptText by remember {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
@@ -143,6 +144,7 @@ fun MAHAApp() {
         isSearchingModels = false
         modelSearchMessage = ""
         pendingRunPrecheck = null
+        isApplyGemini31FlashLiteDialogOpen = false
         isDataLoaded = true
     }
 
@@ -395,6 +397,61 @@ fun MAHAApp() {
                 },
                 onCancelClick = {
                     pendingRunPrecheck = null
+                }
+            )
+        }
+
+        if (isApplyGemini31FlashLiteDialogOpen) {
+            AlertDialog(
+                onDismissRequest = {
+                    isApplyGemini31FlashLiteDialogOpen = false
+                },
+                title = {
+                    Text(text = "전체 Worker 모델 변경")
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(text = "모든 Worker의 Provider를 GOOGLE로 변경합니다.")
+                        Text(text = "모든 Worker의 modelName을 gemini-3.1-flash-lite로 변경합니다.")
+                        Text(text = "기존 Worker별 Provider / Model 설정은 덮어쓰기됩니다.")
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val updatedAgents = agentList.map { agent ->
+                                agent.copy(
+                                    providerName = ModelProviderType.GOOGLE,
+                                    modelName = "gemini-3.1-flash-lite"
+                                )
+                            }
+
+                            agentList.clear()
+                            agentList.addAll(updatedAgents)
+
+                            StorageManager.saveAgents(context, agentList.toList())
+
+                            syncExecutionStateMap(
+                                agents = agentList,
+                                executionStateMap = executionStateMap
+                            )
+
+                            isApplyGemini31FlashLiteDialogOpen = false
+                        }
+                    ) {
+                        Text(text = "확인 후 변경")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            isApplyGemini31FlashLiteDialogOpen = false
+                        }
+                    ) {
+                        Text(text = "취소")
+                    }
                 }
             )
         }
@@ -755,6 +812,13 @@ fun MAHAApp() {
                         isScenarioScreenOpen = true
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
+                    },
+                    onApplyGemini31FlashLiteToAllClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        isApplyGemini31FlashLiteDialogOpen = true
                     },
                     onMoveUpClick = { agent ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {

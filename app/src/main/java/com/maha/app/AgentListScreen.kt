@@ -50,6 +50,7 @@ fun AgentListScreen(
     onAddAgentClick: () -> Unit,
     onSaveScenarioClick: () -> Unit,
     onOpenScenarioListClick: () -> Unit,
+    onApplyGemini31FlashLiteToAllClick: () -> Unit,
     onMoveUpClick: (Agent) -> Unit,
     onMoveDownClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
@@ -142,6 +143,14 @@ fun AgentListScreen(
                         )
                     }
                 }
+            }
+
+            item {
+                SecondaryActionButton(
+                    text = "전체 Worker를 Gemini 3.1 Flash-Lite로 변경",
+                    enabled = !isRunAllRunning && agentList.isNotEmpty(),
+                    onClick = onApplyGemini31FlashLiteToAllClick
+                )
             }
 
             itemsIndexed(agentList) { index, agent ->
@@ -280,6 +289,8 @@ fun AgentListItem(
             }
 
             InfoRow(label = "Enabled", value = if (agent.isEnabled) "ON" else "OFF")
+            InfoRow(label = "Provider", value = agent.providerName)
+            InfoRow(label = "Model", value = agent.modelName)
             InfoRow(label = "Status", value = agent.status)
             InfoRow(label = "Input", value = agent.inputFormat)
             InfoRow(label = "Output", value = agent.outputFormat)

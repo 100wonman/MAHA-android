@@ -1,4 +1,72 @@
 ==============================
+[2026-04-25 23:40] Gemini 3.1 Flash-Lite 일괄 변경 버튼 수정
+==============================
+
+[구현 모드]
+
+이번 단계는 “전체 Worker를 Gemini 3.1 Flash-Lite로 변경” 버튼 동작 문제를 수정한다.
+
+현재 문제:
+- Worker 목록 화면에 버튼은 표시됨
+- 버튼 클릭 시 확인 다이얼로그가 표시되지 않음
+- 확인 동작이 없으므로 Worker들의 Provider / Model이 변경되지 않음
+
+목표:
+- 버튼 클릭 시 확인 다이얼로그를 표시한다
+- 확인 클릭 시 모든 Worker의 providerName을 GOOGLE로 변경한다
+- 확인 클릭 시 모든 Worker의 modelName을 gemini-3.1-flash-lite로 변경한다
+- 저장 후 Worker 목록 UI가 즉시 갱신되게 한다
+
+구현 조건:
+- 버튼 onClick에 다이얼로그 상태 변경 로직을 연결한다
+- AlertDialog 또는 기존 프로젝트의 다이얼로그 방식 사용
+- 확인 클릭 시 agents 전체를 map으로 갱신한다
+- 각 Agent는 기존 id/name/role/enabled 등 기존 필드는 유지하고 providerName/modelName만 변경한다
+- 변경된 agents를 StorageManager에 저장한다
+- 화면 state도 갱신한다
+- 취소 클릭 시 아무 변경도 하지 않는다
+- 기존 Run All / Precheck / Worker별 Provider 선택 기능은 유지한다
+- 테스트용 prompt는 사용하지 않는다
+
+변경 예상 파일:
+- AgentListScreen.kt 또는 Worker 목록 UI 파일
+- MainActivity.kt
+- 필요 시 StorageManager.kt
+
+추가 조건:
+- 먼저 실제 버튼이 선언된 파일을 확인한다
+- 변경 파일 전체 코드 제공
+- 부분 수정 반복 금지
+- 빌드 가능한 코드로 제공
+
+[결과]
+성공
+
+[검증 내용]
+- Build > Make Project 성공
+- Worker 목록 화면 진입 성공
+- “전체 Worker를 Gemini 3.1 Flash-Lite로 변경” 버튼 클릭 확인
+- 확인 다이얼로그 표시 확인
+- 취소 클릭 시 변경 없음 확인
+- 확인 클릭 시 전체 Worker 변경 확인
+- 모든 Worker 카드에서 Provider = GOOGLE 확인
+- 모든 Worker 카드에서 Model = gemini-3.1-flash-lite 확인
+
+[적용 내용]
+- 버튼 onClick 동작 연결
+- 확인 다이얼로그 추가
+- 전체 Worker providerName = GOOGLE 일괄 변경
+- 전체 Worker modelName = gemini-3.1-flash-lite 일괄 변경
+- 저장 후 화면 갱신 처리
+
+[문제 및 해결]
+- 문제: 버튼 UI만 표시되고 실제 변경 동작이 실행되지 않음
+- 해결: 버튼 클릭 → 확인 다이얼로그 → 확인 시 전체 Worker 변경 → 저장 → UI 갱신 흐름 연결
+
+[다음 작업 예정]
+Worker별 Provider 혼용 실행 테스트
+
+==============================
 [2026-04-25 23:00] Worker별 Provider 선택 및 timeout 안정성 개선
 ==============================
 
