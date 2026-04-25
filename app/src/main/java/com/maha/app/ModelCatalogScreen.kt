@@ -34,10 +34,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 private data class ModelListRowItem(
     val modelName: String,
@@ -67,8 +70,13 @@ fun ModelCatalogScreen(
     onMenuClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var selectedModel by remember { mutableStateOf<ModelListRowItem?>(null) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var testingModelName by remember { mutableStateOf("") }
+    var testMessage by remember { mutableStateOf("") }
 
     val safeSelectedModelName = selectedModelName.trim().removePrefix("models/")
 
@@ -114,10 +122,20 @@ fun ModelCatalogScreen(
         .filter { it.modelName.isNotBlank() }
         .distinctBy { "${it.providerName}:${it.modelName}" }
 
-    val freeRows = allRows.filter { it.isFreeCandidate }
+    val availableRows = allRows.filter { row ->
+        if (row.providerName != ModelProviderType.NVIDIA) {
+            row.isGenerateContentSupported
+        } else {
+            ModelTestManager.getRecord(
+                context = context,
+                providerName = row.providerName,
+                modelName = row.modelName
+            ).status == NvidiaModelTestStatus.AVAILABLE
+        }
+    }
 
     val visibleRows = if (selectedTabIndex == 0) {
-        freeRows
+        availableRows
     } else {
         allRows
     }
@@ -162,9 +180,9 @@ fun ModelCatalogScreen(
                     title = if (isSelectionMode) "Worker 모델 선택" else "모델 사용량 안내",
                     status = "WAITING",
                     message = if (isSelectionMode) {
-                        "모델을 누른 뒤 상세 팝업에서 '이 모델 선택'을 누르면 현재 Worker에 저장됩니다."
+                        "NVIDIA API 모델은 테스트 결과가 '호출 가능'인 경우에만 선택할 수 있습니다."
                     } else {
-                        "이 화면은 보기 전용입니다. Worker에 모델을 적용하려면 Agent Detail에서 '모델 카탈로그에서 선택'으로 들어가야 합니다."
+                        "무료/유료는 단정하지 않습니다. 실제 테스트 결과로 호출 가능 여부를 표시합니다."
                     }
                 )
             }
@@ -191,6 +209,16 @@ fun ModelCatalogScreen(
                 }
             }
 
+            if (testMessage.isNotBlank()) {
+                item {
+                    StatusPanel(
+                        title = "모델 테스트 결과",
+                        status = if (testMessage.contains("호출 가능")) "SUCCESS" else "WAITING",
+                        message = testMessage
+                    )
+                }
+            }
+
             item {
                 TabRow(
                     selectedTabIndex = selectedTabIndex,
@@ -201,7 +229,7 @@ fun ModelCatalogScreen(
                         selected = selectedTabIndex == 0,
                         onClick = { selectedTabIndex = 0 },
                         text = {
-                            Text(text = "무료 후보 (${freeRows.size})")
+                            Text(text = "호출 가능 (${availableRows.size})")
                         }
                     )
 
@@ -217,7 +245,7 @@ fun ModelCatalogScreen(
 
             item {
                 Text(
-                    text = if (selectedTabIndex == 0) "무료 사용 가능 후보" else "전체 사용 가능 모델",
+                    text = if (selectedTabIndex == 0) "호출 가능 모델" else "전체 모델",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
@@ -227,13 +255,18 @@ fun ModelCatalogScreen(
 
             if (visibleRows.isEmpty()) {
                 item {
-                    EmptyInfoCard(text = "표시할 모델이 없습니다. API 모델 검색을 먼저 실행하세요.")
+                    EmptyInfoCard(text = "표시할 모델이 없습니다. 전체 모델에서 NVIDIA 모델을 테스트하세요.")
                 }
             } else {
                 items(visibleRows) { row ->
                     ModelSimpleRow(
                         item = row,
                         isSelected = row.modelName == safeSelectedModelName,
+                        testRecord = ModelTestManager.getRecord(
+                            context = context,
+                            providerName = row.providerName,
+                            modelName = row.modelName
+                        ),
                         onClick = {
                             selectedModel = row
                         }
@@ -252,12 +285,39 @@ fun ModelCatalogScreen(
     }
 
     if (selectedModel != null) {
+        val currentModel = selectedModel!!
+        val currentRecord = ModelTestManager.getRecord(
+            context = context,
+            providerName = currentModel.providerName,
+            modelName = currentModel.modelName
+        )
+
         ModelDetailDialog(
-            item = selectedModel!!,
-            isSelected = selectedModel!!.modelName == safeSelectedModelName,
+            item = currentModel,
+            testRecord = currentRecord,
+            isTesting = testingModelName == currentModel.modelName,
+            isSelected = currentModel.modelName == safeSelectedModelName,
             isSelectionMode = isSelectionMode,
+            onTestModelClick = {
+                if (currentModel.providerName != ModelProviderType.NVIDIA) {
+                    testMessage = "NVIDIA 모델만 테스트할 수 있습니다."
+                    return@ModelDetailDialog
+                }
+
+                scope.launch {
+                    testingModelName = currentModel.modelName
+                    testMessage = "모델 테스트 중: ${currentModel.modelName}"
+
+                    val record = NvidiaModelProvider.testModel(currentModel.modelName)
+                    ModelTestManager.saveRecord(context, record)
+
+                    testMessage = "테스트 완료: ${toKoreanStatus(record.status)} / ${record.latencyMs}ms"
+                    testingModelName = ""
+                    selectedModel = null
+                }
+            },
             onSelectModelClick = {
-                onSelectModelClick(selectedModel!!.modelName)
+                onSelectModelClick(currentModel.modelName)
                 selectedModel = null
             },
             onDismiss = {
@@ -271,6 +331,7 @@ fun ModelCatalogScreen(
 private fun ModelSimpleRow(
     item: ModelListRowItem,
     isSelected: Boolean,
+    testRecord: ModelTestRecord,
     onClick: () -> Unit
 ) {
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
@@ -311,7 +372,7 @@ private fun ModelSimpleRow(
                     )
 
                     Text(
-                        text = "${item.sourceType} · 오늘 ${usage.requestCount}회",
+                        text = "${item.sourceType} · 오늘 ${usage.requestCount}회 · ${toKoreanStatus(testRecord.status)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
                     )
@@ -321,29 +382,16 @@ private fun ModelSimpleRow(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (isSelected) {
-                        SmallStatusChip(
-                            text = "선택됨",
-                            status = "SUCCESS"
-                        )
+                        SmallStatusChip(text = "선택됨", status = "SUCCESS")
                     }
 
                     SmallStatusChip(
-                        text = if (item.isGenerateContentSupported) "사용 가능" else "선택 불가",
-                        status = if (item.isGenerateContentSupported) "SUCCESS" else "WAITING"
+                        text = toKoreanStatus(testRecord.status),
+                        status = statusToUiStatus(testRecord.status)
                     )
 
-                    if (item.isFreeCandidate) {
-                        SmallStatusChip(
-                            text = "무료 후보",
-                            status = "SUCCESS"
-                        )
-                    }
-
                     if (isBlocked) {
-                        SmallStatusChip(
-                            text = "일시 제한",
-                            status = "FAILED"
-                        )
+                        SmallStatusChip(text = "일시 제한", status = "FAILED")
                     }
                 }
             }
@@ -354,8 +402,11 @@ private fun ModelSimpleRow(
 @Composable
 private fun ModelDetailDialog(
     item: ModelListRowItem,
+    testRecord: ModelTestRecord,
+    isTesting: Boolean,
     isSelected: Boolean,
     isSelectionMode: Boolean,
+    onTestModelClick: () -> Unit,
     onSelectModelClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -363,6 +414,11 @@ private fun ModelDetailDialog(
     val isBlocked = ModelUsageManager.isModelBlocked(item.modelName)
     val blockedUntilText = ModelUsageManager.getBlockedUntilText(item.modelName)
     val estimatedRemaining = (item.estimatedDailyLimit - usage.requestCount).coerceAtLeast(0)
+    val canSelect = if (item.providerName == ModelProviderType.NVIDIA) {
+        testRecord.status == NvidiaModelTestStatus.AVAILABLE
+    } else {
+        item.isGenerateContentSupported
+    }
 
     AlertDialog(
         containerColor = androidx.compose.ui.graphics.Color(0xFF1A2230),
@@ -371,17 +427,17 @@ private fun ModelDetailDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
-                enabled = isSelectionMode && item.isGenerateContentSupported && !isSelected,
+                enabled = isSelectionMode && canSelect && !isSelected,
                 onClick = onSelectModelClick
             ) {
                 Text(
                     text = when {
                         !isSelectionMode -> "Agent Detail에서 선택 가능"
                         isSelected -> "이미 선택됨"
-                        !item.isGenerateContentSupported -> "선택 불가"
+                        !canSelect -> "테스트 후 선택 가능"
                         else -> "이 모델 선택"
                     },
-                    color = if (isSelectionMode && item.isGenerateContentSupported && !isSelected) {
+                    color = if (isSelectionMode && canSelect && !isSelected) {
                         androidx.compose.ui.graphics.Color(0xFF93C5FD)
                     } else {
                         androidx.compose.ui.graphics.Color(0xFF94A3B8)
@@ -390,10 +446,17 @@ private fun ModelDetailDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                enabled = item.providerName == ModelProviderType.NVIDIA && !isTesting,
+                onClick = onTestModelClick
+            ) {
                 Text(
-                    text = "닫기",
-                    color = androidx.compose.ui.graphics.Color(0xFFE5ECF6)
+                    text = if (isTesting) "테스트 중..." else "이 모델 테스트",
+                    color = if (item.providerName == ModelProviderType.NVIDIA) {
+                        androidx.compose.ui.graphics.Color(0xFF93C5FD)
+                    } else {
+                        androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                    }
                 )
             }
         },
@@ -423,6 +486,26 @@ private fun ModelDetailDialog(
                 }
 
                 item {
+                    DetailText(label = "테스트 상태", value = toKoreanStatus(testRecord.status))
+                }
+
+                item {
+                    DetailText(label = "테스트 메시지", value = testRecord.message.ifBlank { "없음" })
+                }
+
+                item {
+                    DetailText(label = "마지막 테스트", value = testRecord.lastTestedAt.ifBlank { "없음" })
+                }
+
+                item {
+                    DetailText(label = "응답 시간", value = "${testRecord.latencyMs}ms")
+                }
+
+                item {
+                    DetailText(label = "HTTP 코드", value = testRecord.httpStatusCode.toString())
+                }
+
+                item {
                     DetailText(label = "표시 이름", value = item.displayName)
                 }
 
@@ -446,24 +529,6 @@ private fun ModelDetailDialog(
 
                 item {
                     DetailText(label = "권장 Worker", value = item.recommendedWorker)
-                }
-
-                item {
-                    DetailText(
-                        label = "사용 가능 여부",
-                        value = if (item.isGenerateContentSupported) {
-                            "Worker 텍스트 생성에 사용 가능"
-                        } else {
-                            "Worker 텍스트 생성에 사용하지 않음"
-                        }
-                    )
-                }
-
-                item {
-                    DetailText(
-                        label = "무료 후보 여부",
-                        value = if (item.isFreeCandidate) "무료 후보" else "전체 모델"
-                    )
                 }
 
                 item {
@@ -518,14 +583,12 @@ private fun ModelDetailDialog(
                 }
 
                 item {
-                    HorizontalDivider(
-                        color = androidx.compose.ui.graphics.Color(0xFF334155)
-                    )
+                    HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF334155))
                 }
 
                 item {
                     Text(
-                        text = "주의: 추정 잔량은 MAHA 앱 내부 기록 기준입니다. 공식 quota와 다를 수 있습니다.",
+                        text = "무료/유료는 단정하지 않습니다. 이 화면은 실제 테스트 결과 기준으로 호출 가능 여부만 표시합니다.",
                         style = MaterialTheme.typography.bodySmall,
                         color = androidx.compose.ui.graphics.Color(0xFFCBD5E1)
                     )
@@ -577,5 +640,25 @@ private fun SmallStatusChip(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         )
+    }
+}
+
+private fun toKoreanStatus(status: String): String {
+    return when (status) {
+        NvidiaModelTestStatus.AVAILABLE -> "호출 가능"
+        NvidiaModelTestStatus.FAILED -> "실패"
+        NvidiaModelTestStatus.RATE_LIMITED -> "제한됨"
+        NvidiaModelTestStatus.AUTH_REQUIRED -> "권한 필요"
+        NvidiaModelTestStatus.UNSUPPORTED -> "지원 안 됨"
+        else -> "테스트 필요"
+    }
+}
+
+private fun statusToUiStatus(status: String): String {
+    return when (status) {
+        NvidiaModelTestStatus.AVAILABLE -> "SUCCESS"
+        NvidiaModelTestStatus.RATE_LIMITED -> "RUNNING"
+        NvidiaModelTestStatus.UNTESTED -> "WAITING"
+        else -> "FAILED"
     }
 }

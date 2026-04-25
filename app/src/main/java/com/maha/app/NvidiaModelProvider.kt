@@ -35,7 +35,9 @@ object NvidiaModelProvider : ModelProvider {
                 callNvidiaApi(
                     apiKey = apiKey,
                     modelName = request.modelName.ifBlank { DEFAULT_NVIDIA_MODEL },
-                    prompt = request.inputText
+                    prompt = request.inputText,
+                    maxTokens = 1024,
+                    temperature = 0.7
                 )
             }.getOrElse { exception ->
                 Log.e(TAG, "NVIDIA API exception: ${exception.message}", exception)
@@ -51,10 +53,58 @@ object NvidiaModelProvider : ModelProvider {
         }
     }
 
+    suspend fun testModel(modelName: String): ModelTestRecord {
+        val apiKey = ApiKeyManager.getNvidiaApiKey()
+        val safeModelName = modelName.trim()
+
+        if (apiKey.isBlank()) {
+            return ModelTestRecord(
+                providerName = ModelProviderType.NVIDIA,
+                modelName = safeModelName,
+                status = NvidiaModelTestStatus.AUTH_REQUIRED,
+                lastTestedAt = getCurrentTimeText(),
+                httpStatusCode = 401,
+                message = "NVIDIA API Key가 없습니다.",
+                latencyMs = 0L
+            )
+        }
+
+        return withContext(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+
+            runCatching {
+                callNvidiaModelTest(
+                    apiKey = apiKey,
+                    modelName = safeModelName
+                )
+            }.getOrElse { exception ->
+                val latencyMs = System.currentTimeMillis() - startTime
+
+                Log.e(TAG, "NVIDIA model test exception: ${exception.message}", exception)
+
+                ModelTestRecord(
+                    providerName = ModelProviderType.NVIDIA,
+                    modelName = safeModelName,
+                    status = NvidiaModelTestStatus.FAILED,
+                    lastTestedAt = getCurrentTimeText(),
+                    httpStatusCode = -1,
+                    message = if (exception is SocketTimeoutException) {
+                        "테스트 timeout"
+                    } else {
+                        exception.message ?: "테스트 실패"
+                    },
+                    latencyMs = latencyMs
+                )
+            }
+        }
+    }
+
     private fun callNvidiaApi(
         apiKey: String,
         modelName: String,
-        prompt: String
+        prompt: String,
+        maxTokens: Int,
+        temperature: Double
     ): ModelResponse {
         val safeModelName = modelName.trim()
         val readTimeoutMs = getReadTimeoutMs(safeModelName)
@@ -77,7 +127,9 @@ object NvidiaModelProvider : ModelProvider {
 
             val requestJson = createRequestJson(
                 modelName = safeModelName,
-                prompt = prompt
+                prompt = prompt,
+                maxTokens = maxTokens,
+                temperature = temperature
             )
 
             OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
@@ -103,7 +155,7 @@ object NvidiaModelProvider : ModelProvider {
 
             if (responseCode !in 200..299) {
                 return ModelResponse(
-                    outputText = classifyFailure(responseCode),
+                    outputText = classifyFailureText(responseCode),
                     status = "FAILED"
                 )
             }
@@ -137,9 +189,99 @@ object NvidiaModelProvider : ModelProvider {
         }
     }
 
+    private fun callNvidiaModelTest(
+        apiKey: String,
+        modelName: String
+    ): ModelTestRecord {
+        val startTime = System.currentTimeMillis()
+        val connection = URL(CHAT_COMPLETIONS_URL).openConnection() as HttpURLConnection
+
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            connection.setRequestProperty("Accept", "application/json")
+
+            val requestJson = createRequestJson(
+                modelName = modelName,
+                prompt = "Reply with only: OK",
+                maxTokens = 8,
+                temperature = 0.0
+            )
+
+            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write(requestJson.toString())
+                writer.flush()
+            }
+
+            val responseCode = connection.responseCode
+            val latencyMs = System.currentTimeMillis() - startTime
+
+            val responseText = if (responseCode in 200..299) {
+                connection.inputStream.bufferedReader(Charsets.UTF_8).use(BufferedReader::readText)
+            } else {
+                connection.errorStream
+                    ?.bufferedReader(Charsets.UTF_8)
+                    ?.use(BufferedReader::readText)
+                    ?: ""
+            }
+
+            Log.d(TAG, "NVIDIA model test status code: $responseCode")
+            Log.d(TAG, "NVIDIA model test body: $responseText")
+
+            val parsedText = if (responseCode in 200..299) {
+                parseNvidiaResponse(responseText)
+            } else {
+                ""
+            }
+
+            return ModelTestRecord(
+                providerName = ModelProviderType.NVIDIA,
+                modelName = modelName,
+                status = classifyTestStatus(
+                    responseCode = responseCode,
+                    parsedText = parsedText
+                ),
+                lastTestedAt = getCurrentTimeText(),
+                httpStatusCode = responseCode,
+                message = buildTestMessage(
+                    responseCode = responseCode,
+                    parsedText = parsedText,
+                    responseText = responseText
+                ),
+                latencyMs = latencyMs
+            )
+        } catch (exception: SocketTimeoutException) {
+            val latencyMs = System.currentTimeMillis() - startTime
+
+            Log.e(
+                TAG,
+                "NVIDIA model test timeout. model=$modelName, message=${exception.message}",
+                exception
+            )
+
+            return ModelTestRecord(
+                providerName = ModelProviderType.NVIDIA,
+                modelName = modelName,
+                status = NvidiaModelTestStatus.FAILED,
+                lastTestedAt = getCurrentTimeText(),
+                httpStatusCode = -1,
+                message = "테스트 timeout",
+                latencyMs = latencyMs
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun createRequestJson(
         modelName: String,
-        prompt: String
+        prompt: String,
+        maxTokens: Int,
+        temperature: Double
     ): JSONObject {
         val messageObject = JSONObject().apply {
             put("role", "user")
@@ -153,8 +295,8 @@ object NvidiaModelProvider : ModelProvider {
         return JSONObject().apply {
             put("model", modelName)
             put("messages", messagesArray)
-            put("max_tokens", 1024)
-            put("temperature", 0.7)
+            put("max_tokens", maxTokens)
+            put("temperature", temperature)
             put("top_p", 0.9)
             put("stream", false)
         }
@@ -182,6 +324,36 @@ object NvidiaModelProvider : ModelProvider {
         return ""
     }
 
+    private fun classifyTestStatus(
+        responseCode: Int,
+        parsedText: String
+    ): String {
+        return when {
+            responseCode in 200..299 && parsedText.isNotBlank() -> NvidiaModelTestStatus.AVAILABLE
+            responseCode == 401 || responseCode == 403 -> NvidiaModelTestStatus.AUTH_REQUIRED
+            responseCode == 404 || responseCode == 410 -> NvidiaModelTestStatus.UNSUPPORTED
+            responseCode == 429 -> NvidiaModelTestStatus.RATE_LIMITED
+            responseCode == 500 || responseCode == 502 || responseCode == 503 || responseCode == 504 -> NvidiaModelTestStatus.FAILED
+            else -> NvidiaModelTestStatus.FAILED
+        }
+    }
+
+    private fun buildTestMessage(
+        responseCode: Int,
+        parsedText: String,
+        responseText: String
+    ): String {
+        return when {
+            responseCode in 200..299 && parsedText.isNotBlank() -> "호출 가능"
+            responseCode == 401 || responseCode == 403 -> "권한 필요"
+            responseCode == 404 || responseCode == 410 -> "지원 안 됨"
+            responseCode == 429 -> "제한됨"
+            responseCode == 500 || responseCode == 502 || responseCode == 503 || responseCode == 504 -> "서버 오류"
+            responseText.isNotBlank() -> responseText.take(300)
+            else -> "실패"
+        }
+    }
+
     private fun getReadTimeoutMs(modelName: String): Int {
         val lowerName = modelName.lowercase()
 
@@ -197,7 +369,7 @@ object NvidiaModelProvider : ModelProvider {
         }
     }
 
-    private fun classifyFailure(responseCode: Int): String {
+    private fun classifyFailureText(responseCode: Int): String {
         return when (responseCode) {
             401 -> "NVIDIA_UNAUTHORIZED"
             403 -> "NVIDIA_FORBIDDEN"

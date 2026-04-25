@@ -1,4 +1,88 @@
 ==============================
+[2026-04-25 20:00] NVIDIA 모델 테스트 상태 기록 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 NVIDIA 모델 테스트 상태 기록 기능을 구현한다.
+
+목표:
+- NVIDIA 모델별 호출 가능 여부를 앱에서 테스트한다
+- 테스트 결과를 저장한다
+- ModelCatalogScreen에서 테스트 상태를 표시한다
+- AVAILABLE 상태인 NVIDIA 모델만 Worker 선택 후보로 사용할 수 있게 준비한다
+
+구현 내용:
+- NvidiaModelTestStatus.kt 추가
+- ModelTestRecord.kt 추가
+- ModelTestManager.kt 추가
+- NvidiaModelProvider에 모델 테스트용 호출 함수 추가
+- 테스트 프롬프트는 "Reply with only: OK" 사용
+- 테스트 옵션은 max_tokens = 8, temperature = 0 사용
+- ModelCatalogScreen 모델 상세 팝업에 “이 모델 테스트” 버튼 추가
+- 테스트 결과를 SharedPreferences JSON으로 저장
+- 테스트 결과에 따라 상태 표시
+  - UNTESTED
+  - AVAILABLE
+  - FAILED
+  - RATE_LIMITED
+  - AUTH_REQUIRED
+  - UNSUPPORTED
+
+오류 코드 분류:
+- 200 + 응답 있음 → AVAILABLE
+- 401 / 403 → AUTH_REQUIRED
+- 404 / 410 → UNSUPPORTED
+- 429 → RATE_LIMITED
+- 500 / 502 / 503 / 504 → FAILED
+- timeout → FAILED
+- 기타 → FAILED
+
+조건:
+- 무료/유료 표현은 사용하지 않는다
+- “호출 가능 / 테스트 필요 / 제한됨 / 권한 필요 / 지원 안 됨 / 실패”로 표시한다
+- 전체 모델 일괄 테스트는 구현하지 않는다
+- 기존 NVIDIA 실제 호출 성공 흐름 유지
+- 기존 Google Provider 흐름 유지
+- 기존 Dummy Provider 흐름 유지
+- 기존 Worker별 modelName 구조 유지
+- API Key 하드코딩 금지
+- 빌드 가능한 상태 유지
+
+변경 파일:
+- NvidiaModelTestStatus.kt [추가]
+- ModelTestRecord.kt [추가]
+- ModelTestManager.kt [추가]
+- NvidiaModelProvider.kt [수정]
+- ModelCatalogScreen.kt [수정]
+- 필요 시 MainActivity.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(성공 / 구글 모델들만 먹통인 상태야.)
+
+[적용 내용]
+- NVIDIA 모델 테스트 상태값 추가
+- 모델 테스트 결과 저장 구조 추가
+- 개별 모델 테스트 버튼 추가
+- 테스트 결과에 따른 상태 표시 추가
+- AVAILABLE 모델 중심의 선택 후보 구조 준비
+
+[문제 및 해결]
+- NVIDIA 모델 목록은 많지만 무료/유료 여부를 앱에서 확정하기 어려움
+- 해결: 실제 호출 테스트 결과를 기준으로 모델 상태를 관리
+
+[다음 작업 예정]
+AVAILABLE 모델만 Worker 선택 후보로 필터링
+
+==============================
 [2026-04-25 19:35] NVIDIA 모델 자동 테스트 구조 설계
 ==============================
 
