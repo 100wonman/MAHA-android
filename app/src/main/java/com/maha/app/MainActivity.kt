@@ -284,7 +284,7 @@ fun MAHAApp() {
                             subtitle = "모델 목록과 사용량 확인"
                         )
                     },
-                    selected = isModelCatalogScreenOpen,
+                    selected = isModelCatalogScreenOpen && modelSelectionAgent == null,
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
@@ -415,6 +415,7 @@ fun MAHAApp() {
             isModelCatalogScreenOpen -> {
                 ModelCatalogScreen(
                     discoveredModels = discoveredModelList,
+                    selectedProviderName = modelSelectionAgent?.providerName ?: savedProvider,
                     selectedModelName = modelSelectionAgent?.modelName ?: GeminiModelType.DEFAULT,
                     isSelectionMode = modelSelectionAgent != null,
                     isSearchingModels = isSearchingModels,
@@ -486,7 +487,7 @@ fun MAHAApp() {
                             StorageManager.saveAgents(context, agentList.toList())
 
                             selectedAgentId = targetAgentId
-                            modelSearchMessage = "모델 적용 완료: $safeModelName"
+                            modelSearchMessage = "모델 적용 완료: ${updatedAgent.providerName} / $safeModelName"
                         } else {
                             modelSearchMessage = "에이전트를 찾지 못했습니다"
                         }
@@ -806,7 +807,7 @@ fun RunAllPrecheckDialog(
         "경고 대상 모델이 없습니다."
     } else {
         precheck.warnings.joinToString(separator = "\n") { warning ->
-            "- ${warning.agentName}: ${warning.modelName} / ${warning.status}"
+            "- ${warning.agentName}: ${warning.providerName} / ${warning.modelName} / ${warning.status}"
         }
     }
 
@@ -910,6 +911,7 @@ private fun createDefaultAgents(): List<Agent> {
             inputFormat = "User Request",
             outputFormat = "Plan Text",
             isEnabled = true,
+            providerName = ModelProviderType.GOOGLE,
             modelName = GeminiModelType.FLASH
         ),
         Agent(
@@ -920,6 +922,7 @@ private fun createDefaultAgents(): List<Agent> {
             inputFormat = "Plan Text",
             outputFormat = "Research Notes",
             isEnabled = true,
+            providerName = ModelProviderType.GOOGLE,
             modelName = GeminiModelType.FLASH
         ),
         Agent(
@@ -930,6 +933,7 @@ private fun createDefaultAgents(): List<Agent> {
             inputFormat = "Research Notes",
             outputFormat = "Final Answer",
             isEnabled = true,
+            providerName = ModelProviderType.GOOGLE,
             modelName = GeminiModelType.FLASH_LITE
         )
     )
@@ -945,7 +949,8 @@ private fun createNewAgent(existingAgents: List<Agent>): Agent {
             inputFormat = "Input Text",
             outputFormat = "Output Text",
             isEnabled = true,
-            modelName = GeminiModelType.DEFAULT
+            providerName = ModelProviderType.DUMMY,
+            modelName = "dummy"
         )
     )
 }
@@ -990,6 +995,11 @@ private fun sanitizeAgent(agent: Agent): Agent {
     val safeStatus = agent.status.ifBlank { "Enabled" }
     val safeInputFormat = agent.inputFormat.ifBlank { "Input Text" }
     val safeOutputFormat = agent.outputFormat.ifBlank { "Output Text" }
+    val safeProviderName = sanitizeProviderName(agent.providerName)
+    val safeModelName = sanitizeModelForProviderInMain(
+        providerName = safeProviderName,
+        modelName = agent.modelName
+    )
 
     return agent.copy(
         id = safeId,
@@ -998,8 +1008,48 @@ private fun sanitizeAgent(agent: Agent): Agent {
         status = safeStatus,
         inputFormat = safeInputFormat,
         outputFormat = safeOutputFormat,
-        modelName = GeminiModelType.sanitize(agent.modelName)
+        providerName = safeProviderName,
+        modelName = safeModelName
     )
+}
+
+private fun sanitizeProviderName(providerName: String): String {
+    return when (providerName) {
+        ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+        ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+        ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+        else -> ModelProviderType.DUMMY
+    }
+}
+
+private fun sanitizeModelForProviderInMain(
+    providerName: String,
+    modelName: String
+): String {
+    val safeModelName = modelName.trim().removePrefix("models/")
+
+    return when (providerName) {
+        ModelProviderType.GOOGLE -> {
+            if (
+                safeModelName.startsWith("gemini") ||
+                safeModelName.startsWith("gemma")
+            ) {
+                GeminiModelType.sanitize(safeModelName)
+            } else {
+                GeminiModelType.DEFAULT
+            }
+        }
+
+        ModelProviderType.NVIDIA -> {
+            if (safeModelName.contains("/")) {
+                safeModelName
+            } else {
+                "meta/llama-3.1-8b-instruct"
+            }
+        }
+
+        else -> "dummy"
+    }
 }
 
 private fun sanitizeRunResult(result: RunResult): RunResult? {

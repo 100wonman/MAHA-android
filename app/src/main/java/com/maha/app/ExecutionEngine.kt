@@ -1,4 +1,4 @@
-// ExecutionEngine.kt
+//ExecutionEngine.kt
 
 package com.maha.app
 
@@ -10,9 +10,13 @@ object ExecutionEngine {
     private const val RUN_ALL_PRE_CALL_DELAY_MS = 700L
     private const val WORKER_BETWEEN_CALL_DELAY_MS = 900L
 
-    private const val ERROR_RATE_LIMITED = "GOOGLE_RATE_LIMITED"
-    private const val ERROR_SERVER = "GOOGLE_SERVER_ERROR"
-    private const val ERROR_TIMEOUT = "GOOGLE_TIMEOUT"
+    private const val ERROR_GOOGLE_RATE_LIMITED = "GOOGLE_RATE_LIMITED"
+    private const val ERROR_GOOGLE_SERVER = "GOOGLE_SERVER_ERROR"
+    private const val ERROR_GOOGLE_TIMEOUT = "GOOGLE_TIMEOUT"
+
+    private const val ERROR_NVIDIA_RATE_LIMITED = "NVIDIA_RATE_LIMITED"
+    private const val ERROR_NVIDIA_SERVER = "NVIDIA_SERVER_ERROR"
+    private const val ERROR_NVIDIA_TIMEOUT = "NVIDIA_TIMEOUT"
 
     suspend fun runSingleAgent(
         agent: Agent,
@@ -25,6 +29,7 @@ object ExecutionEngine {
         val timeText = getCurrentTimeText()
         val inputText = inputPrompt.ifBlank { "User request for ${currentAgent.name}" }
         val safeModelName = GeminiModelType.sanitize(currentAgent.modelName)
+        val safeProviderName = sanitizeProviderName(currentAgent.providerName)
 
         onStateChange(currentAgent.id, "RUNNING")
 
@@ -37,6 +42,7 @@ object ExecutionEngine {
                 inputText = inputText,
                 stepNumber = 1,
                 runType = "SINGLE",
+                providerName = safeProviderName,
                 modelName = safeModelName
             )
         )
@@ -55,7 +61,7 @@ object ExecutionEngine {
 
         val logs = listOf(
             ExecutionLog(
-                message = "${currentAgent.name} is RUNNING with model $safeModelName and input: $inputText",
+                message = "${currentAgent.name} is RUNNING with provider $safeProviderName, model $safeModelName and input: $inputText",
                 timestamp = timeText
             ),
             ExecutionLog(
@@ -136,12 +142,13 @@ object ExecutionEngine {
         for ((index, agent) in enabledAgents.withIndex()) {
             val stepNumber = index + 1
             val safeModelName = GeminiModelType.sanitize(agent.modelName)
+            val safeProviderName = sanitizeProviderName(agent.providerName)
 
             onStateChange(agent.id, "RUNNING")
 
             logList.add(
                 ExecutionLog(
-                    message = "${agent.name} is RUNNING with model $safeModelName and input: $currentInput",
+                    message = "${agent.name} is RUNNING with provider $safeProviderName, model $safeModelName and input: $currentInput",
                     timestamp = getCurrentTimeText()
                 )
             )
@@ -155,6 +162,7 @@ object ExecutionEngine {
                     inputText = currentInput,
                     stepNumber = stepNumber,
                     runType = "RUN_ALL",
+                    providerName = safeProviderName,
                     modelName = safeModelName
                 )
             )
@@ -219,9 +227,12 @@ object ExecutionEngine {
     }
 
     private fun shouldStopRunAll(modelResponse: ModelResponse): Boolean {
-        return modelResponse.outputText == ERROR_RATE_LIMITED ||
-                modelResponse.outputText == ERROR_SERVER ||
-                modelResponse.outputText == ERROR_TIMEOUT
+        return modelResponse.outputText == ERROR_GOOGLE_RATE_LIMITED ||
+                modelResponse.outputText == ERROR_GOOGLE_SERVER ||
+                modelResponse.outputText == ERROR_GOOGLE_TIMEOUT ||
+                modelResponse.outputText == ERROR_NVIDIA_RATE_LIMITED ||
+                modelResponse.outputText == ERROR_NVIDIA_SERVER ||
+                modelResponse.outputText == ERROR_NVIDIA_TIMEOUT
     }
 
     private fun generateUniqueRunId(existingRuns: List<Run>): String {
@@ -259,8 +270,18 @@ object ExecutionEngine {
             status = safeStatus,
             inputFormat = safeInputFormat,
             outputFormat = safeOutputFormat,
+            providerName = sanitizeProviderName(agent.providerName),
             modelName = GeminiModelType.sanitize(agent.modelName)
         )
+    }
+
+    private fun sanitizeProviderName(providerName: String): String {
+        return when (providerName) {
+            ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+            ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+            else -> ModelProviderType.DUMMY
+        }
     }
 
     private fun sanitizeRunResult(result: RunResult): RunResult? {

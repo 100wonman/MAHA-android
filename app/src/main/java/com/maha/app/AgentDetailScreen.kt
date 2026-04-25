@@ -13,7 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,18 +52,36 @@ fun AgentDetailScreen(
     onOpenModelCatalogClick: (Agent) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val providerOptions = listOf(
+        ModelProviderType.DUMMY,
+        ModelProviderType.GOOGLE,
+        ModelProviderType.NVIDIA
+    )
+
     var editedName by remember(agent.id) { mutableStateOf(agent.name) }
     var editedDescription by remember(agent.id) { mutableStateOf(agent.description) }
     var editedIsEnabled by remember(agent.id) { mutableStateOf(agent.isEnabled) }
-    var editedModelName by remember(agent.id) {
-        mutableStateOf(GeminiModelType.sanitize(agent.modelName))
+    var editedProviderName by remember(agent.id) {
+        mutableStateOf(sanitizeProviderNameForAgentDetail(agent.providerName))
     }
+    var editedModelName by remember(agent.id) {
+        mutableStateOf(sanitizeModelForProvider(agent.providerName, agent.modelName))
+    }
+    var providerDropdownExpanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(agent.id, agent.name, agent.description, agent.isEnabled, agent.modelName) {
+    LaunchedEffect(
+        agent.id,
+        agent.name,
+        agent.description,
+        agent.isEnabled,
+        agent.providerName,
+        agent.modelName
+    ) {
         editedName = agent.name
         editedDescription = agent.description
         editedIsEnabled = agent.isEnabled
-        editedModelName = GeminiModelType.sanitize(agent.modelName)
+        editedProviderName = sanitizeProviderNameForAgentDetail(agent.providerName)
+        editedModelName = sanitizeModelForProvider(editedProviderName, agent.modelName)
     }
 
     val currentRunState = when {
@@ -167,9 +188,53 @@ fun AgentDetailScreen(
                             )
                         }
 
+                        ExposedDropdownMenuBox(
+                            expanded = providerDropdownExpanded,
+                            onExpandedChange = {
+                                if (!isAnyExecutionRunning) {
+                                    providerDropdownExpanded = !providerDropdownExpanded
+                                }
+                            }
+                        ) {
+                            OutlinedTextField(
+                                value = editedProviderName,
+                                onValueChange = {},
+                                readOnly = true,
+                                enabled = !isAnyExecutionRunning,
+                                label = { Text("Provider") },
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(
+                                        expanded = providerDropdownExpanded
+                                    )
+                                },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = providerDropdownExpanded,
+                                onDismissRequest = {
+                                    providerDropdownExpanded = false
+                                }
+                            ) {
+                                providerOptions.forEach { provider ->
+                                    DropdownMenuItem(
+                                        text = { Text(provider) },
+                                        onClick = {
+                                            editedProviderName = provider
+                                            editedModelName = getDefaultModelForProvider(provider)
+                                            providerDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
                         InfoRow(label = "Status", value = agent.status)
                         InfoRow(label = "Input Format", value = agent.inputFormat)
                         InfoRow(label = "Output Format", value = agent.outputFormat)
+                        InfoRow(label = "Current Provider", value = editedProviderName)
                         InfoRow(label = "Current Model", value = editedModelName)
                         InfoRow(label = "Today Model Usage", value = selectedModelUsage.requestCount.toString())
 
@@ -189,13 +254,17 @@ fun AgentDetailScreen(
 
                         SecondaryActionButton(
                             text = "모델 카탈로그에서 선택",
-                            enabled = !isAnyExecutionRunning,
+                            enabled = !isAnyExecutionRunning && editedProviderName != ModelProviderType.DUMMY,
                             onClick = {
                                 val currentAgent = agent.copy(
                                     name = editedName,
                                     description = editedDescription,
                                     isEnabled = editedIsEnabled,
-                                    modelName = GeminiModelType.sanitize(editedModelName)
+                                    providerName = editedProviderName,
+                                    modelName = sanitizeModelForProvider(
+                                        providerName = editedProviderName,
+                                        modelName = editedModelName
+                                    )
                                 )
                                 onSaveClick(currentAgent)
                                 onOpenModelCatalogClick(currentAgent)
@@ -220,7 +289,11 @@ fun AgentDetailScreen(
                             name = editedName,
                             description = editedDescription,
                             isEnabled = editedIsEnabled,
-                            modelName = GeminiModelType.sanitize(editedModelName)
+                            providerName = editedProviderName,
+                            modelName = sanitizeModelForProvider(
+                                providerName = editedProviderName,
+                                modelName = editedModelName
+                            )
                         )
                         onSaveClick(updatedAgent)
                     }
@@ -246,7 +319,11 @@ fun AgentDetailScreen(
                             name = editedName,
                             description = editedDescription,
                             isEnabled = editedIsEnabled,
-                            modelName = GeminiModelType.sanitize(editedModelName)
+                            providerName = editedProviderName,
+                            modelName = sanitizeModelForProvider(
+                                providerName = editedProviderName,
+                                modelName = editedModelName
+                            )
                         )
                         onSaveClick(currentAgent)
                         onRunClick(currentAgent)
@@ -294,5 +371,55 @@ fun AgentDetailScreen(
                 }
             }
         }
+    }
+}
+
+private fun sanitizeProviderNameForAgentDetail(providerName: String): String {
+    return when (providerName) {
+        ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+        ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+        ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+        else -> ModelProviderType.DUMMY
+    }
+}
+
+private fun sanitizeModelForProvider(
+    providerName: String,
+    modelName: String
+): String {
+    val safeProviderName = sanitizeProviderNameForAgentDetail(providerName)
+    val safeModelName = modelName.trim().removePrefix("models/")
+
+    return when (safeProviderName) {
+        ModelProviderType.DUMMY -> "dummy"
+
+        ModelProviderType.GOOGLE -> {
+            if (
+                safeModelName.startsWith("gemini") ||
+                safeModelName.startsWith("gemma")
+            ) {
+                GeminiModelType.sanitize(safeModelName)
+            } else {
+                GeminiModelType.DEFAULT
+            }
+        }
+
+        ModelProviderType.NVIDIA -> {
+            if (safeModelName.contains("/")) {
+                safeModelName
+            } else {
+                "meta/llama-3.1-8b-instruct"
+            }
+        }
+
+        else -> "dummy"
+    }
+}
+
+private fun getDefaultModelForProvider(providerName: String): String {
+    return when (sanitizeProviderNameForAgentDetail(providerName)) {
+        ModelProviderType.GOOGLE -> GeminiModelType.DEFAULT
+        ModelProviderType.NVIDIA -> "meta/llama-3.1-8b-instruct"
+        else -> "dummy"
     }
 }

@@ -35,10 +35,13 @@ object RunPrecheckManager {
 
         val warnings = enabledAgents.mapNotNull { agent ->
             val safeModelName = agent.modelName.trim().removePrefix("models/")
-            val providerName = inferProviderName(
-                modelName = safeModelName,
-                fallbackProviderName = fallbackProviderName
-            ) ?: return@mapNotNull null
+            val providerName = resolveProviderName(
+                agentProviderName = agent.providerName,
+                fallbackProviderName = fallbackProviderName,
+                modelName = safeModelName
+            )
+
+            if (providerName == ModelProviderType.DUMMY) return@mapNotNull null
 
             val record = ModelTestManager.getRecord(
                 context = context,
@@ -79,29 +82,32 @@ object RunPrecheckManager {
         )
     }
 
-    private fun inferProviderName(
-        modelName: String,
-        fallbackProviderName: String
-    ): String? {
-        val normalizedModelName = modelName
-            .trim()
-            .removePrefix("models/")
-            .lowercase()
+    private fun resolveProviderName(
+        agentProviderName: String,
+        fallbackProviderName: String,
+        modelName: String
+    ): String {
+        sanitizeProviderName(agentProviderName)?.let { return it }
+        sanitizeProviderName(fallbackProviderName)?.let { return it }
+        inferProviderNameFromModelName(modelName)?.let { return it }
+        return ModelProviderType.DUMMY
+    }
 
-        if (
-            normalizedModelName.startsWith("gemini") ||
-            normalizedModelName.startsWith("gemma")
-        ) {
-            return ModelProviderType.GOOGLE
-        }
-
-        if (normalizedModelName.contains("/")) {
-            return ModelProviderType.NVIDIA
-        }
-
-        return when (fallbackProviderName) {
+    private fun sanitizeProviderName(providerName: String): String? {
+        return when (providerName) {
+            ModelProviderType.DUMMY -> ModelProviderType.DUMMY
             ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
             ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+            else -> null
+        }
+    }
+
+    private fun inferProviderNameFromModelName(modelName: String): String? {
+        val normalized = modelName.trim().removePrefix("models/").lowercase()
+
+        return when {
+            normalized.startsWith("gemini") || normalized.startsWith("gemma") -> ModelProviderType.GOOGLE
+            normalized.contains("/") -> ModelProviderType.NVIDIA
             else -> null
         }
     }

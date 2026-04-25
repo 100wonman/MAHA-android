@@ -1,4 +1,4 @@
-// ModelCatalogScreen.kt
+//ModelCatalogScreen.kt
 
 package com.maha.app
 
@@ -61,6 +61,7 @@ private data class ModelListRowItem(
 @Composable
 fun ModelCatalogScreen(
     discoveredModels: List<DiscoveredModel>,
+    selectedProviderName: String,
     selectedModelName: String,
     isSelectionMode: Boolean,
     isSearchingModels: Boolean,
@@ -78,6 +79,7 @@ fun ModelCatalogScreen(
     var testingModelName by remember { mutableStateOf("") }
     var testMessage by remember { mutableStateOf("") }
 
+    val safeSelectedProviderName = sanitizeCatalogProviderName(selectedProviderName)
     val safeSelectedModelName = selectedModelName.trim().removePrefix("models/")
 
     val manualRows = GeminiModelType.getCatalog().map { item ->
@@ -121,6 +123,13 @@ fun ModelCatalogScreen(
     val allRows = (manualRows + discoveredRows)
         .filter { it.modelName.isNotBlank() }
         .distinctBy { "${it.providerName}:${it.modelName}" }
+        .filter { row ->
+            if (isSelectionMode) {
+                row.providerName == safeSelectedProviderName
+            } else {
+                true
+            }
+        }
 
     val selectableRows = allRows.filter { row ->
         val record = ModelTestManager.getRecord(
@@ -178,7 +187,7 @@ fun ModelCatalogScreen(
                     title = if (isSelectionMode) "Worker 모델 선택" else "모델 사용량 안내",
                     status = "WAITING",
                     message = if (isSelectionMode) {
-                        "NVIDIA API 모델은 테스트 결과가 '호출 가능'인 경우에만 선택할 수 있습니다."
+                        "현재 Worker Provider: $safeSelectedProviderName\n해당 Provider의 모델만 표시됩니다."
                     } else {
                         "무료/유료는 단정하지 않습니다. 실제 테스트 결과로 호출 가능 여부를 표시합니다."
                     }
@@ -253,13 +262,14 @@ fun ModelCatalogScreen(
 
             if (visibleRows.isEmpty()) {
                 item {
-                    EmptyInfoCard(text = "표시할 모델이 없습니다. 전체 모델에서 NVIDIA 모델을 테스트하세요.")
+                    EmptyInfoCard(text = "표시할 모델이 없습니다. API 모델 검색 또는 모델 테스트를 진행하세요.")
                 }
             } else {
                 items(visibleRows) { row ->
                     ModelSimpleRow(
                         item = row,
-                        isSelected = row.modelName == safeSelectedModelName,
+                        isSelected = row.providerName == safeSelectedProviderName &&
+                                row.modelName == safeSelectedModelName,
                         testRecord = ModelTestManager.getRecord(
                             context = context,
                             providerName = row.providerName,
@@ -294,7 +304,8 @@ fun ModelCatalogScreen(
             item = currentModel,
             testRecord = currentRecord,
             isTesting = testingModelName == currentModel.modelName,
-            isSelected = currentModel.modelName == safeSelectedModelName,
+            isSelected = currentModel.providerName == safeSelectedProviderName &&
+                    currentModel.modelName == safeSelectedModelName,
             isSelectionMode = isSelectionMode,
             onTestModelClick = {
                 scope.launch {
@@ -305,9 +316,11 @@ fun ModelCatalogScreen(
                         ModelProviderType.NVIDIA -> {
                             NvidiaModelProvider.testModel(currentModel.modelName)
                         }
+
                         ModelProviderType.GOOGLE -> {
                             GoogleModelProvider.testModel(currentModel.modelName)
                         }
+
                         else -> {
                             ModelTestRecord(
                                 providerName = currentModel.providerName,
@@ -651,6 +664,15 @@ private fun SmallStatusChip(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         )
+    }
+}
+
+private fun sanitizeCatalogProviderName(providerName: String): String {
+    return when (providerName) {
+        ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+        ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+        ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+        else -> ModelProviderType.DUMMY
     }
 }
 

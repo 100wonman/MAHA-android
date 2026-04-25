@@ -20,13 +20,13 @@ object StorageManager {
 
     fun saveAgents(context: Context, agents: List<Agent>) {
         val safeAgents = agents
-            .map { sanitizeAgent(it) }
+            .map { sanitizeAgent(context, it) }
             .filter { it.id.isNotBlank() }
             .distinctBy { it.id }
 
         val jsonArray = JSONArray()
         safeAgents.forEach { agent ->
-            jsonArray.put(agentToJson(agent))
+            jsonArray.put(agentToJson(context, agent))
         }
 
         saveJsonWithBackup(
@@ -38,7 +38,7 @@ object StorageManager {
     }
 
     fun loadAgents(context: Context): List<Agent> {
-        val loaded = loadJsonArrayWithBackup(
+        return loadJsonArrayWithBackup(
             context = context,
             key = KEY_AGENTS,
             backupKey = KEY_AGENTS_BACKUP
@@ -47,24 +47,22 @@ object StorageManager {
 
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.optJSONObject(i) ?: continue
-                val agent = jsonToAgent(item) ?: continue
+                val agent = jsonToAgent(context, item) ?: continue
                 result.add(agent)
             }
 
             result.distinctBy { it.id }
         }
-
-        return loaded
     }
 
     fun saveScenarios(context: Context, scenarios: List<Scenario>) {
         val safeScenarios = scenarios
-            .mapNotNull { sanitizeScenario(it) }
+            .mapNotNull { sanitizeScenario(context, it) }
             .distinctBy { it.id }
 
         val jsonArray = JSONArray()
         safeScenarios.forEach { scenario ->
-            jsonArray.put(scenarioToJson(scenario))
+            jsonArray.put(scenarioToJson(context, scenario))
         }
 
         saveJsonWithBackup(
@@ -85,7 +83,7 @@ object StorageManager {
 
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.optJSONObject(i) ?: continue
-                val scenario = jsonToScenario(item) ?: continue
+                val scenario = jsonToScenario(context, item) ?: continue
                 result.add(scenario)
             }
 
@@ -172,9 +170,12 @@ object StorageManager {
     private fun getPrefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private fun sanitizeAgent(agent: Agent): Agent {
+    private fun sanitizeAgent(context: Context, agent: Agent): Agent {
         val safeId = agent.id.ifBlank { "" }
         if (safeId.isBlank()) return agent.copy(id = "")
+
+        val safeModelName = GeminiModelType.sanitize(agent.modelName)
+        val fallbackProviderName = ApiKeyManager.getSelectedProvider(context)
 
         return agent.copy(
             id = safeId,
@@ -183,12 +184,17 @@ object StorageManager {
             status = agent.status.ifBlank { "Enabled" },
             inputFormat = agent.inputFormat.ifBlank { "Input Text" },
             outputFormat = agent.outputFormat.ifBlank { "Output Text" },
-            modelName = GeminiModelType.sanitize(agent.modelName)
+            providerName = resolveProviderName(
+                providerName = agent.providerName,
+                fallbackProviderName = fallbackProviderName,
+                modelName = safeModelName
+            ),
+            modelName = safeModelName
         )
     }
 
-    private fun agentToJson(agent: Agent): JSONObject {
-        val safeAgent = sanitizeAgent(agent)
+    private fun agentToJson(context: Context, agent: Agent): JSONObject {
+        val safeAgent = sanitizeAgent(context, agent)
 
         return JSONObject().apply {
             put("id", safeAgent.id)
@@ -198,16 +204,25 @@ object StorageManager {
             put("inputFormat", safeAgent.inputFormat)
             put("outputFormat", safeAgent.outputFormat)
             put("isEnabled", safeAgent.isEnabled)
+            put("providerName", safeAgent.providerName)
             put("modelName", GeminiModelType.sanitize(safeAgent.modelName))
         }
     }
 
-    private fun jsonToAgent(json: JSONObject): Agent? {
+    private fun jsonToAgent(context: Context, json: JSONObject): Agent? {
         val id = json.optString("id", "").trim()
         if (id.isEmpty()) return null
 
+        val modelName = GeminiModelType.sanitize(
+            json.optString("modelName", GeminiModelType.DEFAULT)
+        )
+
+        val fallbackProviderName = ApiKeyManager.getSelectedProvider(context)
+        val rawProviderName = json.optString("providerName", "")
+
         return sanitizeAgent(
-            Agent(
+            context = context,
+            agent = Agent(
                 id = id,
                 name = json.optString("name", "Unnamed Agent"),
                 description = json.optString("description", ""),
@@ -215,17 +230,20 @@ object StorageManager {
                 inputFormat = json.optString("inputFormat", "Input Text"),
                 outputFormat = json.optString("outputFormat", "Output Text"),
                 isEnabled = json.optBoolean("isEnabled", true),
-                modelName = GeminiModelType.sanitize(
-                    json.optString("modelName", GeminiModelType.DEFAULT)
-                )
+                providerName = resolveProviderName(
+                    providerName = rawProviderName,
+                    fallbackProviderName = fallbackProviderName,
+                    modelName = modelName
+                ),
+                modelName = modelName
             )
         ).takeIf { it.id.isNotBlank() }
     }
 
-    private fun sanitizeScenario(scenario: Scenario): Scenario? {
+    private fun sanitizeScenario(context: Context, scenario: Scenario): Scenario? {
         val safeId = scenario.id.ifBlank { return null }
         val safeAgents = scenario.agents
-            .map { sanitizeAgent(it) }
+            .map { sanitizeAgent(context, it) }
             .filter { it.id.isNotBlank() }
             .distinctBy { it.id }
 
@@ -237,12 +255,12 @@ object StorageManager {
         )
     }
 
-    private fun scenarioToJson(scenario: Scenario): JSONObject {
-        val safeScenario = sanitizeScenario(scenario) ?: return JSONObject()
+    private fun scenarioToJson(context: Context, scenario: Scenario): JSONObject {
+        val safeScenario = sanitizeScenario(context, scenario) ?: return JSONObject()
 
         val agentsArray = JSONArray()
         safeScenario.agents.forEach { agent ->
-            agentsArray.put(agentToJson(agent))
+            agentsArray.put(agentToJson(context, agent))
         }
 
         return JSONObject().apply {
@@ -253,7 +271,7 @@ object StorageManager {
         }
     }
 
-    private fun jsonToScenario(json: JSONObject): Scenario? {
+    private fun jsonToScenario(context: Context, json: JSONObject): Scenario? {
         val id = json.optString("id", "").trim()
         if (id.isEmpty()) return null
 
@@ -262,12 +280,13 @@ object StorageManager {
 
         for (i in 0 until agentsArray.length()) {
             val agentObject = agentsArray.optJSONObject(i) ?: continue
-            val agent = jsonToAgent(agentObject) ?: continue
+            val agent = jsonToAgent(context, agentObject) ?: continue
             agents.add(agent)
         }
 
         return sanitizeScenario(
-            Scenario(
+            context = context,
+            scenario = Scenario(
                 id = id,
                 name = json.optString("name", "Unnamed Scenario"),
                 agents = agents,
@@ -414,5 +433,35 @@ object StorageManager {
                 logs = logs
             )
         )
+    }
+
+    private fun resolveProviderName(
+        providerName: String,
+        fallbackProviderName: String,
+        modelName: String
+    ): String {
+        sanitizeProviderName(providerName)?.let { return it }
+        sanitizeProviderName(fallbackProviderName)?.let { return it }
+        inferProviderNameFromModelName(modelName)?.let { return it }
+        return ModelProviderType.DUMMY
+    }
+
+    private fun sanitizeProviderName(providerName: String): String? {
+        return when (providerName) {
+            ModelProviderType.DUMMY -> ModelProviderType.DUMMY
+            ModelProviderType.GOOGLE -> ModelProviderType.GOOGLE
+            ModelProviderType.NVIDIA -> ModelProviderType.NVIDIA
+            else -> null
+        }
+    }
+
+    private fun inferProviderNameFromModelName(modelName: String): String? {
+        val normalized = modelName.trim().removePrefix("models/").lowercase()
+
+        return when {
+            normalized.startsWith("gemini") || normalized.startsWith("gemma") -> ModelProviderType.GOOGLE
+            normalized.contains("/") -> ModelProviderType.NVIDIA
+            else -> null
+        }
     }
 }

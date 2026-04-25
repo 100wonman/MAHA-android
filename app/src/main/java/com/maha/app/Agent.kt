@@ -1,4 +1,4 @@
-// Agent.kt
+//Agent.kt
 
 package com.maha.app
 
@@ -10,5 +10,6 @@ data class Agent(
     val inputFormat: String,
     val outputFormat: String,
     val isEnabled: Boolean,
+    val providerName: String = ModelProviderType.DUMMY,
     val modelName: String = GeminiModelType.DEFAULT
 )

@@ -1,9 +1,10 @@
-// NvidiaModelProvider.kt
+//NvidiaModelProvider.kt
 
 package com.maha.app
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +20,12 @@ object NvidiaModelProvider : ModelProvider {
     private const val CHAT_COMPLETIONS_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
     private const val DEFAULT_NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
 
+    private const val CONNECT_TIMEOUT_MS = 15_000
+    private const val DEFAULT_READ_TIMEOUT_MS = 120_000
+    private const val HEAVY_MODEL_READ_TIMEOUT_MS = 180_000
+    private const val TEST_READ_TIMEOUT_MS = 120_000
+    private const val RETRY_DELAY_MS = 2_000L
+
     override suspend fun generate(request: ModelRequest): ModelResponse {
         val apiKey = ApiKeyManager.getNvidiaApiKey()
 
@@ -26,13 +33,13 @@ object NvidiaModelProvider : ModelProvider {
             Log.d(TAG, "NVIDIA API key is not set.")
             return ModelResponse(
                 outputText = "NVIDIA_API_KEY_NOT_SET",
-                status = "SUCCESS"
+                status = "FAILED"
             )
         }
 
         return withContext(Dispatchers.IO) {
             runCatching {
-                callNvidiaApi(
+                callNvidiaApiWithTimeoutRetry(
                     apiKey = apiKey,
                     modelName = request.modelName.ifBlank { DEFAULT_NVIDIA_MODEL },
                     prompt = request.inputText,
@@ -73,7 +80,7 @@ object NvidiaModelProvider : ModelProvider {
             val startTime = System.currentTimeMillis()
 
             runCatching {
-                callNvidiaModelTest(
+                callNvidiaModelTestWithTimeoutRetry(
                     apiKey = apiKey,
                     modelName = safeModelName
                 )
@@ -99,6 +106,57 @@ object NvidiaModelProvider : ModelProvider {
         }
     }
 
+    private suspend fun callNvidiaApiWithTimeoutRetry(
+        apiKey: String,
+        modelName: String,
+        prompt: String,
+        maxTokens: Int,
+        temperature: Double
+    ): ModelResponse {
+        return try {
+            callNvidiaApi(
+                apiKey = apiKey,
+                modelName = modelName,
+                prompt = prompt,
+                maxTokens = maxTokens,
+                temperature = temperature
+            )
+        } catch (firstTimeout: SocketTimeoutException) {
+            Log.e(TAG, "NVIDIA timeout. Retry once after delay.", firstTimeout)
+
+            delay(RETRY_DELAY_MS)
+
+            callNvidiaApi(
+                apiKey = apiKey,
+                modelName = modelName,
+                prompt = prompt,
+                maxTokens = maxTokens,
+                temperature = temperature
+            )
+        }
+    }
+
+    private suspend fun callNvidiaModelTestWithTimeoutRetry(
+        apiKey: String,
+        modelName: String
+    ): ModelTestRecord {
+        return try {
+            callNvidiaModelTest(
+                apiKey = apiKey,
+                modelName = modelName
+            )
+        } catch (firstTimeout: SocketTimeoutException) {
+            Log.e(TAG, "NVIDIA model test timeout. Retry once after delay.", firstTimeout)
+
+            delay(RETRY_DELAY_MS)
+
+            callNvidiaModelTest(
+                apiKey = apiKey,
+                modelName = modelName
+            )
+        }
+    }
+
     private fun callNvidiaApi(
         apiKey: String,
         modelName: String,
@@ -118,7 +176,7 @@ object NvidiaModelProvider : ModelProvider {
 
         try {
             connection.requestMethod = "POST"
-            connection.connectTimeout = 15_000
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = readTimeoutMs
             connection.doOutput = true
             connection.setRequestProperty("Authorization", "Bearer $apiKey")
@@ -173,17 +231,6 @@ object NvidiaModelProvider : ModelProvider {
                     status = "FAILED"
                 )
             }
-        } catch (exception: SocketTimeoutException) {
-            Log.e(
-                TAG,
-                "NVIDIA timeout. model=$safeModelName, readTimeoutMs=$readTimeoutMs, message=${exception.message}",
-                exception
-            )
-
-            return ModelResponse(
-                outputText = "NVIDIA_TIMEOUT",
-                status = "FAILED"
-            )
         } finally {
             connection.disconnect()
         }
@@ -198,8 +245,8 @@ object NvidiaModelProvider : ModelProvider {
 
         try {
             connection.requestMethod = "POST"
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = TEST_READ_TIMEOUT_MS
             connection.doOutput = true
             connection.setRequestProperty("Authorization", "Bearer $apiKey")
             connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
@@ -252,24 +299,6 @@ object NvidiaModelProvider : ModelProvider {
                     parsedText = parsedText,
                     responseText = responseText
                 ),
-                latencyMs = latencyMs
-            )
-        } catch (exception: SocketTimeoutException) {
-            val latencyMs = System.currentTimeMillis() - startTime
-
-            Log.e(
-                TAG,
-                "NVIDIA model test timeout. model=$modelName, message=${exception.message}",
-                exception
-            )
-
-            return ModelTestRecord(
-                providerName = ModelProviderType.NVIDIA,
-                modelName = modelName,
-                status = NvidiaModelTestStatus.FAILED,
-                lastTestedAt = getCurrentTimeText(),
-                httpStatusCode = -1,
-                message = "테스트 timeout",
                 latencyMs = latencyMs
             )
         } finally {
@@ -357,15 +386,19 @@ object NvidiaModelProvider : ModelProvider {
     private fun getReadTimeoutMs(modelName: String): Int {
         val lowerName = modelName.lowercase()
 
-        return when {
-            lowerName.contains("kimi") -> 90_000
-            lowerName.contains("70b") -> 80_000
-            lowerName.contains("405b") -> 120_000
-            lowerName.contains("deepseek") -> 90_000
-            lowerName.contains("nemotron") -> 90_000
-            lowerName.contains("8b") -> 45_000
-            lowerName.contains("7b") -> 45_000
-            else -> 60_000
+        val isHeavyModel =
+            lowerName.contains("deepseek") ||
+                    lowerName.contains("qwen") ||
+                    lowerName.contains("llama-3.3") ||
+                    lowerName.contains("70b") ||
+                    lowerName.contains("405b") ||
+                    lowerName.contains("r1") ||
+                    lowerName.contains("reasoning")
+
+        return if (isHeavyModel) {
+            HEAVY_MODEL_READ_TIMEOUT_MS
+        } else {
+            DEFAULT_READ_TIMEOUT_MS
         }
     }
 
