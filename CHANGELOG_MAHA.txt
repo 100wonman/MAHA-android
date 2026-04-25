@@ -1,4 +1,51 @@
 ==============================
+[2026-04-25 14:30] NVIDIA Provider 구조 설계
+==============================
+
+[지시문 전체] - [설계 모드]
+
+이번 단계는 NVIDIA Build API를 MAHA에 새로운 Model Provider로 추가하는 구조를 설계한다.
+
+목표:
+- GoogleModelProvider 외에 NvidiaModelProvider를 추가한다
+- ModelRouter에서 Provider 선택에 따라 Google / NVIDIA를 분기한다
+- NVIDIA API Key를 별도로 저장/관리한다
+- NVIDIA 모델을 Worker에서 선택 가능하게 한다
+
+설계 대상:
+- NvidiaModelProvider 구조
+- NVIDIA API 호출 방식 (endpoint, header, auth)
+- ApiKeyManager에 NVIDIA API Key 추가
+- ModelProviderType에 NVIDIA 추가
+- ModelRouter 분기 확장
+- Worker modelName에 NVIDIA 모델 사용 방식
+- Google 모델과 NVIDIA 모델 혼용 가능 구조
+- 모델 카탈로그에 Provider 구분 표시
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- 기존 Google Provider 구조 유지
+- 기존 Dummy Provider 유지
+- 기존 Worker별 modelName 구조 유지
+- 코딩 초보 기준으로 설명
+
+[결과]
+(성공 / 수정 필요 / 실패)
+
+[적용 내용]
+- NVIDIA API 기반 Model Provider 추가 구조 설계
+- Google / NVIDIA 멀티 Provider 구조 방향 정리
+- API Key 분리 관리 구조 설계
+- Worker별 모델 선택 확장 방향 정리
+
+[문제 및 해결]
+- Google API quota 및 rate limit 문제 발생
+- 해결 방향: NVIDIA Build API를 추가해 호출 분산 및 모델 다양성 확보
+
+[다음 작업 예정]
+NvidiaModelProvider 구현
+
+==============================
 [2026-04-25 03:05] 모델 카탈로그 선택 기능 연결
 ==============================
 
