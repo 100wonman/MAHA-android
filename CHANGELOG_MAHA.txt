@@ -1,4 +1,75 @@
 ==============================
+[2026-04-25 20:20] Google 모델 테스트 버튼 동작 수정
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 Google 모델 테스트 버튼 동작을 구현하거나 비활성 상태를 명확히 표시한다.
+
+목표:
+- Google 모델에서도 “이 모델 테스트” 버튼이 동작하게 한다
+- Google 모델 테스트 성공 시 AVAILABLE로 저장한다
+- Google 모델 테스트 실패 시 오류 유형에 맞는 상태를 저장한다
+- 아직 Google 테스트 호출 경로가 없다면 Nvidia 테스트 구조와 동일한 패턴으로 추가한다
+
+현재 상태:
+- NVIDIA 모델은 “이 모델 테스트” 버튼이 동작함
+- NVIDIA 모델 테스트 실패 시 빨간색 실패 상태가 표시됨
+- Google 모델은 “이 모델 테스트” 버튼이 눌리지 않거나 동작하지 않음
+- 따라서 문제는 Google 모델 테스트 경로에 한정됨
+
+구현 내용:
+- ModelCatalogScreen에서 providerName == GOOGLE인 모델도 테스트 버튼 클릭 가능하게 수정
+- GoogleModelProvider에 모델 테스트용 호출 함수 추가 또는 기존 generateContent 호출 재사용
+- 테스트 프롬프트는 "Reply with only: OK" 사용
+- 테스트 옵션은 가능한 최소 출력으로 설정
+- Google 테스트 성공 시 ModelTestManager에 AVAILABLE 저장
+- 429 → RATE_LIMITED 저장
+- 401/403 → AUTH_REQUIRED 저장
+- 404/410 → UNSUPPORTED 저장
+- 500/timeout/기타 → FAILED 저장
+- 테스트 결과 저장 후 UI 즉시 갱신
+
+조건:
+- NVIDIA 테스트 기능은 변경하지 않는다
+- 기존 Google 일반 호출 흐름은 유지한다
+- 기존 Dummy Provider 흐름은 유지한다
+- 무료/유료 표현은 사용하지 않는다
+- 상태 문구는 한글 유지
+- 빌드 가능한 상태 유지
+
+변경 파일:
+- ModelCatalogScreen.kt [수정]
+- GoogleModelProvider.kt [수정]
+- ModelTestManager.kt [확인 또는 최소 수정]
+- 필요 시 ModelCatalogItem.kt [수정]
+
+추가 조건:
+- 변경된 파일만 출력
+- 각 파일 전체 코드 제공
+- 부분 수정 금지
+- import 누락 금지
+- 기존 클래스명, 패키지명, public 인터페이스는 최대한 유지
+
+[결과]
+(성공 / 코드 누락1회 / 부분 수정)
+
+[적용 내용]
+- Google 모델 테스트 버튼 클릭 동작 추가
+- Google 모델 테스트용 최소 호출 추가
+- Google 테스트 성공/실패 상태 저장
+- Google 테스트 결과 UI 갱신
+- NVIDIA 테스트 기능 유지
+
+[문제 및 해결]
+- NVIDIA 모델 테스트는 정상 동작하지만 Google 모델 테스트 버튼만 동작하지 않음
+- 해결: Google providerName 분기에 대한 테스트 호출 경로 추가
+
+[다음 작업 예정]
+Google / NVIDIA 모델 테스트 결과 기반 Worker 선택 후보 필터링
+
+==============================
 [2026-04-25 20:00] NVIDIA 모델 테스트 상태 기록 구현
 ==============================
 

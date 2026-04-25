@@ -299,19 +299,33 @@ fun ModelCatalogScreen(
             isSelected = currentModel.modelName == safeSelectedModelName,
             isSelectionMode = isSelectionMode,
             onTestModelClick = {
-                if (currentModel.providerName != ModelProviderType.NVIDIA) {
-                    testMessage = "NVIDIA 모델만 테스트할 수 있습니다."
-                    return@ModelDetailDialog
-                }
-
                 scope.launch {
                     testingModelName = currentModel.modelName
-                    testMessage = "모델 테스트 중: ${currentModel.modelName}"
+                    testMessage = "모델 테스트 중..."
 
-                    val record = NvidiaModelProvider.testModel(currentModel.modelName)
+                    val record = when (currentModel.providerName) {
+                        ModelProviderType.NVIDIA -> {
+                            NvidiaModelProvider.testModel(currentModel.modelName)
+                        }
+                        ModelProviderType.GOOGLE -> {
+                            GoogleModelProvider.testModel(currentModel.modelName)
+                        }
+                        else -> {
+                            ModelTestRecord(
+                                providerName = currentModel.providerName,
+                                modelName = currentModel.modelName,
+                                status = NvidiaModelTestStatus.UNSUPPORTED,
+                                lastTestedAt = getCurrentTimeText(),
+                                httpStatusCode = -1,
+                                message = "지원되지 않는 Provider",
+                                latencyMs = 0
+                            )
+                        }
+                    }
+
                     ModelTestManager.saveRecord(context, record)
 
-                    testMessage = "테스트 완료: ${toKoreanStatus(record.status)} / ${record.latencyMs}ms"
+                    testMessage = "테스트 완료: ${record.message}"
                     testingModelName = ""
                     selectedModel = null
                 }
@@ -446,13 +460,16 @@ private fun ModelDetailDialog(
             }
         },
         dismissButton = {
+            val canTestProvider = item.providerName == ModelProviderType.NVIDIA ||
+                    item.providerName == ModelProviderType.GOOGLE
+
             TextButton(
-                enabled = item.providerName == ModelProviderType.NVIDIA && !isTesting,
+                enabled = canTestProvider && !isTesting,
                 onClick = onTestModelClick
             ) {
                 Text(
                     text = if (isTesting) "테스트 중..." else "이 모델 테스트",
-                    color = if (item.providerName == ModelProviderType.NVIDIA) {
+                    color = if (canTestProvider && !isTesting) {
                         androidx.compose.ui.graphics.Color(0xFF93C5FD)
                     } else {
                         androidx.compose.ui.graphics.Color(0xFF94A3B8)
