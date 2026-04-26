@@ -299,8 +299,7 @@ fun ModelCatalogScreen(
         }
     }
 
-    if (selectedModel != null) {
-        val currentModel = selectedModel!!
+    selectedModel?.let { currentModel ->
         val currentRecord = ModelTestManager.getRecord(
             context = context,
             providerName = currentModel.providerName,
@@ -542,7 +541,10 @@ private fun ModelDetailDialog(
                 }
 
                 item {
-                    DetailText(label = "기능 태그 신뢰도", value = metadata.confidenceLevel)
+                    DetailText(
+                        label = "신뢰도",
+                        value = "${metadata.confidenceLevel} / ${toKoreanConfidence(metadata.confidenceLevel)}"
+                    )
                 }
 
                 item {
@@ -570,6 +572,21 @@ private fun ModelDetailDialog(
                     DetailText(
                         label = "Manual 태그",
                         value = buildCapabilityText(metadata.manualCapabilities)
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "모델 특징 (참고)",
+                        value = buildSelfReportedSummary(metadata.selfReportedRawText)
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "※ 모델이 스스로 제공한 정보로 정확하지 않을 수 있습니다",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFFCA5A5)
                     )
                 }
 
@@ -755,15 +772,6 @@ private fun ModelDetailDialog(
                     )
                 }
 
-                if (testRecord.selfReportedInfo.rawJson.isNotBlank()) {
-                    item {
-                        DetailText(
-                            label = "Self Raw JSON",
-                            value = testRecord.selfReportedInfo.rawJson
-                        )
-                    }
-                }
-
                 item {
                     HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF334155))
                 }
@@ -831,6 +839,43 @@ private fun buildCapabilityText(capabilities: List<String>): String {
         .distinct()
         .ifEmpty { listOf(ModelCapability.UNKNOWN) }
         .joinToString(" · ")
+}
+
+private fun buildSelfReportedSummary(rawText: String): String {
+    val text = rawText.lowercase()
+    val features = mutableListOf<String>()
+
+    if (text.contains("image") || text.contains("vision")) {
+        features.add("이미지 처리 가능")
+    }
+
+    if (text.contains("code") || text.contains("programming")) {
+        features.add("코드 생성 가능")
+    }
+
+    if (text.contains("reasoning") || text.contains("logic")) {
+        features.add("추론 기능")
+    }
+
+    if (text.contains("search") || text.contains("browse")) {
+        features.add("웹 검색 가능")
+    }
+
+    return if (features.isEmpty()) {
+        "확인된 참고 특징 없음"
+    } else {
+        features.joinToString(separator = "\n") { "- $it" }
+    }
+}
+
+private fun toKoreanConfidence(confidenceLevel: String): String {
+    return when (confidenceLevel) {
+        ModelMetadataConfidence.HIGH -> "높음"
+        ModelMetadataConfidence.MEDIUM_HIGH -> "중간 이상"
+        ModelMetadataConfidence.MEDIUM -> "중간"
+        ModelMetadataConfidence.LOW -> "낮음"
+        else -> "알 수 없음"
+    }
 }
 
 private fun sanitizeCatalogProviderName(providerName: String): String {
