@@ -1,4 +1,92 @@
 ==============================
+[2026-04-26 20:00] 모델 기능 메타데이터 수집 및 분류 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 모델 기능 메타데이터 수집 및 분류 구조를 설계한다.
+
+목표:
+- 모델별 기능 태그를 저장한다
+- 텍스트 전용, 멀티모달, 이미지 입력, 이미지 출력, 영상 입력, 오디오 입력, 웹검색/그라운딩, 코딩 특화, 추론 특화 등을 분류한다
+- API 메타데이터, 실제 호출 테스트, 모델 자기응답 정보를 분리해 저장한다
+- 모델 선택 팝업과 카탈로그 화면에 기능 태그를 표시한다
+
+설계 대상:
+1. 기능 태그 구조
+- TEXT_ONLY
+- MULTIMODAL_INPUT
+- IMAGE_INPUT
+- IMAGE_OUTPUT
+- VIDEO_INPUT
+- AUDIO_INPUT
+- WEB_GROUNDING
+- CODING
+- REASONING
+- FAST
+- LONG_CONTEXT
+- EMBEDDING
+- RERANKING
+- VISION
+- UNKNOWN
+
+2. 데이터 구조
+- ModelCapability.kt
+- ModelMetadata.kt
+- ModelMetadataManager.kt
+
+3. 수집 방식
+- API 메타데이터 기반 분류
+- 모델명 패턴 기반 1차 분류
+- 실제 테스트 기반 보정
+- self-reported 정보 저장
+
+4. 신뢰도 구분
+- API_METADATA: 신뢰도 높음
+- TEST_RESULT: 신뢰도 중간~높음
+- SELF_REPORTED: 참고용
+- MANUAL: 사용자가 직접 지정
+
+5. UI 표시
+- ModelCatalogScreen 상세 팝업에 기능 태그 표시
+- 신뢰도 표시
+- self-reported 정보에는 “참고용” 문구 표시
+
+조건:
+- 이번 단계에서는 구현 코드 작성 금지
+- self-reported 정보는 참고용으로만 표시한다
+- 모델 추천 자동화는 성공률 / latency / 테스트 상태를 우선한다
+- 기능 태그는 추천 보조 정보로만 사용한다
+- 기존 모델 테스트 기능 유지
+- 기존 Run 통계 구조 유지
+- 기존 모델 추천 기능 유지
+- 기존 Google / NVIDIA Provider 호출 유지
+
+[결과]
+기능 태그는 ModelMetadata로 별도 관리한다.
+ModelTestRecord는 성능 정보 전용으로 유지한다.
+출처는 API_METADATA / TEST_RESULT / SELF_REPORTED / MANUAL로 분리한다.
+finalCapabilities는 manual → tested → api → self 순서로 계산한다.
+ModelCatalogScreen에는 기능 태그, 신뢰도, 출처별 태그를 표시한다.
+self-reported 정보는 반드시 참고용 경고와 함께 보여준다.
+[적용 내용]
+- 모델 기능 태그 구조 설계
+- ModelMetadata 저장 구조 설계
+- API 메타데이터 / 테스트 결과 / 자기응답 / 수동 태그 분리 기준 정리
+- 기능 태그 신뢰도 기준 정리
+- ModelCatalogScreen 상세 팝업 표시 방향 정리
+
+[문제 및 해결]
+- 모델이 스스로 말하는 정보는 정확하지 않을 수 있음
+- 해결: self-reported 정보는 참고용으로만 저장하고, 실제 추천은 성공률 / latency / 테스트 상태를 우선함
+- Provider별 API 메타데이터 품질이 다를 수 있음
+- 해결: API 메타데이터, 패턴 추론, 테스트 결과, 수동 태그를 분리 저장
+
+[다음 작업 예정]
+모델 기능 메타데이터 수집 및 분류 구현
+
+==============================
 [2026-04-26 21:50] 모델 성능 기반 추천 및 자동 선택 구현
 ==============================
 
