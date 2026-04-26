@@ -1,4 +1,82 @@
 ==============================
+[2026-04-26 22:10] 모델 기능 메타데이터 1차 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 모델 기능 메타데이터 수집 및 표시의 1차 구현을 진행한다.
+
+목표:
+- 모델별 기능 태그를 저장할 수 있는 구조를 추가한다
+- ModelCatalogScreen에서 기능 태그를 표시한다
+- API 연동 없이도 기본 구조가 동작하도록 한다
+
+구현 범위 (최소 4개 파일):
+
+1. ModelCapability.kt [신규]
+- 기능 태그 상수 정의
+- enum 사용 금지, object + const val 방식 사용
+
+2. ModelMetadata.kt [신규]
+- providerName + modelName 기준 데이터 구조 생성
+- apiCapabilities / testedCapabilities / selfReportedCapabilities / manualCapabilities 분리
+- finalCapabilities 필드 포함
+
+3. ModelMetadataManager.kt [신규]
+- SharedPreferences + JSON 저장 구조 구현
+- saveMetadata / getMetadata / getAllMetadata 함수 구현
+- finalCapabilities 계산 로직 포함
+- 우선순위:
+  manual → tested → api → self → UNKNOWN
+
+4. ModelCatalogScreen.kt [수정]
+- 모델 상세 팝업에 기능 태그 표시 추가
+- 표시 형식:
+  - TEXT_ONLY · FAST · LONG_CONTEXT
+- 기능 태그 없으면 UNKNOWN 표시
+
+조건:
+- 기존 ModelTestRecord 구조 수정 금지
+- 기존 추천 로직 수정 금지
+- 기존 Provider / Model 선택 구조 유지
+- 기존 Run 통계 구조 유지
+- 기존 로그 구조 유지
+- 기능 태그는 UI 표시용으로만 사용
+- 빌드 가능한 상태 유지
+
+추가 조건:
+- API 메타데이터 연동은 하지 않는다 (2차 단계)
+- self-reported 기능 추출은 아직 구현하지 않는다 (2차)
+- testedCapabilities는 구조만 준비 (값은 비워둠)
+- 부분 수정 금지, 변경 파일 전체 코드 제공
+
+[결과]
+(성공)
+1. ModelCapability.kt 신규 생성
+2. ModelMetadata.kt 신규 생성
+3. ModelMetadataManager.kt 신규 생성
+4. ModelCatalogScreen.kt 전체 교체
+5. Build > Make Project
+6. Model Catalog 진입
+7. 모델 항목에 TEXT_ONLY / FAST 같은 기능 태그 표시 확인
+8. 모델 상세 팝업에서 기능 태그 / 신뢰도 표시 확인
+
+[적용 내용]
+- ModelCapability 구조 추가
+- ModelMetadata 데이터 구조 추가
+- ModelMetadataManager 저장/조회 로직 구현
+- finalCapabilities 계산 로직 구현
+- ModelCatalogScreen에 기능 태그 표시 추가
+
+[문제 및 해결]
+- 모델 기능 정보가 분산되어 관리되지 않음
+- 해결: ModelMetadata로 기능 정보 통합 관리 구조 도입
+
+[다음 작업 예정]
+API 메타데이터 기반 자동 태그 수집 연결
+
+==============================
 [2026-04-26 20:00] 모델 기능 메타데이터 수집 및 분류 설계
 ==============================
 

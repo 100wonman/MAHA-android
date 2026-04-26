@@ -266,6 +266,12 @@ fun ModelCatalogScreen(
             } else {
                 items(visibleRows.size) { index ->
                     val row = visibleRows[index]
+                    val metadata = ModelMetadataManager.getMetadata(
+                        context = context,
+                        providerName = row.providerName,
+                        modelName = row.modelName
+                    )
+
                     ModelSimpleRow(
                         item = row,
                         isSelected = row.providerName == safeSelectedProviderName &&
@@ -275,6 +281,7 @@ fun ModelCatalogScreen(
                             providerName = row.providerName,
                             modelName = row.modelName
                         ),
+                        metadata = metadata,
                         onClick = {
                             selectedModel = row
                         }
@@ -299,10 +306,16 @@ fun ModelCatalogScreen(
             providerName = currentModel.providerName,
             modelName = currentModel.modelName
         )
+        val currentMetadata = ModelMetadataManager.getMetadata(
+            context = context,
+            providerName = currentModel.providerName,
+            modelName = currentModel.modelName
+        )
 
         ModelDetailDialog(
             item = currentModel,
             testRecord = currentRecord,
+            metadata = currentMetadata,
             isTesting = testingModelName == currentModel.modelName,
             isSelected = currentModel.providerName == safeSelectedProviderName &&
                     currentModel.modelName == safeSelectedModelName,
@@ -357,6 +370,7 @@ private fun ModelSimpleRow(
     item: ModelListRowItem,
     isSelected: Boolean,
     testRecord: ModelTestRecord,
+    metadata: ModelMetadata,
     onClick: () -> Unit
 ) {
     val usage = ModelUsageManager.getTodayUsage(item.modelName)
@@ -394,6 +408,12 @@ private fun ModelSimpleRow(
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                    )
+
+                    Text(
+                        text = buildCapabilityText(metadata.finalCapabilities),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFF93C5FD)
                     )
 
                     Text(
@@ -436,6 +456,7 @@ private fun ModelSimpleRow(
 private fun ModelDetailDialog(
     item: ModelListRowItem,
     testRecord: ModelTestRecord,
+    metadata: ModelMetadata,
     isTesting: Boolean,
     isSelected: Boolean,
     isSelectionMode: Boolean,
@@ -514,6 +535,54 @@ private fun ModelDetailDialog(
 
                 item {
                     DetailText(label = "Provider", value = item.providerName)
+                }
+
+                item {
+                    DetailText(label = "기능 태그", value = buildCapabilityText(metadata.finalCapabilities))
+                }
+
+                item {
+                    DetailText(label = "기능 태그 신뢰도", value = metadata.confidenceLevel)
+                }
+
+                item {
+                    DetailText(
+                        label = "API 기반 태그",
+                        value = buildCapabilityText(metadata.apiCapabilities)
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "실제 테스트 기반 태그",
+                        value = buildCapabilityText(metadata.testedCapabilities)
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self-reported 기반 태그",
+                        value = buildCapabilityText(metadata.selfReportedCapabilities)
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Manual 태그",
+                        value = buildCapabilityText(metadata.manualCapabilities)
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "주의: 기능 태그는 현재 UI 표시용입니다. 추천 자동화는 계속 성공률 / latency / 테스트 상태를 우선합니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFFCA5A5)
+                    )
+                }
+
+                item {
+                    HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF334155))
                 }
 
                 item {
@@ -754,6 +823,14 @@ private fun SmallStatusChip(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         )
     }
+}
+
+private fun buildCapabilityText(capabilities: List<String>): String {
+    return capabilities
+        .filter { it.isNotBlank() }
+        .distinct()
+        .ifEmpty { listOf(ModelCapability.UNKNOWN) }
+        .joinToString(" · ")
 }
 
 private fun sanitizeCatalogProviderName(providerName: String): String {
