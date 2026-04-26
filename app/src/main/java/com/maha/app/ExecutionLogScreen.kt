@@ -46,6 +46,23 @@ private data class RunLogGroup(
     val workerLogs: List<ExecutionHistoryLog>
 )
 
+private data class LogStats(
+    val totalRuns: Int,
+    val successRuns: Int,
+    val failedRuns: Int,
+    val successRate: Int,
+    val averageRunLatencyMs: Long,
+    val averageWorkerLatencyMs: Long
+)
+
+private data class ProviderStats(
+    val name: String,
+    val callCount: Int,
+    val successCount: Int,
+    val successRate: Int,
+    val averageLatencyMs: Long
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExecutionLogScreen(
@@ -70,6 +87,10 @@ fun ExecutionLogScreen(
             )
         }
         .sortedByDescending { it.executedAt }
+
+    val totalStats = calculateLogStats(runGroups)
+    val providerStats = calculateProviderStats(logs)
+    val modelStats = calculateModelStats(logs)
 
     Scaffold(
         topBar = {
@@ -107,10 +128,20 @@ fun ExecutionLogScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                StatusPanel(
-                    title = "Execution History",
-                    status = "WAITING",
-                    message = "Run 단위로 묶어서 표시합니다. Run 카드를 누르면 Worker별 로그가 펼쳐집니다."
+                LogStatsCard(stats = totalStats)
+            }
+
+            item {
+                ProviderStatsCard(
+                    title = "Provider 통계",
+                    stats = providerStats
+                )
+            }
+
+            item {
+                ProviderStatsCard(
+                    title = "Model 통계",
+                    stats = modelStats
                 )
             }
 
@@ -164,6 +195,96 @@ fun ExecutionLogScreen(
                 selectedLog = null
             }
         )
+    }
+}
+
+@Composable
+private fun LogStatsCard(stats: LogStats) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1A2230)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Run 통계",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF8FAFC)
+            )
+
+            InfoRow(label = "전체 Run 수", value = stats.totalRuns.toString())
+            InfoRow(label = "성공 Run 수", value = stats.successRuns.toString())
+            InfoRow(label = "실패 Run 수", value = stats.failedRuns.toString())
+            InfoRow(label = "성공률", value = "${stats.successRate}%")
+            InfoRow(label = "평균 Run latency", value = "${stats.averageRunLatencyMs}ms")
+            InfoRow(label = "평균 Worker latency", value = "${stats.averageWorkerLatencyMs}ms")
+        }
+    }
+}
+
+@Composable
+private fun ProviderStatsCard(
+    title: String,
+    stats: List<ProviderStats>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1A2230)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFF8FAFC)
+            )
+
+            if (stats.isEmpty()) {
+                Text(
+                    text = "통계 없음",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD3DBE7)
+                )
+            } else {
+                stats.forEach { item ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF101722))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = item.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF8FAFC)
+                        )
+
+                        InfoRow(label = "호출 수", value = item.callCount.toString())
+                        InfoRow(label = "성공 수", value = item.successCount.toString())
+                        InfoRow(label = "성공률", value = "${item.successRate}%")
+                        InfoRow(label = "평균 latency", value = "${item.averageLatencyMs}ms")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -432,6 +553,95 @@ private fun DetailText(
             )
         }
     }
+}
+
+private fun calculateLogStats(runGroups: List<RunLogGroup>): LogStats {
+    val totalRuns = runGroups.size
+    val successRuns = runGroups.count { it.status == "SUCCESS" }
+    val failedRuns = totalRuns - successRuns
+
+    val successRate = if (totalRuns == 0) {
+        0
+    } else {
+        ((successRuns.toDouble() / totalRuns.toDouble()) * 100).toInt()
+    }
+
+    val averageRunLatencyMs = if (runGroups.isEmpty()) {
+        0L
+    } else {
+        runGroups.map { it.totalLatencyMs }.average().toLong()
+    }
+
+    val allWorkerLogs = runGroups.flatMap { it.workerLogs }
+
+    val averageWorkerLatencyMs = if (allWorkerLogs.isEmpty()) {
+        0L
+    } else {
+        allWorkerLogs.map { it.latencyMs }.average().toLong()
+    }
+
+    return LogStats(
+        totalRuns = totalRuns,
+        successRuns = successRuns,
+        failedRuns = failedRuns,
+        successRate = successRate,
+        averageRunLatencyMs = averageRunLatencyMs,
+        averageWorkerLatencyMs = averageWorkerLatencyMs
+    )
+}
+
+private fun calculateProviderStats(logs: List<ExecutionHistoryLog>): List<ProviderStats> {
+    return logs
+        .groupBy { it.providerName.ifBlank { "UNKNOWN" } }
+        .map { entry ->
+            buildProviderStats(
+                name = entry.key,
+                logs = entry.value
+            )
+        }
+        .sortedByDescending { it.callCount }
+}
+
+private fun calculateModelStats(logs: List<ExecutionHistoryLog>): List<ProviderStats> {
+    return logs
+        .groupBy {
+            "${it.providerName.ifBlank { "UNKNOWN" }} / ${it.modelName.ifBlank { "UNKNOWN_MODEL" }}"
+        }
+        .map { entry ->
+            buildProviderStats(
+                name = entry.key,
+                logs = entry.value
+            )
+        }
+        .sortedByDescending { it.callCount }
+}
+
+private fun buildProviderStats(
+    name: String,
+    logs: List<ExecutionHistoryLog>
+): ProviderStats {
+    val callCount = logs.size
+    val successCount = logs.count { it.status == "SUCCESS" }
+
+    val successRate = if (callCount == 0) {
+        0
+    } else {
+        ((successCount.toDouble() / callCount.toDouble()) * 100).toInt()
+    }
+
+    val averageLatencyMs = if (logs.isEmpty()) {
+        0L
+    } else {
+        logs.map { it.latencyMs }.average().toLong()
+    }
+
+    return ProviderStats(
+        name = name,
+        callCount = callCount,
+        successCount = successCount,
+        successRate = successRate,
+        averageLatencyMs = averageLatencyMs
+    )
 }
 
 private fun calculateRunStatus(workerLogs: List<ExecutionHistoryLog>): String {

@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -72,14 +73,14 @@ fun MAHAApp() {
     val discoveredModelList = remember { mutableStateListOf<DiscoveredModel>() }
     val executionHistoryLogList = remember { mutableStateListOf<ExecutionHistoryLog>() }
 
-    var selectedAgentId by remember { mutableStateOf<String?>(null) }
-    var selectedRun by remember { mutableStateOf<Run?>(null) }
-    var modelSelectionAgentId by remember { mutableStateOf<String?>(null) }
+    var selectedAgentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedRunId by rememberSaveable { mutableStateOf<String?>(null) }
+    var modelSelectionAgentId by rememberSaveable { mutableStateOf<String?>(null) }
 
-    var isScenarioScreenOpen by remember { mutableStateOf(false) }
-    var isSettingsScreenOpen by remember { mutableStateOf(false) }
-    var isModelCatalogScreenOpen by remember { mutableStateOf(false) }
-    var isExecutionLogScreenOpen by remember { mutableStateOf(false) }
+    var isScenarioScreenOpen by rememberSaveable { mutableStateOf(false) }
+    var isSettingsScreenOpen by rememberSaveable { mutableStateOf(false) }
+    var isModelCatalogScreenOpen by rememberSaveable { mutableStateOf(false) }
+    var isExecutionLogScreenOpen by rememberSaveable { mutableStateOf(false) }
 
     var isDataLoaded by remember { mutableStateOf(false) }
     var isRunAllRunning by remember { mutableStateOf(false) }
@@ -92,10 +93,10 @@ fun MAHAApp() {
     var modelSearchMessage by remember { mutableStateOf("") }
 
     var pendingRunPrecheck by remember { mutableStateOf<RunPrecheckResult?>(null) }
-    var isApplyFallbackModelDialogOpen by remember { mutableStateOf(false) }
+    var isApplyFallbackModelDialogOpen by rememberSaveable { mutableStateOf(false) }
     var lastBackPressedTime by remember { mutableStateOf(0L) }
 
-    var promptText by remember {
+    var promptText by rememberSaveable {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
 
@@ -146,21 +147,11 @@ fun MAHAApp() {
             executionStateMap = executionStateMap
         )
 
-        selectedAgentId = null
-        selectedRun = null
-        modelSelectionAgentId = null
-
-        isScenarioScreenOpen = false
-        isSettingsScreenOpen = false
-        isModelCatalogScreenOpen = false
-        isExecutionLogScreenOpen = false
-
         isRunAllRunning = false
         runningAgentId = null
         isSearchingModels = false
         modelSearchMessage = ""
         pendingRunPrecheck = null
-        isApplyFallbackModelDialogOpen = false
 
         isDataLoaded = true
     }
@@ -226,18 +217,13 @@ fun MAHAApp() {
             runningAgentId = null
         }
 
-        if (selectedRun != null && runList.none { it.runId == selectedRun?.runId }) {
-            selectedRun = null
-        }
-    }
-
-    LaunchedEffect(runList.toList()) {
-        if (selectedRun != null) {
-            selectedRun = runList.find { it.runId == selectedRun?.runId }
+        if (selectedRunId != null && runList.none { it.runId == selectedRunId }) {
+            selectedRunId = null
         }
     }
 
     val selectedAgent = agentList.find { it.id == selectedAgentId }
+    val selectedRun = runList.find { it.runId == selectedRunId }
     val modelSelectionAgent = agentList.find { it.id == modelSelectionAgentId }
 
     BackHandler {
@@ -249,7 +235,7 @@ fun MAHAApp() {
         when {
             pendingRunPrecheck != null -> pendingRunPrecheck = null
             isApplyFallbackModelDialogOpen -> isApplyFallbackModelDialogOpen = false
-            selectedRun != null -> selectedRun = null
+            selectedRunId != null -> selectedRunId = null
             selectedAgentId != null -> selectedAgentId = null
 
             isModelCatalogScreenOpen -> {
@@ -300,7 +286,7 @@ fun MAHAApp() {
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
-                            selectedRun = null
+                            selectedRunId = null
                             modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
@@ -323,7 +309,7 @@ fun MAHAApp() {
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
-                            selectedRun = null
+                            selectedRunId = null
                             modelSelectionAgentId = null
                             isScenarioScreenOpen = true
                             isSettingsScreenOpen = false
@@ -346,7 +332,7 @@ fun MAHAApp() {
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
-                            selectedRun = null
+                            selectedRunId = null
                             modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
@@ -373,7 +359,7 @@ fun MAHAApp() {
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
-                            selectedRun = null
+                            selectedRunId = null
                             modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
@@ -400,7 +386,7 @@ fun MAHAApp() {
                     onClick = {
                         if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                             selectedAgentId = null
-                            selectedRun = null
+                            selectedRunId = null
                             modelSelectionAgentId = null
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = true
@@ -424,7 +410,7 @@ fun MAHAApp() {
                                 subtitle = "가장 최근 실행 결과 보기"
                             )
                         },
-                        selected = selectedRun?.runId == runList.firstOrNull()?.runId,
+                        selected = selectedRunId == runList.firstOrNull()?.runId,
                         onClick = {
                             if (!isRunAllRunning && runningAgentId == null && !isSearchingModels) {
                                 selectedAgentId = null
@@ -433,7 +419,7 @@ fun MAHAApp() {
                                 isSettingsScreenOpen = false
                                 isModelCatalogScreenOpen = false
                                 isExecutionLogScreenOpen = false
-                                selectedRun = runList.firstOrNull()
+                                selectedRunId = runList.firstOrNull()?.runId
                                 scope.launch { drawerState.close() }
                             }
                         },
@@ -560,12 +546,12 @@ fun MAHAApp() {
         when {
             selectedRun != null -> {
                 RunDetailScreen(
-                    run = selectedRun!!,
+                    run = selectedRun,
                     onMenuClick = {
                         scope.launch { drawerState.open() }
                     },
                     onBackClick = {
-                        selectedRun = null
+                        selectedRunId = null
                     }
                 )
             }
@@ -719,7 +705,7 @@ fun MAHAApp() {
                         agentList.addAll(finalAgents)
 
                         selectedAgentId = null
-                        selectedRun = null
+                        selectedRunId = null
                         modelSelectionAgentId = null
                         isSettingsScreenOpen = false
                         isModelCatalogScreenOpen = false
@@ -782,7 +768,7 @@ fun MAHAApp() {
                         )
 
                         selectedAgentId = null
-                        selectedRun = null
+                        selectedRunId = null
                         modelSelectionAgentId = null
 
                         syncExecutionStateMap(
@@ -841,7 +827,7 @@ fun MAHAApp() {
                         }
                     },
                     onRunItemClick = { run ->
-                        selectedRun = runList.find { it.runId == run.runId }
+                        selectedRunId = run.runId
                     },
                     onOpenModelCatalogClick = { agentToEdit ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
@@ -857,7 +843,7 @@ fun MAHAApp() {
 
                         modelSelectionAgentId = safeAgent.id
                         selectedAgentId = null
-                        selectedRun = null
+                        selectedRunId = null
                         isScenarioScreenOpen = false
                         isSettingsScreenOpen = false
                         isExecutionLogScreenOpen = false
@@ -963,7 +949,7 @@ fun MAHAApp() {
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
                             return@AgentListScreen
                         }
-                        selectedRun = runList.find { it.runId == run.runId }
+                        selectedRunId = run.runId
                     },
                     onRunAllClick = {
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
