@@ -1,4 +1,4 @@
-//ModelCatalogScreen.kt
+// ModelCatalogScreen.kt
 
 package com.maha.app
 
@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -189,7 +188,7 @@ fun ModelCatalogScreen(
                     message = if (isSelectionMode) {
                         "현재 Worker Provider: $safeSelectedProviderName\n해당 Provider의 모델만 표시됩니다."
                     } else {
-                        "무료/유료는 단정하지 않습니다. 실제 테스트 결과로 호출 가능 여부를 표시합니다."
+                        "무료/유료는 단정하지 않습니다. 실제 테스트 결과 기준으로 호출 가능 여부를 표시합니다."
                     }
                 )
             }
@@ -265,7 +264,8 @@ fun ModelCatalogScreen(
                     EmptyInfoCard(text = "표시할 모델이 없습니다. API 모델 검색 또는 모델 테스트를 진행하세요.")
                 }
             } else {
-                items(visibleRows) { row ->
+                items(visibleRows.size) { index ->
+                    val row = visibleRows[index]
                     ModelSimpleRow(
                         item = row,
                         isSelected = row.providerName == safeSelectedProviderName &&
@@ -329,7 +329,7 @@ fun ModelCatalogScreen(
                                 lastTestedAt = getCurrentTimeText(),
                                 httpStatusCode = -1,
                                 message = "지원되지 않는 Provider",
-                                latencyMs = 0
+                                latencyMs = 0L
                             )
                         }
                     }
@@ -401,6 +401,14 @@ private fun ModelSimpleRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = androidx.compose.ui.graphics.Color(0xFFD3DBE7)
                     )
+
+                    if (testRecord.testCount > 0) {
+                        Text(
+                            text = "평균 ${testRecord.averageLatencyMs}ms · 성공률 ${testRecord.successRate}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.ui.graphics.Color(0xFFCBD5E1)
+                        )
+                    }
                 }
 
                 Column(
@@ -521,7 +529,23 @@ private fun ModelDetailDialog(
                 }
 
                 item {
-                    DetailText(label = "응답 시간", value = "${testRecord.latencyMs}ms")
+                    DetailText(label = "최근 응답 시간", value = "${testRecord.latencyMs}ms")
+                }
+
+                item {
+                    DetailText(label = "평균 latency", value = "${testRecord.averageLatencyMs}ms")
+                }
+
+                item {
+                    DetailText(label = "테스트 횟수", value = testRecord.testCount.toString())
+                }
+
+                item {
+                    DetailText(label = "성공 횟수", value = testRecord.successCount.toString())
+                }
+
+                item {
+                    DetailText(label = "성공률", value = "${testRecord.successRate}%")
                 }
 
                 item {
@@ -604,6 +628,71 @@ private fun ModelDetailDialog(
                         label = "태그",
                         value = item.tags.joinToString(", ").ifBlank { "없음" }
                     )
+                }
+
+                item {
+                    HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFF334155))
+                }
+
+                item {
+                    Text(
+                        text = "Self-reported 모델 정보",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.ui.graphics.Color(0xFFF8FAFC)
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "주의: 아래 정보는 모델이 스스로 응답한 내용입니다. 신뢰 가능한 공식 스펙이 아니며 참고용으로만 사용하세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.ui.graphics.Color(0xFFFCA5A5)
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self Display Name",
+                        value = testRecord.selfReportedInfo.displayName.ifBlank { "없음" }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self Model Family",
+                        value = testRecord.selfReportedInfo.modelFamily.ifBlank { "없음" }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self Strengths",
+                        value = testRecord.selfReportedInfo.strengths.ifBlank { "없음" }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self Limitations",
+                        value = testRecord.selfReportedInfo.limitations.ifBlank { "없음" }
+                    )
+                }
+
+                item {
+                    DetailText(
+                        label = "Self Recommended Use",
+                        value = testRecord.selfReportedInfo.recommendedUse.ifBlank { "없음" }
+                    )
+                }
+
+                if (testRecord.selfReportedInfo.rawJson.isNotBlank()) {
+                    item {
+                        DetailText(
+                            label = "Self Raw JSON",
+                            value = testRecord.selfReportedInfo.rawJson
+                        )
+                    }
                 }
 
                 item {

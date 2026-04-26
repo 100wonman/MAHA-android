@@ -1,4 +1,4 @@
-//NvidiaModelProvider.kt
+// NvidiaModelProvider.kt
 
 package com.maha.app
 
@@ -84,25 +84,39 @@ object NvidiaModelProvider : ModelProvider {
                     apiKey = apiKey,
                     modelName = safeModelName
                 )
-            }.getOrElse { exception ->
-                val latencyMs = System.currentTimeMillis() - startTime
+            }.fold(
+                onSuccess = { record ->
+                    val modelInfo = runCatching {
+                        requestSelfReportedModelInfo(
+                            apiKey = apiKey,
+                            modelName = safeModelName
+                        )
+                    }.getOrDefault(ModelInfo())
 
-                Log.e(TAG, "NVIDIA model test exception: ${exception.message}", exception)
+                    record.copy(
+                        selfReportedInfo = modelInfo
+                    )
+                },
+                onFailure = { exception ->
+                    val latencyMs = System.currentTimeMillis() - startTime
 
-                ModelTestRecord(
-                    providerName = ModelProviderType.NVIDIA,
-                    modelName = safeModelName,
-                    status = NvidiaModelTestStatus.FAILED,
-                    lastTestedAt = getCurrentTimeText(),
-                    httpStatusCode = -1,
-                    message = if (exception is SocketTimeoutException) {
-                        "테스트 timeout"
-                    } else {
-                        exception.message ?: "테스트 실패"
-                    },
-                    latencyMs = latencyMs
-                )
-            }
+                    Log.e(TAG, "NVIDIA model test exception: ${exception.message}", exception)
+
+                    ModelTestRecord(
+                        providerName = ModelProviderType.NVIDIA,
+                        modelName = safeModelName,
+                        status = NvidiaModelTestStatus.FAILED,
+                        lastTestedAt = getCurrentTimeText(),
+                        httpStatusCode = -1,
+                        message = if (exception is SocketTimeoutException) {
+                            "테스트 timeout"
+                        } else {
+                            exception.message ?: "테스트 실패"
+                        },
+                        latencyMs = latencyMs
+                    )
+                }
+            )
         }
     }
 
@@ -303,6 +317,58 @@ object NvidiaModelProvider : ModelProvider {
             )
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun requestSelfReportedModelInfo(
+        apiKey: String,
+        modelName: String
+    ): ModelInfo {
+        val response = callNvidiaApi(
+            apiKey = apiKey,
+            modelName = modelName,
+            prompt = buildSelfReportPrompt(modelName),
+            maxTokens = 512,
+            temperature = 0.0
+        )
+
+        if (response.status != "SUCCESS") return ModelInfo()
+
+        return parseSelfReportedInfo(response.outputText)
+    }
+
+    private fun buildSelfReportPrompt(modelName: String): String {
+        return """
+            Return only compact JSON.
+            Do not use markdown.
+            Describe this model: $modelName.
+            Required JSON keys:
+            displayName, modelFamily, strengths, limitations, recommendedUse.
+            Keep every value under 160 characters.
+        """.trimIndent()
+    }
+
+    private fun parseSelfReportedInfo(text: String): ModelInfo {
+        val cleanText = text
+            .trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+
+        return runCatching {
+            val json = JSONObject(cleanText)
+
+            ModelInfo(
+                displayName = json.optString("displayName", ""),
+                modelFamily = json.optString("modelFamily", ""),
+                strengths = json.optString("strengths", ""),
+                limitations = json.optString("limitations", ""),
+                recommendedUse = json.optString("recommendedUse", ""),
+                rawJson = cleanText
+            )
+        }.getOrElse {
+            ModelInfo(rawJson = text.take(1000))
         }
     }
 

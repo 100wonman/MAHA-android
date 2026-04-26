@@ -1,4 +1,4 @@
-//GoogleModelProvider.kt
+// GoogleModelProvider.kt
 
 package com.maha.app
 
@@ -15,8 +15,7 @@ import java.net.URL
 object GoogleModelProvider : ModelProvider {
 
     private const val TAG = "GoogleModelProvider"
-    private const val BASE_URL =
-        "https://generativelanguage.googleapis.com/v1beta/models/"
+    private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
 
     private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 75_000
@@ -57,16 +56,17 @@ object GoogleModelProvider : ModelProvider {
 
     suspend fun testModel(modelName: String): ModelTestRecord {
         val apiKey = ApiKeyManager.getGoogleApiKey()
+        val safeModelName = modelName.trim().removePrefix("models/")
 
         if (apiKey.isBlank()) {
             return ModelTestRecord(
                 providerName = ModelProviderType.GOOGLE,
-                modelName = modelName,
+                modelName = safeModelName,
                 status = NvidiaModelTestStatus.AUTH_REQUIRED,
                 lastTestedAt = getCurrentTimeText(),
                 httpStatusCode = 401,
                 message = "API Key 없음",
-                latencyMs = 0
+                latencyMs = 0L
             )
         }
 
@@ -75,7 +75,7 @@ object GoogleModelProvider : ModelProvider {
 
             runCatching {
                 callApiWithTimeoutRetry(
-                    modelName = modelName,
+                    modelName = safeModelName,
                     apiKey = apiKey,
                     prompt = "Reply with only: OK",
                     maxTokens = 8
@@ -83,15 +83,22 @@ object GoogleModelProvider : ModelProvider {
             }.fold(
                 onSuccess = {
                     val latency = System.currentTimeMillis() - start
+                    val modelInfo = runCatching {
+                        requestSelfReportedModelInfo(
+                            modelName = safeModelName,
+                            apiKey = apiKey
+                        )
+                    }.getOrDefault(ModelInfo())
 
                     ModelTestRecord(
                         providerName = ModelProviderType.GOOGLE,
-                        modelName = modelName,
+                        modelName = safeModelName,
                         status = NvidiaModelTestStatus.AVAILABLE,
                         lastTestedAt = getCurrentTimeText(),
                         httpStatusCode = 200,
                         message = "호출 가능",
-                        latencyMs = latency
+                        latencyMs = latency,
+                        selfReportedInfo = modelInfo
                     )
                 },
                 onFailure = { exception ->
@@ -99,7 +106,7 @@ object GoogleModelProvider : ModelProvider {
 
                     ModelTestRecord(
                         providerName = ModelProviderType.GOOGLE,
-                        modelName = modelName,
+                        modelName = safeModelName,
                         status = NvidiaModelTestStatus.FAILED,
                         lastTestedAt = getCurrentTimeText(),
                         httpStatusCode = -1,
@@ -221,6 +228,57 @@ object GoogleModelProvider : ModelProvider {
             }
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun requestSelfReportedModelInfo(
+        modelName: String,
+        apiKey: String
+    ): ModelInfo {
+        val response = callApi(
+            modelName = modelName,
+            apiKey = apiKey,
+            prompt = buildSelfReportPrompt(modelName),
+            maxTokens = 512
+        )
+
+        if (response.status != "SUCCESS") return ModelInfo()
+
+        return parseSelfReportedInfo(response.outputText)
+    }
+
+    private fun buildSelfReportPrompt(modelName: String): String {
+        return """
+            Return only compact JSON.
+            Do not use markdown.
+            Describe this model: $modelName.
+            Required JSON keys:
+            displayName, modelFamily, strengths, limitations, recommendedUse.
+            Keep every value under 160 characters.
+        """.trimIndent()
+    }
+
+    private fun parseSelfReportedInfo(text: String): ModelInfo {
+        val cleanText = text
+            .trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+
+        return runCatching {
+            val json = JSONObject(cleanText)
+
+            ModelInfo(
+                displayName = json.optString("displayName", ""),
+                modelFamily = json.optString("modelFamily", ""),
+                strengths = json.optString("strengths", ""),
+                limitations = json.optString("limitations", ""),
+                recommendedUse = json.optString("recommendedUse", ""),
+                rawJson = cleanText
+            )
+        }.getOrElse {
+            ModelInfo(rawJson = text.take(1000))
         }
     }
 
