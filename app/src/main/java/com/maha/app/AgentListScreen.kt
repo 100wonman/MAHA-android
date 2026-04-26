@@ -51,6 +51,7 @@ fun AgentListScreen(
     onSaveScenarioClick: () -> Unit,
     onOpenScenarioListClick: () -> Unit,
     onApplyGemini31FlashLiteToAllClick: () -> Unit,
+    onShowModelRecommendationsClick: () -> Unit,
     onMoveUpClick: (Agent) -> Unit,
     onMoveDownClick: (Agent) -> Unit,
     onRunItemClick: (Run) -> Unit,
@@ -143,6 +144,14 @@ fun AgentListScreen(
                         )
                     }
                 }
+            }
+
+            item {
+                SecondaryActionButton(
+                    text = "추천 모델 보기",
+                    enabled = !isRunAllRunning && agentList.isNotEmpty(),
+                    onClick = onShowModelRecommendationsClick
+                )
             }
 
             item {

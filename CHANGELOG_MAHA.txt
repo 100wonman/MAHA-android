@@ -1,4 +1,75 @@
 ==============================
+[2026-04-26 21:50] 모델 성능 기반 추천 및 자동 선택 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 모델 성능 기반 추천 및 자동 선택 기능을 구현한다.
+
+목표:
+- ModelRecommendationManager를 추가한다
+- ModelTestRecord와 ExecutionHistoryLog를 기반으로 추천 후보를 계산한다
+- Worker 역할별로 성공률 / latency 가중치를 다르게 적용한다
+- 추천 결과를 다이얼로그로 먼저 표시한다
+- 사용자가 확인한 경우에만 전체 Worker에 추천 모델을 적용한다
+
+구현 내용:
+- ModelRecommendationManager.kt 추가
+- Worker 역할별 추천 점수 계산
+- ModelTestRecord 기반 테스트 상태 반영
+- ExecutionHistoryLog 기반 실제 실행 성능 반영
+- FAILED / AUTH_REQUIRED / UNSUPPORTED 모델 제외
+- RATE_LIMITED 모델 기본 제외
+- AVAILABLE 모델 우선 추천
+- 추천 결과 preview 다이얼로그 추가
+- 확인 시 각 Worker의 providerName / modelName 갱신
+- 취소 시 변경 없음
+
+조건:
+- 자동 적용 금지
+- 반드시 사용자 확인 후 적용
+- 기존 Worker별 Provider 구조 유지
+- 기존 모델 테스트 상태 기록 유지
+- 기존 Run 통계 구조 유지
+- 기존 Run Precheck 유지
+- 기존 Google / NVIDIA Provider 호출 유지
+- 기존 Fallback 일괄 변경 기능 유지
+- 빌드 가능한 상태 유지
+
+변경 예상 파일:
+- ModelRecommendationManager.kt [추가]
+- MainActivity.kt [수정]
+- AgentListScreen.kt 또는 Worker 목록 UI 파일 [수정]
+- StorageManager.kt [필요 시 수정]
+- ModelTestManager.kt [확인 또는 최소 수정]
+- ExecutionHistoryLog 관련 파일 [확인 또는 최소 수정]
+
+추가 조건:
+- 먼저 기존 데이터 구조와 호출 관계를 확인한다
+- 필요한 관련 파일만 요청한다
+- 변경 파일 전체 코드를 한 번에 제공한다
+- 부분 수정 반복 금지
+
+[결과]
+(성공)
+
+[적용 내용]
+- ModelRecommendationManager 추가
+- 모델 테스트 상태 기반 추천 후보 계산
+- 실행 로그 기반 성공률 / latency 반영
+- Worker 역할별 가중치 적용
+- 추천 결과 미리보기 다이얼로그 추가
+- 사용자 확인 후 Worker별 providerName / modelName 적용
+
+[문제 및 해결]
+- 모델 수가 늘어나며 사용자가 직접 최적 모델을 고르기 어려워짐
+- 해결: 테스트 기록과 실행 로그를 기반으로 추천 후보를 계산하고, 사용자가 확인 후 적용하는 구조로 구현
+
+[다음 작업 예정]
+모델 기능 메타데이터 수집 및 분류 구조 설계
+
+==============================
 [2026-04-26 21:10] 모델 성능 기반 추천 및 자동 선택 설계
 ==============================
 

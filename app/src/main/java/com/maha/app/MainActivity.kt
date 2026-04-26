@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
@@ -94,6 +95,9 @@ fun MAHAApp() {
 
     var pendingRunPrecheck by remember { mutableStateOf<RunPrecheckResult?>(null) }
     var isApplyFallbackModelDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var isRecommendationDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingRecommendations by remember { mutableStateOf<List<ModelRecommendation>>(emptyList()) }
+
     var lastBackPressedTime by remember { mutableStateOf(0L) }
 
     var promptText by rememberSaveable {
@@ -152,6 +156,7 @@ fun MAHAApp() {
         isSearchingModels = false
         modelSearchMessage = ""
         pendingRunPrecheck = null
+        pendingRecommendations = emptyList()
 
         isDataLoaded = true
     }
@@ -234,6 +239,7 @@ fun MAHAApp() {
 
         when {
             pendingRunPrecheck != null -> pendingRunPrecheck = null
+            isRecommendationDialogOpen -> isRecommendationDialogOpen = false
             isApplyFallbackModelDialogOpen -> isApplyFallbackModelDialogOpen = false
             selectedRunId != null -> selectedRunId = null
             selectedAgentId != null -> selectedAgentId = null
@@ -539,6 +545,47 @@ fun MAHAApp() {
                     ) {
                         Text(text = "취소")
                     }
+                }
+            )
+        }
+
+        if (isRecommendationDialogOpen) {
+            ModelRecommendationDialog(
+                recommendations = pendingRecommendations,
+                onApplyClick = {
+                    val applicableRecommendations = pendingRecommendations.filter { it.canApply }
+
+                    val updatedAgents = agentList.map { agent ->
+                        val recommendation = applicableRecommendations.firstOrNull {
+                            it.agentId == agent.id
+                        }
+
+                        if (recommendation == null) {
+                            agent
+                        } else {
+                            agent.copy(
+                                providerName = recommendation.recommendedProviderName,
+                                modelName = recommendation.recommendedModelName
+                            )
+                        }
+                    }
+
+                    agentList.clear()
+                    agentList.addAll(updatedAgents)
+
+                    StorageManager.saveAgents(context, agentList.toList())
+
+                    syncExecutionStateMap(
+                        agents = agentList,
+                        executionStateMap = executionStateMap
+                    )
+
+                    isRecommendationDialogOpen = false
+                    pendingRecommendations = emptyList()
+                },
+                onCancelClick = {
+                    isRecommendationDialogOpen = false
+                    pendingRecommendations = emptyList()
                 }
             )
         }
@@ -927,6 +974,20 @@ fun MAHAApp() {
 
                         isApplyFallbackModelDialogOpen = true
                     },
+                    onShowModelRecommendationsClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val recommendations = ModelRecommendationManager.buildRecommendations(
+                            agents = agentList.toList(),
+                            logs = executionHistoryLogList.toList(),
+                            testRecords = ModelTestManager.getAllRecords(context)
+                        )
+
+                        pendingRecommendations = recommendations
+                        isRecommendationDialogOpen = true
+                    },
                     onMoveUpClick = { agent ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
                             return@AgentListScreen
@@ -966,6 +1027,66 @@ fun MAHAApp() {
             }
         }
     }
+}
+
+@Composable
+fun ModelRecommendationDialog(
+    recommendations: List<ModelRecommendation>,
+    onApplyClick: () -> Unit,
+    onCancelClick: () -> Unit
+) {
+    val applicableCount = recommendations.count { it.canApply }
+
+    AlertDialog(
+        onDismissRequest = onCancelClick,
+        title = {
+            Text(text = "추천 모델 미리보기")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(text = "적용 가능 Worker: $applicableCount / ${recommendations.size}")
+                Text(text = "확인을 누르기 전에는 어떤 Worker도 변경되지 않습니다.")
+
+                SelectionContainer {
+                    Text(
+                        text = recommendations.joinToString(separator = "\n\n") { recommendation ->
+                            buildString {
+                                appendLine(recommendation.agentName)
+                                appendLine("현재: ${recommendation.currentProviderName} / ${recommendation.currentModelName}")
+                                appendLine("추천: ${recommendation.recommendedProviderName} / ${recommendation.recommendedModelName}")
+                                appendLine("점수: ${recommendation.score}")
+                                appendLine("이유: ${recommendation.reason}")
+                                if (recommendation.warning.isNotBlank()) {
+                                    appendLine("주의: ${recommendation.warning}")
+                                }
+                                if (!recommendation.canApply) {
+                                    appendLine("상태: 적용 불가")
+                                }
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = applicableCount > 0,
+                onClick = onApplyClick
+            ) {
+                Text(text = "전체 적용")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCancelClick
+            ) {
+                Text(text = "취소")
+            }
+        }
+    )
 }
 
 @Composable

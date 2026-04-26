@@ -12,7 +12,7 @@ object ModelTestManager {
     private const val KEY_MODEL_TEST_RECORDS = "model_test_records_json_v2"
 
     fun saveRecord(context: Context, record: ModelTestRecord) {
-        val currentRecords = getRecords(context).toMutableList()
+        val currentRecords = getAllRecords(context).toMutableList()
         val index = currentRecords.indexOfFirst {
             it.providerName == record.providerName && it.modelName == record.modelName
         }
@@ -43,7 +43,7 @@ object ModelTestManager {
         providerName: String,
         modelName: String
     ): ModelTestRecord {
-        return getRecords(context).firstOrNull {
+        return getAllRecords(context).firstOrNull {
             it.providerName == providerName && it.modelName == modelName
         } ?: ModelTestRecord(
             providerName = providerName,
@@ -61,7 +61,7 @@ object ModelTestManager {
         )
     }
 
-    private fun getRecords(context: Context): List<ModelTestRecord> {
+    fun getAllRecords(context: Context): List<ModelTestRecord> {
         val jsonString = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_MODEL_TEST_RECORDS, "[]")
