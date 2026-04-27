@@ -54,6 +54,52 @@ object ModelMetadataManager {
         saveMetadata(context, metadata)
     }
 
+    fun saveSelfReportedInfoIfInitialized(
+        providerName: String,
+        modelName: String,
+        rawText: String
+    ) {
+        val context = appContext ?: return
+        saveSelfReportedInfo(
+            context = context,
+            providerName = providerName,
+            modelName = modelName,
+            rawText = rawText
+        )
+    }
+
+    fun saveSelfReportedInfo(
+        context: Context,
+        providerName: String,
+        modelName: String,
+        rawText: String
+    ) {
+        initialize(context)
+
+        val safeProviderName = providerName.trim().ifBlank { ModelProviderType.DUMMY }
+        val safeModelName = modelName.trim().removePrefix("models/")
+        val cleanedRawText = rawText.trim()
+
+        if (safeModelName.isBlank() || cleanedRawText.isBlank()) return
+
+        val currentMetadata = getMetadata(
+            context = context,
+            providerName = safeProviderName,
+            modelName = safeModelName
+        )
+
+        val updatedMetadata = currentMetadata.copy(
+            selfReportedRawText = cleanedRawText,
+            selfReportedCapabilities = extractSelfReportedCapabilities(cleanedRawText),
+            updatedAt = getCurrentTimeText()
+        )
+
+        saveMetadata(
+            context = context,
+            metadata = updatedMetadata
+        )
+    }
+
     fun getMetadata(
         context: Context,
         providerName: String,
@@ -206,6 +252,65 @@ object ModelMetadataManager {
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .distinct()
+    }
+
+    private fun extractSelfReportedCapabilities(rawText: String): List<String> {
+        val text = rawText.lowercase()
+        val result = mutableListOf<String>()
+
+        if (
+            text.contains("text") ||
+            text.contains("summarization") ||
+            text.contains("summary") ||
+            text.contains("translation")
+        ) {
+            result.add(ModelCapability.TEXT_ONLY)
+        }
+
+        if (
+            text.contains("coding") ||
+            text.contains("code") ||
+            text.contains("programming")
+        ) {
+            result.add(ModelCapability.CODING)
+        }
+
+        if (
+            text.contains("reasoning") ||
+            text.contains("logic") ||
+            text.contains("math")
+        ) {
+            result.add(ModelCapability.REASONING)
+        }
+
+        if (
+            text.contains("image") ||
+            text.contains("vision")
+        ) {
+            result.add(ModelCapability.IMAGE_INPUT)
+            result.add(ModelCapability.VISION)
+            result.add(ModelCapability.MULTIMODAL_INPUT)
+        }
+
+        if (text.contains("audio")) {
+            result.add(ModelCapability.AUDIO_INPUT)
+            result.add(ModelCapability.MULTIMODAL_INPUT)
+        }
+
+        if (text.contains("video")) {
+            result.add(ModelCapability.VIDEO_INPUT)
+            result.add(ModelCapability.MULTIMODAL_INPUT)
+        }
+
+        if (
+            text.contains("search") ||
+            text.contains("browse") ||
+            text.contains("web")
+        ) {
+            result.add(ModelCapability.WEB_GROUNDING)
+        }
+
+        return result.distinct()
     }
 
     private fun inferCapabilitiesFromText(

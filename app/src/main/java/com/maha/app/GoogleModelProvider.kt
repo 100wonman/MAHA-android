@@ -83,12 +83,23 @@ object GoogleModelProvider : ModelProvider {
             }.fold(
                 onSuccess = {
                     val latency = System.currentTimeMillis() - start
-                    val modelInfo = runCatching {
-                        requestSelfReportedModelInfo(
+
+                    val selfReportRawText = runCatching {
+                        requestSelfReportedRawText(
                             modelName = safeModelName,
                             apiKey = apiKey
                         )
-                    }.getOrDefault(ModelInfo())
+                    }.getOrDefault("")
+
+                    if (selfReportRawText.isNotBlank()) {
+                        ModelMetadataManager.saveSelfReportedInfoIfInitialized(
+                            providerName = ModelProviderType.GOOGLE,
+                            modelName = safeModelName,
+                            rawText = selfReportRawText
+                        )
+                    }
+
+                    val modelInfo = parseSelfReportedInfo(selfReportRawText)
 
                     ModelTestRecord(
                         providerName = ModelProviderType.GOOGLE,
@@ -231,10 +242,10 @@ object GoogleModelProvider : ModelProvider {
         }
     }
 
-    private fun requestSelfReportedModelInfo(
+    private fun requestSelfReportedRawText(
         modelName: String,
         apiKey: String
-    ): ModelInfo {
+    ): String {
         val response = callApi(
             modelName = modelName,
             apiKey = apiKey,
@@ -242,23 +253,31 @@ object GoogleModelProvider : ModelProvider {
             maxTokens = 512
         )
 
-        if (response.status != "SUCCESS") return ModelInfo()
-
-        return parseSelfReportedInfo(response.outputText)
+        return if (response.status == "SUCCESS") {
+            response.outputText
+        } else {
+            ""
+        }
     }
 
     private fun buildSelfReportPrompt(modelName: String): String {
         return """
-            Return only compact JSON.
-            Do not use markdown.
-            Describe this model: $modelName.
-            Required JSON keys:
-            displayName, modelFamily, strengths, limitations, recommendedUse.
-            Keep every value under 160 characters.
+            Answer in JSON only. Do not use markdown.
+            {
+              "model_name": "What model name do you identify as?",
+              "training_cutoff": "What is your known training cutoff?",
+              "version": "What version or family do you identify as?",
+              "specialties": ["coding", "reasoning", "summarization"],
+              "modalities": ["text"],
+              "features": ["web_search", "image_input"]
+            }
+            The model being tested is: $modelName
         """.trimIndent()
     }
 
     private fun parseSelfReportedInfo(text: String): ModelInfo {
+        if (text.isBlank()) return ModelInfo()
+
         val cleanText = text
             .trim()
             .removePrefix("```json")
@@ -270,11 +289,11 @@ object GoogleModelProvider : ModelProvider {
             val json = JSONObject(cleanText)
 
             ModelInfo(
-                displayName = json.optString("displayName", ""),
-                modelFamily = json.optString("modelFamily", ""),
-                strengths = json.optString("strengths", ""),
-                limitations = json.optString("limitations", ""),
-                recommendedUse = json.optString("recommendedUse", ""),
+                displayName = json.optString("model_name", ""),
+                modelFamily = json.optString("version", ""),
+                strengths = json.optJSONArray("specialties")?.let { jsonArrayToStringList(it).joinToString(", ") } ?: "",
+                limitations = "",
+                recommendedUse = json.optJSONArray("features")?.let { jsonArrayToStringList(it).joinToString(", ") } ?: "",
                 rawJson = cleanText
             )
         }.getOrElse {
@@ -303,6 +322,19 @@ object GoogleModelProvider : ModelProvider {
         }
 
         return result.toString().trim()
+    }
+
+    private fun jsonArrayToStringList(jsonArray: JSONArray): List<String> {
+        val result = mutableListOf<String>()
+
+        for (index in 0 until jsonArray.length()) {
+            val item = jsonArray.optString(index, "")
+            if (item.isNotBlank()) {
+                result.add(item)
+            }
+        }
+
+        return result
     }
 
     private fun classifyFailureText(responseCode: Int): String {

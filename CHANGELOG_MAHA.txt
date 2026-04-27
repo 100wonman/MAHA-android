@@ -1,4 +1,113 @@
 ==============================
+[2026-04-26 15:20] 모델 self-reported 정보 수집 및 참고용 표시 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 모델 self-reported 정보 수집 및 참고용 표시 기능을 구현한다.
+
+목표:
+- 모델 테스트 시 모델이 스스로 보고하는 기본 정보를 수집한다
+- self-reported 정보는 참고용으로만 저장한다
+- ModelCatalogScreen 상세 팝업에 한글 요약 형태로 표시한다
+- 기존 API 메타데이터 기반 태그와 분리해서 관리한다
+
+구현 내용:
+1. self-reported 정보 수집 프롬프트 추가
+- 모델 테스트 시 선택적으로 아래 질문을 호출한다
+- JSON only 응답을 요구한다
+
+프롬프트 예시:
+Answer in JSON only.
+{
+  "model_name": "What model name do you identify as?",
+  "training_cutoff": "What is your known training cutoff?",
+  "version": "What version or family do you identify as?",
+  "specialties": ["coding", "reasoning", "summarization"],
+  "modalities": ["text"],
+  "features": ["web_search", "image_input"]
+}
+
+2. ModelMetadataManager 저장 확장
+- selfReportedRawText 저장
+- selfReportedCapabilities 계산
+- finalCapabilities 우선순위는 기존 유지
+  manual → tested → api → self → UNKNOWN
+
+3. Provider별 처리
+- GoogleModelProvider 또는 테스트 경로에서 self-report 호출 지원
+- NvidiaModelProvider 또는 테스트 경로에서 self-report 호출 지원
+- self-report 호출 실패 시 기존 모델 테스트 성공/실패 결과에는 영향 주지 않는다
+
+4. UI 표시
+- ModelCatalogScreen 상세 팝업에 “모델 자기 보고 정보 (참고)” 섹션 추가
+- 영어 원문 전체를 기본 노출하지 않는다
+- 키워드 기반 한글 요약 표시
+- 항상 주의 문구 표시:
+  “※ 모델이 스스로 제공한 정보로 정확하지 않을 수 있습니다.”
+
+5. 한글 요약 기준
+- coding / code / programming → 코딩 특화 가능성
+- reasoning / logic / math → 추론 특화 가능성
+- summary / summarization → 요약 특화 가능성
+- image / vision → 이미지 입력/비전 가능성
+- audio → 오디오 처리 가능성
+- video → 영상 처리 가능성
+- search / browse / web → 웹 검색 가능성
+- text → 텍스트 처리 가능
+
+조건:
+- self-reported 정보는 추천 자동화의 1순위 기준으로 사용하지 않는다
+- 기존 모델 테스트 기능 유지
+- 기존 API 메타데이터 기반 태그 유지
+- 기존 모델 추천 기능 유지
+- 기존 Run 통계 구조 유지
+- 기존 Worker별 Provider 구조 유지
+- self-report 호출 실패가 전체 테스트 실패로 이어지면 안 된다
+- 빌드 가능한 상태 유지
+
+변경 예상 파일:
+- ModelMetadataManager.kt
+- ModelCatalogScreen.kt
+- GoogleModelProvider.kt 또는 Google 모델 테스트 경로 파일
+- NvidiaModelProvider.kt 또는 NVIDIA 모델 테스트 경로 파일
+- ModelTestManager.kt 필요 시
+
+추가 조건:
+- 먼저 현재 모델 테스트 호출 경로를 확인한다
+- 필요한 관련 파일만 요청한다
+- 변경 파일 전체 코드를 한 번에 제공한다
+- 부분 수정 반복 금지
+
+[결과]
+(성공)
+1. ModelMetadataManager.kt 전체 교체
+2. GoogleModelProvider.kt 전체 교체
+3. NvidiaModelProvider.kt 전체 교체
+4. Build > Make Project
+5. Model Catalog > 모델 상세 > 이 모델 테스트
+6. 테스트 완료 후 다시 상세 팝업 열기
+7. 모델 특징 (참고) 영역 확인
+
+[적용 내용]
+- 모델 self-reported 정보 수집 프롬프트 추가
+- selfReportedRawText 저장 구조 연결
+- selfReportedCapabilities 계산 로직 추가
+- ModelCatalogScreen 상세 팝업에 참고용 자기 보고 정보 표시
+- 자기 보고 정보 한글 요약 표시
+- self-reported 정보 부정확 가능성 안내 문구 추가
+
+[문제 및 해결]
+- 모델의 실제 기능과 API 표시명/모델명이 일치하지 않을 수 있음
+- 해결: 모델 자기 보고 정보를 참고용으로 저장하되, 추천 기준은 기존 성공률 / latency / 테스트 상태를 우선함
+- self-reported 정보는 hallucination 가능성이 있음
+- 해결: UI에 참고용 경고 문구를 표시하고 finalCapabilities 우선순위에서 가장 낮게 반영
+
+[다음 작업 예정]
+모델 기능별 테스트 버튼 설계
+
+==============================
 [2026-04-26 11:50] API 메타데이터 기반 자동 태그 수집 연결
 ==============================
 
