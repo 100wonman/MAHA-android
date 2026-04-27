@@ -1,4 +1,90 @@
 ==============================
+[2026-04-26 11:50] API 메타데이터 기반 자동 태그 수집 연결
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 API 메타데이터 기반 자동 태그 수집을 연결한다.
+
+목표:
+- Google / NVIDIA 모델 검색 결과에서 모델 메타데이터를 자동 생성한다
+- 모델명, 설명, 지원 메서드 등을 기반으로 기능 태그를 추론한다
+- 추론된 태그를 ModelMetadataManager에 저장한다
+- ModelCatalogScreen에서 자동 수집된 태그와 신뢰도를 표시한다
+
+구현 내용:
+1. GoogleModelDiscoveryProvider 수정
+- listModels 응답의 modelName / displayName / description / supportedGenerationMethods / inputTokenLimit / outputTokenLimit 활용
+- ModelMetadataManager.buildFromApiMetadata 또는 유사 함수 호출
+- Provider = GOOGLE 기준으로 metadata 저장
+
+2. NvidiaModelDiscoveryProvider 수정
+- /v1/models 응답의 id / owned_by / 기타 가능한 필드 활용
+- 모델명 패턴 기반 태그 추론
+- Provider = NVIDIA 기준으로 metadata 저장
+
+3. ModelMetadataManager 확장
+- API 메타데이터 기반 태그 추론 함수 구현 또는 보완
+- 모델명/설명/지원 메서드 기반 capability 계산
+- confidenceLevel 계산
+- 기존 manual / tested / selfReported 우선순위 유지
+
+태그 추론 기준:
+- generateContent / chat.completions 지원 → TEXT_ONLY
+- embed / embedding → EMBEDDING
+- rerank / reranker → RERANKING
+- vision / image / vl → IMAGE_INPUT, VISION, MULTIMODAL_INPUT
+- audio → AUDIO_INPUT
+- video → VIDEO_INPUT
+- search / grounding → WEB_GROUNDING
+- coder / code / programming → CODING
+- reasoning / r1 / logic / deepseek-r1 → REASONING
+- flash / lite / small / 8b → FAST
+- long / 70b / 405b / large context / inputTokenLimit 큼 → LONG_CONTEXT
+
+조건:
+- 기존 ModelMetadata 구조 유지
+- 기존 finalCapabilities 우선순위 유지
+  manual → tested → api → self → UNKNOWN
+- self-reported 정보는 이번 단계에서 새로 호출하지 않는다
+- API metadata 기반 태그는 “API/이름 기반 추정”으로 취급한다
+- 기존 모델 검색 기능 유지
+- 기존 모델 테스트 기능 유지
+- 기존 추천 기능 유지
+- 기존 Worker별 Provider 구조 유지
+- 빌드 가능한 상태 유지
+
+변경 예상 파일:
+- ModelMetadataManager.kt
+- GoogleModelDiscoveryProvider.kt
+- NvidiaModelDiscoveryProvider.kt
+- 필요 시 ModelCatalogScreen.kt
+
+추가 조건:
+- 먼저 기존 Discovery Provider 파일 구조를 확인한다
+- 필요한 관련 파일만 요청한다
+- 변경 파일 전체 코드를 한 번에 제공한다
+- 부분 수정 반복 금지
+
+[결과]
+(성공 / 에러 후 성공 / 실패)
+
+[적용 내용]
+- Google listModels 응답 기반 기능 태그 추론 연결
+- NVIDIA /v1/models 응답 기반 기능 태그 추론 연결
+- ModelMetadataManager API 메타데이터 분류 로직 보완
+- 모델명 / 설명 / 지원 메서드 기반 capability 자동 생성
+- API 기반 신뢰도 계산 적용
+
+[문제 및 해결]
+- 모델 기능 태그가 수동/기본값 중심이라 실제 API 모델 정보와 연결되지 않음
+- 해결: 모델 검색 결과에서 metadata를 자동 생성해 ModelMetadataManager에 저장
+
+[다음 작업 예정]
+모델 self-reported 정보 수집 및 참고용 표시 구현
+
+==============================
 [2026-04-27 04:40] ModelMetadata UI 표시 개선
 ==============================
 

@@ -12,10 +12,18 @@ object ModelMetadataManager {
     private const val KEY_MODEL_METADATA = "model_metadata_json_v1"
     private const val KEY_MODEL_METADATA_BACKUP = "model_metadata_json_v1_backup"
 
+    private var appContext: Context? = null
+
+    fun initialize(context: Context) {
+        appContext = context.applicationContext
+    }
+
     fun saveMetadata(
         context: Context,
         metadata: ModelMetadata
     ) {
+        initialize(context)
+
         val safeMetadata = sanitizeMetadata(metadata)
         val currentList = getAllMetadata(context).toMutableList()
 
@@ -41,11 +49,18 @@ object ModelMetadataManager {
         )
     }
 
+    fun saveMetadataIfInitialized(metadata: ModelMetadata) {
+        val context = appContext ?: return
+        saveMetadata(context, metadata)
+    }
+
     fun getMetadata(
         context: Context,
         providerName: String,
         modelName: String
     ): ModelMetadata {
+        initialize(context)
+
         val safeProviderName = providerName.trim().ifBlank { ModelProviderType.DUMMY }
         val safeModelName = modelName.trim().removePrefix("models/")
 
@@ -59,6 +74,8 @@ object ModelMetadataManager {
     }
 
     fun getAllMetadata(context: Context): List<ModelMetadata> {
+        initialize(context)
+
         return loadJsonArrayWithBackup(context) { jsonArray ->
             val result = mutableListOf<ModelMetadata>()
 
@@ -80,21 +97,58 @@ object ModelMetadataManager {
         val safeProviderName = providerName.trim().ifBlank { ModelProviderType.DUMMY }
         val safeModelName = modelName.trim().removePrefix("models/")
 
-        val inferredCapabilities = inferCapabilitiesFromName(
-            modelName = safeModelName
+        return sanitizeMetadata(
+            ModelMetadata(
+                providerName = safeProviderName,
+                modelName = safeModelName,
+                apiCapabilities = inferCapabilitiesFromText(
+                    modelName = safeModelName,
+                    displayName = "",
+                    description = "",
+                    supportedGenerationMethods = emptyList(),
+                    tags = emptyList(),
+                    inputTokenLimit = 0,
+                    outputTokenLimit = 0
+                ),
+                updatedAt = ""
+            )
+        )
+    }
+
+    fun buildFromApiMetadata(
+        providerName: String,
+        modelName: String,
+        displayName: String,
+        description: String,
+        supportedGenerationMethods: List<String>,
+        tags: List<String>,
+        inputTokenLimit: Int,
+        outputTokenLimit: Int,
+        apiRawText: String
+    ): ModelMetadata {
+        val safeModelName = modelName.trim().removePrefix("models/")
+
+        val inferredCapabilities = inferCapabilitiesFromText(
+            modelName = safeModelName,
+            displayName = displayName,
+            description = description,
+            supportedGenerationMethods = supportedGenerationMethods,
+            tags = tags,
+            inputTokenLimit = inputTokenLimit,
+            outputTokenLimit = outputTokenLimit
         )
 
         return sanitizeMetadata(
             ModelMetadata(
-                providerName = safeProviderName,
+                providerName = providerName,
                 modelName = safeModelName,
                 apiCapabilities = inferredCapabilities,
                 testedCapabilities = emptyList(),
                 selfReportedCapabilities = emptyList(),
                 manualCapabilities = emptyList(),
-                apiRawText = "",
+                apiRawText = apiRawText,
                 selfReportedRawText = "",
-                updatedAt = ""
+                updatedAt = getCurrentTimeText()
             )
         )
     }
@@ -154,70 +208,123 @@ object ModelMetadataManager {
             .distinct()
     }
 
-    private fun inferCapabilitiesFromName(modelName: String): List<String> {
-        val lower = modelName.lowercase()
+    private fun inferCapabilitiesFromText(
+        modelName: String,
+        displayName: String,
+        description: String,
+        supportedGenerationMethods: List<String>,
+        tags: List<String>,
+        inputTokenLimit: Int,
+        outputTokenLimit: Int
+    ): List<String> {
+        val joinedText = buildString {
+            append(modelName)
+            append(" ")
+            append(displayName)
+            append(" ")
+            append(description)
+            append(" ")
+            append(supportedGenerationMethods.joinToString(" "))
+            append(" ")
+            append(tags.joinToString(" "))
+        }.lowercase()
+
         val result = mutableListOf<String>()
 
-        when {
-            lower.contains("embedding") || lower.contains("embed") -> {
-                result.add(ModelCapability.EMBEDDING)
-            }
-
-            lower.contains("rerank") || lower.contains("reranker") -> {
-                result.add(ModelCapability.RERANKING)
-            }
-
-            else -> {
-                result.add(ModelCapability.TEXT_ONLY)
-            }
+        if (
+            joinedText.contains("generatecontent") ||
+            joinedText.contains("generate_content") ||
+            joinedText.contains("chat.completions") ||
+            joinedText.contains("chat") ||
+            joinedText.contains("completion")
+        ) {
+            result.add(ModelCapability.TEXT_ONLY)
         }
 
         if (
-            lower.contains("vision") ||
-            lower.contains("vl") ||
-            lower.contains("image")
+            joinedText.contains("embed") ||
+            joinedText.contains("embedding")
         ) {
-            result.add(ModelCapability.VISION)
+            result.add(ModelCapability.EMBEDDING)
+        }
+
+        if (
+            joinedText.contains("rerank") ||
+            joinedText.contains("reranker")
+        ) {
+            result.add(ModelCapability.RERANKING)
+        }
+
+        if (
+            joinedText.contains("vision") ||
+            joinedText.contains("image") ||
+            joinedText.contains("vl")
+        ) {
             result.add(ModelCapability.IMAGE_INPUT)
+            result.add(ModelCapability.VISION)
+            result.add(ModelCapability.MULTIMODAL_INPUT)
+        }
+
+        if (joinedText.contains("audio")) {
+            result.add(ModelCapability.AUDIO_INPUT)
+            result.add(ModelCapability.MULTIMODAL_INPUT)
+        }
+
+        if (joinedText.contains("video")) {
+            result.add(ModelCapability.VIDEO_INPUT)
             result.add(ModelCapability.MULTIMODAL_INPUT)
         }
 
         if (
-            lower.contains("coder") ||
-            lower.contains("code") ||
-            lower.contains("programming")
+            joinedText.contains("search") ||
+            joinedText.contains("grounding") ||
+            joinedText.contains("browse")
+        ) {
+            result.add(ModelCapability.WEB_GROUNDING)
+        }
+
+        if (
+            joinedText.contains("coder") ||
+            joinedText.contains("code") ||
+            joinedText.contains("programming")
         ) {
             result.add(ModelCapability.CODING)
         }
 
         if (
-            lower.contains("reasoning") ||
-            lower.contains("deepseek-r1") ||
-            lower.contains("r1") ||
-            lower.contains("math")
+            joinedText.contains("reasoning") ||
+            joinedText.contains("logic") ||
+            joinedText.contains("deepseek-r1") ||
+            joinedText.contains("r1")
         ) {
             result.add(ModelCapability.REASONING)
         }
 
         if (
-            lower.contains("flash") ||
-            lower.contains("lite") ||
-            lower.contains("small") ||
-            lower.contains("8b")
+            joinedText.contains("flash") ||
+            joinedText.contains("lite") ||
+            joinedText.contains("small") ||
+            joinedText.contains("8b")
         ) {
             result.add(ModelCapability.FAST)
         }
 
         if (
-            lower.contains("long") ||
-            lower.contains("70b") ||
-            lower.contains("405b") ||
-            lower.contains("1m")
+            joinedText.contains("long") ||
+            joinedText.contains("large context") ||
+            joinedText.contains("70b") ||
+            joinedText.contains("405b") ||
+            inputTokenLimit >= 128_000 ||
+            outputTokenLimit >= 32_000
         ) {
             result.add(ModelCapability.LONG_CONTEXT)
         }
 
-        return result.distinct().ifEmpty { listOf(ModelCapability.UNKNOWN) }
+        if (result.isEmpty()) {
+            result.add(ModelCapability.TEXT_ONLY)
+        }
+
+        return result.distinct()
     }
 
     private fun metadataToJson(metadata: ModelMetadata): JSONObject {
