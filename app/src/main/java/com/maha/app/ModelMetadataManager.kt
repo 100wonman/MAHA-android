@@ -100,6 +100,42 @@ object ModelMetadataManager {
         )
     }
 
+    fun addTestedCapability(
+        context: Context,
+        providerName: String,
+        modelName: String,
+        capability: String
+    ) {
+        initialize(context)
+
+        val safeProviderName = providerName.trim().ifBlank { ModelProviderType.DUMMY }
+        val safeModelName = modelName.trim().removePrefix("models/")
+        val safeCapability = capability.trim()
+
+        if (safeModelName.isBlank() || safeCapability.isBlank()) return
+        if (safeCapability == ModelCapability.UNKNOWN) return
+
+        val currentMetadata = getMetadata(
+            context = context,
+            providerName = safeProviderName,
+            modelName = safeModelName
+        )
+
+        val updatedTestedCapabilities = (currentMetadata.testedCapabilities + safeCapability)
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val updatedMetadata = currentMetadata.copy(
+            testedCapabilities = updatedTestedCapabilities,
+            updatedAt = getCurrentTimeText()
+        )
+
+        saveMetadata(
+            context = context,
+            metadata = updatedMetadata
+        )
+    }
+
     fun getMetadata(
         context: Context,
         providerName: String,
@@ -284,6 +320,14 @@ object ModelMetadataManager {
         }
 
         if (
+            text.contains("json") ||
+            text.contains("structured")
+        ) {
+            result.add(ModelCapability.JSON_OUTPUT)
+            result.add(ModelCapability.STRUCTURED_OUTPUT)
+        }
+
+        if (
             text.contains("image") ||
             text.contains("vision")
         ) {
@@ -403,6 +447,14 @@ object ModelMetadataManager {
             joinedText.contains("r1")
         ) {
             result.add(ModelCapability.REASONING)
+        }
+
+        if (
+            joinedText.contains("json") ||
+            joinedText.contains("structured")
+        ) {
+            result.add(ModelCapability.JSON_OUTPUT)
+            result.add(ModelCapability.STRUCTURED_OUTPUT)
         }
 
         if (
