@@ -1,4 +1,149 @@
 ==============================
+[2026-04-28 01:50] 대화모드 UI 초안 구현
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 “대화모드 UI 초안”을 구현한다.
+
+목표:
+- 기존 작업모드는 건드리지 않는다.
+- 신규 대화모드 진입 흐름을 만든다.
+- 더미 데이터 기반으로 대화 세션 목록과 대화방 화면을 구현한다.
+- 실제 RAG / 검색 / 검증 / 메모리 저장 / 오케스트레이션은 구현하지 않는다.
+
+구현 범위:
+1. 메인 화면에 모드 선택 구조 추가
+   - 작업모드 카드
+   - 대화모드 카드
+   - 작업모드 카드는 기존 화면으로 이동
+   - 대화모드 카드는 신규 대화 세션 목록 화면으로 이동
+
+2. 대화 세션 목록 화면 추가
+   - 상단: 뒤로가기 / “대화” 제목 / 새 대화 버튼
+   - 중앙: 더미 ConversationSession 리스트
+   - 세션 카드 표시 항목:
+     - 제목
+     - 마지막 메시지 요약
+     - 업데이트 시간
+   - 세션 클릭 시 대화방 화면으로 이동
+   - 새 대화 버튼 클릭 시 더미 새 세션 생성 후 대화방으로 이동
+
+3. 대화방 화면 추가
+   - 상단:
+     - 햄버거 또는 뒤로가기
+     - 세션명
+     - 상태 표시: Idle
+   - 중앙:
+     - 메시지 리스트
+     - USER 메시지
+     - ASSISTANT 메시지
+     - ASSISTANT 메시지는 OutputBlock 목록으로 렌더링
+   - 하단:
+     - 입력창
+     - 실행 버튼
+     - 옵션 라인
+       - 모드 선택: 기본값 “일반”
+       - 검색 토글: OFF
+       - Worker 선택은 “추후” 텍스트 또는 비활성 버튼으로 표시
+
+4. OutputBlock UI 초안 구현
+   - 지원 타입:
+     - TEXT_BLOCK
+     - MARKDOWN_BLOCK
+     - CODE_BLOCK
+     - TABLE_BLOCK
+     - JSON_BLOCK
+     - ERROR_BLOCK
+     - TRACE_BLOCK
+     - MEMORY_BLOCK
+   - 공통 기능:
+     - 접기/펼치기
+     - 복사 버튼은 UI만 먼저 배치해도 됨
+     - 전체 보기 버튼은 UI만 먼저 배치해도 됨
+   - 기본 펼침 규칙:
+     - TEXT_BLOCK: 펼침
+     - MARKDOWN_BLOCK: 펼침
+     - CODE_BLOCK: 펼침
+     - TABLE_BLOCK: 펼침
+     - JSON_BLOCK: 펼침
+     - ERROR_BLOCK: 펼침
+     - TRACE_BLOCK: 접힘
+     - MEMORY_BLOCK: 접힘
+
+5. 접이식 실행 정보 패널 구현
+   - 기본 접힘 상태:
+     - 예: 완료 · 3.2s · 3 Worker · 재시도 1회
+   - 펼침 상태:
+     - 총 시간
+     - Worker 수
+     - 총 재시도
+     - Worker별 상태
+       - Worker 이름
+       - Provider
+       - Model
+       - 상태
+       - 실행 시간(초)
+       - 재시도 횟수
+       - t/s
+       - 오류 유형
+   - 시간 표시는 ms가 아니라 초 단위로 표시한다.
+
+6. 최소 데이터 모델 추가
+   - ConversationSession
+   - ConversationMessage
+   - ConversationOutputBlock
+   - ConversationRun
+   - ConversationWorkerResult
+   - enum:
+     - ConversationRole
+     - ConversationOutputBlockType
+     - ConversationRunStatus
+
+조건:
+- 실제 API 호출 금지
+- 실제 모델 실행 연결 금지
+- 기존 Provider / Model / Worker / ExecutionEngine 구조 수정 금지
+- 기존 작업모드 동작을 깨지 않기
+- 우선 더미 데이터로 화면과 UX 확인
+- 복잡한 저장소, Room, DataStore, VectorDB 구현 금지
+- UI 컴파일 성공을 최우선으로 한다.
+- 파일을 수정할 경우 관련 파일 전체 코드를 제시한다.
+- 빌드 후 결과를 보고한다.
+
+완료 기준:
+- 앱에서 대화모드 화면으로 진입 가능
+- 더미 세션 목록 표시 가능
+- 세션 클릭 시 대화방 진입 가능
+- 대화방에서 블록 기반 메시지 표시 가능
+- TRACE / MEMORY 블록은 기본 접힘 상태
+- 실행 정보 패널 접기/펼치기 가능
+- 기존 작업모드 진입이 유지됨
+- 빌드 성공
+
+[구현 범위]
+- 메인 화면에 작업모드 / 대화모드 카드 구조 추가
+- 대화 세션 목록 화면 추가
+- 대화방 화면 추가
+- OutputBlock UI 초안 추가
+- 접이식 실행 정보 패널 추가
+- ConversationSession / ConversationMessage / ConversationOutputBlock / ConversationRun / ConversationWorkerResult 최소 데이터 모델 추가
+- 더미 데이터 기반 표시 구현
+
+[결과]
+(빌드 성공 / 수정 필요 / 실패)
+
+[적용 내용]
+-
+
+[문제 및 해결]
+-
+
+[다음 작업 예정]
+대화모드 입력 UX 및 더미 메시지 추가 동작 구현
+
+==============================
 [2026-04-27 22:30] 대화모드 UI 초안 및 최소 데이터 구조 설계
 ==============================
 
