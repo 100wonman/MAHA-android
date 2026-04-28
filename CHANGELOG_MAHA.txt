@@ -1,4 +1,208 @@
 ==============================
+[2026-04-28 16:50] State hoisting 기반 2차 리팩터링
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 “MainActivity 분리 후 2차 리팩터링”이다.
+
+목표:
+- 파일 분리 후 남아 있는 구조 불안정성을 정리한다.
+- State hoisting 기반으로 상태 소유권을 명확히 한다.
+- 하위 Composable은 UI 렌더링에 집중하게 한다.
+- 기존 기능 동작은 변경하지 않는다.
+- 대화모드 UI 기능 추가는 이번 단계에서 중단한다.
+
+핵심 원칙:
+- 이번 단계는 기능 추가가 아니다.
+- UI 디자인 변경도 최소화한다.
+- 상태 소유권 정리, 콜백 전달, visibility/import 정리가 핵심이다.
+- 빌드 성공을 최우선으로 한다.
+
+현재 문제:
+- MainActivity.kt 파일 분리는 되었으나 구조 리팩터링은 미완성
+- State hoisting 미적용 상태
+- 일부 private 제거 및 import 정리 미완료
+- 이 상태에서 기능 추가 시 구조 복잡도 급증 가능
+
+구현 범위:
+1. State hoisting 적용
+   - MainActivity 또는 AppRoot 수준에서 최상위 화면 상태를 소유한다.
+   - 하위 Composable은 remember 상태를 과도하게 직접 소유하지 않는다.
+   - 하위 Composable은 상태값과 이벤트 콜백을 파라미터로 받는다.
+
+2. 화면 전환 상태 정리
+   - currentScreen
+   - selectedAgentId
+   - selectedRunId
+   - selectedConversationId
+   - 필요한 경우 selectedSessionId
+   - 기존 rememberSaveable 구조가 있다면 유지하되 책임 위치를 명확히 한다.
+
+3. 대화모드 상태 정리
+   - 세션 목록 상태
+   - 선택된 세션
+   - 입력창 텍스트
+   - 검색 토글
+   - 모드 선택 값
+   - 실행 중 여부
+   - 위 상태는 가능하면 ConversationRoute 또는 상위 Screen에서 소유한다.
+   - ConversationRoomScreen은 상태를 파라미터로 받고 콜백만 호출한다.
+
+4. 작업모드 상태 정리
+   - 기존 Run All / Worker / selectedAgent / selectedRun 관련 상태가 깨지지 않도록 한다.
+   - 기존 동작을 유지하면서 상위 소유 구조로 정리한다.
+   - 작업모드 리팩터링은 최소 범위로 제한한다.
+
+5. Composable 파라미터 구조 정리
+   - 하위 Composable에서 직접 화면 전환 상태를 변경하지 않는다.
+   - onBack
+   - onOpenConversation
+   - onCreateConversation
+   - onInputChange
+   - onSend
+   - onToggleSearch
+   - onModeChange
+   - onOpenSettings
+   - 같은 콜백을 통해 상위로 이벤트를 올린다.
+
+6. visibility 정리
+   - 다른 파일에서 호출해야 하는 함수/타입은 private 금지
+   - 필요한 경우 internal로 변경
+   - 파일 내부에서만 쓰는 helper만 private 유지
+
+7. import/package 정리
+   - 모든 신규 파일의 package 선언을 기존 구조와 일관되게 맞춘다.
+   - unresolved reference가 발생하지 않게 import 정리
+   - 사용하지 않는 import 제거
+
+8. 기존 기능 검증
+   - 작업모드 진입
+   - 대화모드 진입
+   - 세션 목록 표시
+   - 대화방 진입
+   - OutputBlock 접기/펼치기
+   - 실행 정보 패널 접기/펼치기
+   - 입력창 표시
+   - 설정/API Key 화면 진입
+   - 모델 카탈로그 진입
+   - 실행 로그 화면 진입
+   - Run All 기존 동작
+
+금지 사항:
+- ViewModel 도입 금지
+- Repository 도입 금지
+- Room/DataStore 추가 금지
+- VectorDB / RAG 구현 금지
+- Provider / Worker / ExecutionEngine 수정 금지
+- ModelRouter 수정 금지
+- 새 기능 추가 금지
+- UI 대폭 변경 금지
+- 함수명/클래스명 대량 변경 금지
+- 작업모드/대화모드 전체 패키지 재설계 금지
+
+권장 구조:
+MainActivity.kt
+- setContent
+- AppRoot 호출
+- 최상위 진입점만 유지
+
+AppRoot 또는 MainApp.kt
+- currentScreen 상태 소유
+- selectedAgentId / selectedRunId / selectedConversationId 상태 소유
+- 각 화면에 상태값과 콜백 전달
+
+하위 Screen 파일
+- UI 렌더링
+- 파라미터 기반 상태 표시
+- 이벤트 발생 시 콜백 호출
+
+예시 방향:
+@Composable
+fun ConversationRoomScreen(
+    session: ConversationSession,
+    inputText: String,
+    searchEnabled: Boolean,
+    modeLabel: String,
+    isRunning: Boolean,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onToggleSearch: () -> Unit,
+    onModeChange: (String) -> Unit,
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit
+)
+
+완료 기준:
+- MainActivity.kt는 진입점 중심으로 더 축소됨
+- 상태 소유권이 상위 Screen/AppRoot로 정리됨
+- 하위 Composable은 상태값/콜백을 파라미터로 받음
+- private / import / package 오류 정리 완료
+- 기존 기능 동작 유지
+- 대화모드 UI 기존 진행분 유지
+- 빌드 성공
+
+결과 보고:
+- 어떤 상태를 어디로 올렸는지 요약
+- 어떤 Composable의 파라미터 구조를 정리했는지 요약
+- private/internal 변경 내역 요약
+- 빌드 결과 보고
+- 남은 구조 리스크가 있으면 명시
+
+[구현 범위]
+- MainActivity 또는 AppRoot 수준의 화면 전환 상태 정리
+- selectedAgentId / selectedRunId / selectedConversationId 상태 소유권 정리
+- 대화모드 세션 목록 / 선택 세션 / 입력창 / 검색 토글 / 모드 상태 정리
+- 하위 Composable 파라미터/콜백 구조 정리
+- visibility 정리
+- import / package 정리
+- 기존 작업모드 및 대화모드 기존 진행분 동작 유지
+- 빌드 검증
+
+[결과]
+(빌드 성공 / 수정 필요 / 실패)
+
+[적용 내용]
+4. 현재 상태 평가
+
+✔ 구조 안정성: 확보
+✔ 상태 소유권: 정리 완료
+✔ 빌드 안정성: 확보
+✔ UI 일관성: 거의 완료
+✔ UX 문제: 대부분 해결
+
+================================================
+5. 남은 리스크
+
+1. AppRoot 크기 증가
+2. import 일부 미정리
+3. 작업모드 상태 일부 legacy 구조 유지
+4. 팝업 고급 UX (blur, animation 등 미적용)
+
+================================================
+6. 결론
+
+이번 구간의 핵심 목표였던:
+
+- State hoisting 적용
+- 구조 안정화
+- 빌드 안정성 확보
+
+은 모두 달성되었으며,
+
+현재 상태는:
+→ “안정적인 UI 확장 가능한 상태”
+
+================================================
+
+[문제 및 해결]
+-
+
+[다음 작업 예정]
+대화모드 키보드/입력창 안정화 및 UI 초안 마무리
+
+==============================
 [2026-04-28 01:50] 대화모드 UI 초안 구현
 ==============================
 
