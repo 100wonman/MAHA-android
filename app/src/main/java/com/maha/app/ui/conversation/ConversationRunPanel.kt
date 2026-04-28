@@ -29,9 +29,7 @@ fun ConversationRunSummaryPanel(
     }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = conversationUnifiedCardShape(),
         colors = CardDefaults.cardColors(
             containerColor = conversationUnifiedCardColor()

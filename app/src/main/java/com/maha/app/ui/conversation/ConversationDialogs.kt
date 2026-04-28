@@ -1,12 +1,18 @@
 package com.maha.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
@@ -48,30 +54,11 @@ fun ConversationSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "대화방 설정",
+                    text = "빠른 설정",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-
-                ConversationSettingsSectionTitle(text = "일반 설정")
-
-                ConversationSettingsDisabledRow(
-                    title = "테마",
-                    value = "라이트 / 다크 (UI만)"
-                )
-
-                ConversationSettingsDisabledRow(
-                    title = "폰트",
-                    value = "크기 / 색 (UI만)"
-                )
-
-                ConversationSettingsDisabledRow(
-                    title = "색상",
-                    value = "배경 / 블록 (UI만)"
-                )
-
-                ConversationSettingsSectionTitle(text = "대화 설정")
 
                 Text(
                     text = "모드 선택",
@@ -79,7 +66,7 @@ fun ConversationSettingsDialog(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
                 )
 
-                val modeOptions = listOf("일반", "정리", "코드", "검증")
+                val modeOptions = listOf("자동", "일반", "코드", "검증")
                 modeOptions.forEach { option ->
                     ConversationDialogActionText(
                         text = if (modeLabel == option) "✓ $option" else option,
@@ -141,15 +128,144 @@ fun ConversationSettingsDialog(
 }
 
 @Composable
-private fun ConversationSettingsSectionTitle(
-    text: String
+fun ConversationGlobalSettingsScreen(
+    selectedPage: String?,
+    onPageSelected: (String?) -> Unit,
+    onBackClick: () -> Unit
 ) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(WindowInsets.safeDrawing.asPaddingValues())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = {
+                    if (selectedPage == null) {
+                        onBackClick()
+                    } else {
+                        onPageSelected(null)
+                    }
+                }
+            ) {
+                Text(
+                    text = "←",
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = selectedPage ?: "대화모드 설정",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Text(
+                    text = if (selectedPage == null) "전역 설정 메인" else "상세 설정 placeholder",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                )
+            }
+        }
+
+        if (selectedPage == null) {
+            ConversationGlobalSettingsCard(
+                title = "일반 설정",
+                subtitle = "테마, 폰트, 색상 설정",
+                onClick = { onPageSelected("일반 설정") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "대화 설정",
+                subtitle = "모드, 검색, Worker 기본값",
+                onClick = { onPageSelected("대화 설정") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "출력 블록 설정",
+                subtitle = "블록 표시, 복사, 접기 정책",
+                onClick = { onPageSelected("출력 블록 설정") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "메모리 / RAG",
+                subtitle = "후속 단계에서 연결 예정",
+                onClick = { onPageSelected("메모리 / RAG") }
+            )
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = conversationUnifiedCardShape(),
+                colors = CardDefaults.cardColors(
+                    containerColor = conversationUnifiedCardColor()
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "$selectedPage 상세 페이지",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationGlobalSettingsCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = conversationUnifiedCardShape(),
+        colors = CardDefaults.cardColors(
+            containerColor = conversationUnifiedCardColor()
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+            )
+        }
+    }
 }
 
 @Composable

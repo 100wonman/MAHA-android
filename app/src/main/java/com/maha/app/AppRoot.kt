@@ -81,6 +81,8 @@ fun AppRoot() {
     var conversationModeLabel by rememberSaveable { mutableStateOf("일반") }
     var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
+    var isConversationGlobalSettingsOpen by rememberSaveable { mutableStateOf(false) }
+    var selectedConversationSettingsPage by rememberSaveable { mutableStateOf<String?>(null) }
     var editingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingText by rememberSaveable { mutableStateOf("") }
     var isWorkModeOpen by rememberSaveable { mutableStateOf(false) }
@@ -245,6 +247,10 @@ fun AppRoot() {
         }
 
         when {
+            isConversationGlobalSettingsOpen -> {
+                isConversationGlobalSettingsOpen = false
+                selectedConversationSettingsPage = null
+            }
             selectedConversationSessionId != null -> selectedConversationSessionId = null
             isConversationListScreenOpen -> isConversationListScreenOpen = false
             isWorkModeOpen && selectedAgentId == null && selectedRunId == null && !isScenarioScreenOpen && !isSettingsScreenOpen && !isModelCatalogScreenOpen && !isExecutionLogScreenOpen -> isWorkModeOpen = false
@@ -673,6 +679,19 @@ fun AppRoot() {
         }
 
         when {
+            selectedConversationSessionId != null && isConversationGlobalSettingsOpen -> {
+                ConversationGlobalSettingsScreen(
+                    selectedPage = selectedConversationSettingsPage,
+                    onPageSelected = { page ->
+                        selectedConversationSettingsPage = page
+                    },
+                    onBackClick = {
+                        isConversationGlobalSettingsOpen = false
+                        selectedConversationSettingsPage = null
+                    }
+                )
+            }
+
             selectedConversationSessionId != null -> {
                 val session = conversationSessionList.find {
                     it.sessionId == selectedConversationSessionId
@@ -788,6 +807,10 @@ fun AppRoot() {
                         },
                         onOpenSettings = {
                             showConversationSettingsDialog = true
+                        },
+                        onOpenGlobalSettings = {
+                            isConversationGlobalSettingsOpen = true
+                            selectedConversationSettingsPage = null
                         },
                         onEditMessage = { messageId, currentText ->
                             editingMessageId = messageId
