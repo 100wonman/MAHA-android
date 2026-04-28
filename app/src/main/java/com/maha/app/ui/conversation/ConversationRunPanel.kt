@@ -10,7 +10,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,13 +60,15 @@ fun ConversationRunSummaryPanel(
                     )
                 }
 
-                TextButton(
+                IconButton(
                     onClick = {
                         isExpanded = !isExpanded
                     }
                 ) {
                     Text(
-                        text = if (isExpanded) "접기" else "펼치기",
+                        text = if (isExpanded) "v" else ">",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }

@@ -47,7 +47,7 @@ fun ConversationOutputBlockCard(
     onUnsupportedEditRequest: (() -> Unit)? = null
 ) {
     val isUserBlock = role == ConversationRole.USER
-    val shouldUseCard = shouldRenderAsStructuredBlock(block)
+    val shouldUseCard = isUserBlock || shouldRenderAsStructuredBlock(block)
     val isLongMessage = shouldUseMessagePreview(block.content)
     val blockContainerColor = conversationUnifiedCardColor()
     val blockTextColor = MaterialTheme.colorScheme.onSurface
@@ -68,22 +68,16 @@ fun ConversationOutputBlockCard(
 
     Box(
         modifier = Modifier.fillMaxWidth(),
-        contentAlignment = if (isUserBlock) Alignment.CenterEnd else Alignment.CenterStart
+        contentAlignment = Alignment.CenterStart
     ) {
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth()
         ) {
-            val userMaxWidth = maxWidth * 0.78f
-            val outerModifier = if (isUserBlock) {
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 72.dp, end = 0.dp)
-            } else {
-                Modifier.fillMaxWidth()
-            }
+            val userMaxWidth = maxWidth * 0.70f
+            val outerModifier = Modifier.fillMaxWidth()
             val messageModifier = if (isUserBlock) {
                 Modifier
-                    .align(Alignment.CenterEnd)
+                    .align(Alignment.CenterStart)
                     .widthIn(max = userMaxWidth)
             } else {
                 Modifier.fillMaxWidth()
@@ -91,7 +85,7 @@ fun ConversationOutputBlockCard(
 
             Box(
                 modifier = outerModifier,
-                contentAlignment = if (isUserBlock) Alignment.CenterEnd else Alignment.CenterStart
+                contentAlignment = Alignment.CenterStart
             ) {
                 if (shouldUseCard) {
                     Card(
@@ -114,6 +108,7 @@ fun ConversationOutputBlockCard(
                         ) {
                             StructuredBlockHeader(
                                 block = block,
+                                showTitle = !isUserBlock,
                                 onCopy = {
                                     clipboardManager.setText(AnnotatedString(block.content))
                                 }
@@ -141,7 +136,7 @@ fun ConversationOutputBlockCard(
                                 isMenuOpen = true
                             }
                         ),
-                        contentAlignment = if (isUserBlock) Alignment.CenterEnd else Alignment.CenterStart
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         ConversationBlockContent(
                             content = block.content,
@@ -189,6 +184,7 @@ fun ConversationOutputBlockCard(
 @Composable
 private fun StructuredBlockHeader(
     block: ConversationOutputBlock,
+    showTitle: Boolean,
     onCopy: () -> Unit
 ) {
     Row(
@@ -196,13 +192,17 @@ private fun StructuredBlockHeader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = buildConversationBlockHeader(block),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
-            modifier = Modifier.weight(1f)
-        )
+        if (showTitle) {
+            Text(
+                text = buildConversationBlockHeader(block),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            Box(modifier = Modifier.weight(1f))
+        }
 
         IconButton(
             onClick = onCopy,
@@ -237,7 +237,7 @@ private fun ConversationBlockContent(
             style = MaterialTheme.typography.bodySmall,
             color = blockTextColor,
             maxLines = if (showPreview) 5 else Int.MAX_VALUE,
-            textAlign = if (isUserBlock) TextAlign.End else TextAlign.Start,
+            textAlign = TextAlign.Start,
             modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
         )
 

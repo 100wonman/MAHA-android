@@ -29,6 +29,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -194,6 +198,7 @@ private fun ConversationInputPanel(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val modeOptions = listOf("자동", "일반", "코드", "검증")
+    var isQuickSettingsExpanded by rememberSaveable { mutableStateOf(false) }
 
     Card(
         modifier = modifier,
@@ -206,84 +211,108 @@ private fun ConversationInputPanel(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        isQuickSettingsExpanded = !isQuickSettingsExpanded
+                    },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Text(
+                    text = "모드: $modeLabel   검색: ${if (searchEnabled) "ON" else "OFF"}   Worker: 추후",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.weight(1f)
+                )
+
+                Text(
+                    text = if (isQuickSettingsExpanded) "v" else ">",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            if (isQuickSettingsExpanded) {
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "모드:",
+                        text = "모드 선택",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
                     )
 
-                    modeOptions.forEach { option ->
-                        Row(
-                            modifier = Modifier
-                                .clickable {
-                                    onModeChange(option)
-                                }
-                                .padding(end = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = modeLabel == option,
-                                onClick = {
-                                    onModeChange(option)
-                                },
-                                modifier = Modifier.size(28.dp)
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        modeOptions.forEach { option ->
+                            Row(
+                                modifier = Modifier
+                                    .clickable {
+                                        onModeChange(option)
+                                    }
+                                    .padding(end = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = modeLabel == option,
+                                    onClick = {
+                                        onModeChange(option)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                )
 
-                            Text(
-                                text = option,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                                Text(
+                                    text = option,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "검색 사용: ${if (searchEnabled) "ON" else "OFF"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "검색 사용: ${if (searchEnabled) "ON" else "OFF"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        )
 
-                    Switch(
-                        checked = searchEnabled,
-                        onCheckedChange = {
-                            onToggleSearch()
-                        }
-                    )
-                }
+                        Switch(
+                            checked = searchEnabled,
+                            onCheckedChange = {
+                                onToggleSearch()
+                            }
+                        )
+                    }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenSettings),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Worker 선택: 추후 지원",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Worker 선택",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        )
 
-                    Text(
-                        text = "빠른 설정",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                        Text(
+                            text = "추후 지원",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+                        )
+                    }
                 }
             }
 
