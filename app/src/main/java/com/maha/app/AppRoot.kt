@@ -80,6 +80,9 @@ fun AppRoot() {
     var conversationSearchEnabled by rememberSaveable { mutableStateOf(false) }
     var conversationModeLabel by rememberSaveable { mutableStateOf("일반") }
     var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
+    var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
+    var editingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingText by rememberSaveable { mutableStateOf("") }
     var isWorkModeOpen by rememberSaveable { mutableStateOf(false) }
     var isModelCatalogScreenOpen by rememberSaveable { mutableStateOf(false) }
     var isExecutionLogScreenOpen by rememberSaveable { mutableStateOf(false) }
@@ -600,6 +603,75 @@ fun AppRoot() {
             )
         }
 
+        if (showConversationSettingsDialog) {
+            ConversationSettingsDialog(
+                modeLabel = conversationModeLabel,
+                searchEnabled = conversationSearchEnabled,
+                onModeSelected = { selectedMode ->
+                    conversationModeLabel = selectedMode
+                },
+                onSearchEnabledChange = { enabled ->
+                    conversationSearchEnabled = enabled
+                },
+                onDismiss = {
+                    showConversationSettingsDialog = false
+                }
+            )
+        }
+
+        editingMessageId?.let { targetMessageId ->
+            ConversationMessageEditDialog(
+                messageText = editingText,
+                onMessageTextChange = { newText ->
+                    editingText = newText
+                },
+                onSave = {
+                    val editedText = editingText.trim()
+                    if (editedText.isNotBlank()) {
+                        val targetSessionId = selectedConversationSessionId
+                        val targetSessionIndex = conversationSessionList.indexOfFirst {
+                            it.sessionId == targetSessionId
+                        }
+
+                        if (targetSessionIndex != -1) {
+                            val targetSession = conversationSessionList[targetSessionIndex]
+                            val updatedMessages = targetSession.messages.map { message ->
+                                if (message.messageId == targetMessageId && message.role == ConversationRole.USER) {
+                                    message.copy(
+                                        blocks = message.blocks.map { block ->
+                                            if (
+                                                block.type == ConversationOutputBlockType.TEXT_BLOCK ||
+                                                block.type == ConversationOutputBlockType.MARKDOWN_BLOCK
+                                            ) {
+                                                block.copy(content = editedText)
+                                            } else {
+                                                block
+                                            }
+                                        }
+                                    )
+                                } else {
+                                    message
+                                }
+                            }
+
+                            conversationSessionList[targetSessionIndex] = targetSession.copy(
+                                lastMessageSummary = editedText.take(60),
+                                updatedAt = getCurrentTimeText(),
+                                messages = updatedMessages
+                            )
+                        }
+                    }
+
+                    editingMessageId = null
+                    editingText = ""
+                },
+                onDismiss = {
+                    editingMessageId = null
+                    editingText = ""
+                }
+            )
+        }
+
         when {
             selectedConversationSessionId != null -> {
                 val session = conversationSessionList.find {
@@ -715,9 +787,18 @@ fun AppRoot() {
                             selectedConversationSessionId = null
                         },
                         onOpenSettings = {
-                            isSettingsScreenOpen = true
-                            isConversationListScreenOpen = false
-                            selectedConversationSessionId = null
+                            showConversationSettingsDialog = true
+                        },
+                        onEditMessage = { messageId, currentText ->
+                            editingMessageId = messageId
+                            editingText = currentText
+                        },
+                        onAssistantEditUnsupported = {
+                            Toast.makeText(
+                                context,
+                                "ASSISTANT 메시지 편집은 추후 지원합니다.",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     )
                 } else {

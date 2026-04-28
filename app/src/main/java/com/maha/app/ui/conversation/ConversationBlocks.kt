@@ -37,7 +37,10 @@ import androidx.compose.ui.unit.dp
 fun ConversationOutputBlockCard(
     block: ConversationOutputBlock,
     role: ConversationRole = ConversationRole.ASSISTANT,
-    sentAt: String = ""
+    sentAt: String = "",
+    canEdit: Boolean = false,
+    onEditRequest: (() -> Unit)? = null,
+    onUnsupportedEditRequest: (() -> Unit)? = null
 ) {
     val isUserBlock = role == ConversationRole.USER
     val isLongMessage = shouldUseMessagePreview(block.content)
@@ -153,8 +156,14 @@ fun ConversationOutputBlockCard(
             onTextSelect = {
                 isMenuOpen = false
             },
+            canEdit = canEdit,
             onEdit = {
                 isMenuOpen = false
+                if (canEdit) {
+                    onEditRequest?.invoke()
+                } else {
+                    onUnsupportedEditRequest?.invoke()
+                }
             },
             onShare = {
                 isMenuOpen = false
@@ -169,6 +178,7 @@ private fun ConversationBlockActionDialog(
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
     onTextSelect: () -> Unit,
+    canEdit: Boolean,
     onEdit: () -> Unit,
     onShare: () -> Unit
 ) {
@@ -207,7 +217,7 @@ private fun ConversationBlockActionDialog(
                 )
 
                 ConversationDialogActionText(
-                    text = "메시지 편집",
+                    text = if (canEdit) "메시지 편집" else "메시지 편집 (추후 지원)",
                     onClick = onEdit
                 )
 
@@ -221,7 +231,7 @@ private fun ConversationBlockActionDialog(
 }
 
 @Composable
-private fun ConversationDialogActionText(
+internal fun ConversationDialogActionText(
     text: String,
     onClick: () -> Unit
 ) {
@@ -240,8 +250,7 @@ private fun ConversationDialogActionText(
 }
 
 @Composable
-internal fun conversationUnifiedCardColor() =
-    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+internal fun conversationUnifiedCardColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
 
 @Composable
 internal fun conversationUnifiedCardShape() = RoundedCornerShape(28.dp)

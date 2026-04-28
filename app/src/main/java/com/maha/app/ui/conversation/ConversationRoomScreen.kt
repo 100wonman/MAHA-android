@@ -44,7 +44,9 @@ fun ConversationRoomScreen(
     onToggleSearch: () -> Unit,
     onModeChange: (String) -> Unit,
     onBack: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onEditMessage: (String, String) -> Unit,
+    onAssistantEditUnsupported: () -> Unit
 ) {
     Scaffold(
         modifier = Modifier
@@ -136,7 +138,12 @@ fun ConversationRoomScreen(
                             ConversationOutputBlockCard(
                                 block = block,
                                 role = message.role,
-                                sentAt = message.createdAt
+                                sentAt = message.createdAt,
+                                canEdit = message.role == ConversationRole.USER,
+                                onEditRequest = {
+                                    onEditMessage(message.messageId, block.content)
+                                },
+                                onUnsupportedEditRequest = onAssistantEditUnsupported
                             )
                         }
                     }

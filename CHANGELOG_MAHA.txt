@@ -1,4 +1,139 @@
 ==============================
+[2026-04-28 23:50] 대화모드 UI 기능 연결 1차
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 “대화모드 UI 기능 연결 1차”다.
+
+목표:
+- 구조 리팩터링 이후 대화모드 UI 기능 연결을 재개한다.
+- 설정 버튼 기능을 1차로 연결한다.
+- 메시지 편집 기능을 실제 동작 가능한 수준으로 연결한다.
+- 기존 작업모드와 Provider / Worker / ExecutionEngine은 건드리지 않는다.
+
+[구현 범위]
+- 대화방 설정 Dialog 연결
+- 모드 선택: 일반 / 정리 / 코드 / 검증
+- 검색 사용 ON/OFF 상태 변경
+- Worker 선택은 추후 항목으로 비활성 표시
+- 설정 변경값을 하단 옵션 라인에 반영
+- USER 메시지 편집 Dialog 연결
+- USER 메시지 content 갱신
+- ASSISTANT 메시지 편집 비활성 처리
+- editingMessageId / editingText / showConversationSettingsDialog 상태 상위 소유
+- 기존 더미 데이터 기반 UI 유지
+- 빌드 검증
+
+구현 범위:
+1. 대화방 설정 버튼 연결
+   - 입력창 옵션 라인 또는 상단 설정 버튼 클릭 시 설정 Dialog 표시
+   - 설정 Dialog는 실제 저장소 연결 없이 화면 상태만 변경한다.
+   - 1차 설정 항목:
+     - 모드 선택: 일반 / 정리 / 코드 / 검증
+     - 검색 사용 ON/OFF
+     - Worker 선택: 추후 항목으로 비활성 표시
+   - Dialog에서 변경한 값은 AppRoot 또는 ConversationRoute의 state에 반영한다.
+   - 설정값은 대화방 하단 옵션 라인에 즉시 표시한다.
+
+2. 메시지 편집 기능 연결
+   - 기존 메시지 메뉴의 “메시지 편집” 항목을 실제 동작으로 연결한다.
+   - 편집 대상은 우선 USER 메시지만 허용한다.
+   - ASSISTANT 메시지 편집은 비활성 또는 “추후 지원” 표시로 둔다.
+   - USER 메시지 편집 클릭 시 Edit Dialog 표시
+   - Dialog 구성:
+     - 제목: 메시지 편집
+     - 기존 메시지 내용 입력창
+     - 취소 버튼
+     - 저장 버튼
+   - 저장 시 해당 USER 메시지의 TEXT/MARKDOWN 블록 content를 갱신한다.
+   - linkedRunId / run 결과는 수정하지 않는다.
+   - 편집 후 별도 재실행은 하지 않는다.
+
+3. 상태 소유권 유지
+   - editingMessageId
+   - editingText
+   - showConversationSettingsDialog
+   - 위 상태는 상위 상태 소유 구조(AppRoot 또는 ConversationRoute)에 둔다.
+   - 하위 Composable은 파라미터와 콜백만 사용한다.
+
+4. 더미 데이터 유지
+   - 실제 API 호출 금지
+   - 실제 모델 실행 금지
+   - 검색 Worker / Verification Worker 연결 금지
+
+5. UX 규칙
+   - Dialog 스타일은 기존 카드 스타일과 통일한다.
+   - MaterialTheme 기반 색상 사용
+   - 하드코딩 Color 추가 금지
+   - 편집 저장 후 Dialog 닫기
+   - 빈 문자열 저장은 금지하거나 trim 후 비어 있으면 저장 버튼 비활성화
+   - 긴 메시지도 편집 가능해야 한다.
+
+금지 사항:
+- Provider / Worker / ExecutionEngine 수정 금지
+- ModelRouter 수정 금지
+- ViewModel 도입 금지
+- Repository 도입 금지
+- Room/DataStore 추가 금지
+- RAG / 검색 / 검증 실제 구현 금지
+- 작업모드 리팩터링 금지
+- 대규모 UI 재설계 금지
+
+완료 기준:
+- 설정 버튼 클릭 시 설정 Dialog 표시
+- 모드 선택 값 변경 가능
+- 검색 ON/OFF 변경 가능
+- 변경값이 하단 옵션 라인에 반영됨
+- USER 메시지 메뉴에서 메시지 편집 가능
+- 편집 저장 시 메시지 내용이 화면에 반영됨
+- ASSISTANT 메시지는 편집되지 않음
+- 기존 OutputBlock 접기/펼치기 유지
+- 기존 실행 정보 패널 유지
+- 기존 작업모드 진입 유지
+- 빌드 성공
+
+결과 보고:
+- 설정 Dialog 연결 결과
+- 편집 기능 연결 결과
+- 상태를 어디에서 소유하도록 했는지
+- 변경 파일 목록
+- 빌드 결과
+
+[결과]
+(빌드 성공)
+
+[적용 내용]
+-[컨트롤타워 전달 보고서]
+
+작업 단계:
+대화모드 UI 기능 연결 1차 - 파일 재생성
+
+진행 내용:
+- 깨진 ZIP 링크 문제 확인
+- 실제 다운로드 가능한 ZIP 파일 재생성
+- 설정 Dialog 연결 코드 포함
+- USER 메시지 편집 Dialog 연결 코드 포함
+- ASSISTANT 메시지 편집은 추후 지원 처리
+- 기존 카드/팝업 스타일 유지
+
+변경 파일:
+- AppRoot.kt
+- ui/conversation/ConversationRoomScreen.kt
+- ui/conversation/ConversationBlocks.kt
+- ui/conversation/ConversationDialogs.kt 신규
+
+빌드 결과:
+- 정상 빌드 및 테스트 완료
+
+[문제 및 해결]
+-
+
+[다음 작업 예정]
+OutputBlock 타입별 고급 렌더링 또는 공유 기능 연결
+
+==============================
 [2026-04-28 16:50] State hoisting 기반 2차 리팩터링
 ==============================
 
