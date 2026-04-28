@@ -45,14 +45,33 @@ fun ConversationSettingsDialog(
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "대화 설정",
+                    text = "대화방 설정",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+
+                ConversationSettingsSectionTitle(text = "일반 설정")
+
+                ConversationSettingsDisabledRow(
+                    title = "테마",
+                    value = "라이트 / 다크 (UI만)"
+                )
+
+                ConversationSettingsDisabledRow(
+                    title = "폰트",
+                    value = "크기 / 색 (UI만)"
+                )
+
+                ConversationSettingsDisabledRow(
+                    title = "색상",
+                    value = "배경 / 블록 (UI만)"
+                )
+
+                ConversationSettingsSectionTitle(text = "대화 설정")
 
                 Text(
                     text = "모드 선택",
@@ -98,10 +117,9 @@ fun ConversationSettingsDialog(
                     )
                 }
 
-                Text(
-                    text = "Worker 선택: 추후 지원",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                ConversationSettingsDisabledRow(
+                    title = "Worker 선택",
+                    value = "추후 지원"
                 )
 
                 Row(
@@ -119,6 +137,41 @@ fun ConversationSettingsDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ConversationSettingsSectionTitle(
+    text: String
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+}
+
+@Composable
+private fun ConversationSettingsDisabledRow(
+    title: String,
+    value: String
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
+        )
+
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
+        )
     }
 }
 

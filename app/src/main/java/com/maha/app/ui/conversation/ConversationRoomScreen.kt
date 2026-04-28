@@ -1,6 +1,7 @@
 package com.maha.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -86,8 +87,12 @@ fun ConversationRoomScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onBack) {
-                    Text(text = "←")
+                TextButton(onClick = onOpenSettings) {
+                    Text(
+                        text = "☰",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
 
                 Column(modifier = Modifier.weight(1f)) {
@@ -97,18 +102,8 @@ fun ConversationRoomScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-
-                    Text(
-                        text = if (isRunning) "Running" else "Idle",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
                 }
             }
-
-            ConversationRunSummaryPanel(
-                run = session.latestRun ?: createDummyConversationRun(session.sessionId)
-            )
 
             LazyColumn(
                 modifier = Modifier
@@ -124,13 +119,12 @@ fun ConversationRoomScreen(
 
                 items(session.messages) { message ->
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (message.role != ConversationRole.USER) {
-                            Text(
-                                text = message.role.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary
+                        if (message.role == ConversationRole.ASSISTANT) {
+                            ConversationRunSummaryPanel(
+                                run = session.latestRun ?: createDummyConversationRun(session.sessionId)
                             )
                         }
 
@@ -195,6 +189,8 @@ private fun ConversationInputPanel(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Card(
         modifier = modifier,
         shape = conversationUnifiedCardShape(),
@@ -207,7 +203,9 @@ private fun ConversationInputPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenSettings),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -229,17 +227,6 @@ private fun ConversationInputPanel(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                     modifier = Modifier.weight(1f)
                 )
-
-                IconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.size(30.dp)
-                ) {
-                    Text(
-                        text = "⚙",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
             }
 
             Row(
@@ -276,7 +263,10 @@ private fun ConversationInputPanel(
                 )
 
                 IconButton(
-                    onClick = onSend,
+                    onClick = {
+                        keyboardController?.hide()
+                        onSend()
+                    },
                     enabled = inputText.isNotBlank() && !isRunning,
                     modifier = Modifier.size(38.dp)
                 ) {

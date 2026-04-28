@@ -5,7 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,9 +46,11 @@ fun ConversationOutputBlockCard(
     onUnsupportedEditRequest: (() -> Unit)? = null
 ) {
     val isUserBlock = role == ConversationRole.USER
+    val shouldUseCard = shouldRenderAsStructuredBlock(block)
     val isLongMessage = shouldUseMessagePreview(block.content)
     val blockContainerColor = conversationUnifiedCardColor()
     val blockTextColor = MaterialTheme.colorScheme.onSurface
+    val clipboardManager = LocalClipboardManager.current
 
     var isExpanded by rememberSaveable("${block.blockId}_expanded") {
         mutableStateOf(
@@ -58,86 +63,78 @@ fun ConversationOutputBlockCard(
     }
     var isMenuOpen by remember { mutableStateOf(false) }
 
-    val clipboardManager = LocalClipboardManager.current
     val showPreview = isLongMessage && !isExpanded
 
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = if (isUserBlock) Alignment.CenterEnd else Alignment.CenterStart
     ) {
-        Card(
-            modifier = Modifier
-                .then(
-                    if (isUserBlock) {
-                        Modifier.widthIn(max = 320.dp)
-                    } else {
-                        Modifier.widthIn(max = 340.dp)
-                    }
-                )
-                .combinedClickable(
-                    onClick = {
-                        if (isLongMessage || block.collapsed) {
-                            isExpanded = !isExpanded
-                        }
-                    },
-                    onLongClick = {
-                        isMenuOpen = true
-                    }
-                ),
-            shape = conversationUnifiedCardShape(),
-            colors = CardDefaults.cardColors(containerColor = blockContainerColor)
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (!isUserBlock) {
-                    Text(
-                        text = buildConversationBlockHeader(block),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = blockTextColor.copy(alpha = 0.76f)
-                    )
-                }
+            val userMaxWidth = maxWidth * 0.78f
+            val messageModifier = if (isUserBlock) {
+                Modifier.widthIn(max = userMaxWidth)
+            } else {
+                Modifier.fillMaxWidth()
+            }
 
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = block.content,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = blockTextColor,
-                        maxLines = if (showPreview) 5 else Int.MAX_VALUE,
-                        textAlign = if (isUserBlock) TextAlign.End else TextAlign.Start,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    if (showPreview) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            blockContainerColor.copy(alpha = 0.00f),
-                                            blockContainerColor.copy(alpha = 0.86f),
-                                            blockContainerColor
-                                        )
-                                    )
-                                ),
-                            contentAlignment = Alignment.BottomCenter
-                        ) {
-                            Text(
-                                text = "⌄",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = blockTextColor,
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
+            if (shouldUseCard) {
+                Card(
+                    modifier = messageModifier.combinedClickable(
+                        onClick = {
+                            if (isLongMessage || block.collapsed) {
+                                isExpanded = !isExpanded
+                            }
+                        },
+                        onLongClick = {
+                            isMenuOpen = true
                         }
+                    ),
+                    shape = conversationUnifiedCardShape(),
+                    colors = CardDefaults.cardColors(containerColor = blockContainerColor)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StructuredBlockHeader(
+                            block = block,
+                            canCopy = shouldShowInlineCopyButton(block),
+                            onCopy = {
+                                clipboardManager.setText(AnnotatedString(block.content))
+                            }
+                        )
+
+                        ConversationBlockContent(
+                            content = block.content,
+                            isUserBlock = isUserBlock,
+                            showPreview = showPreview,
+                            blockContainerColor = blockContainerColor,
+                            blockTextColor = blockTextColor
+                        )
                     }
+                }
+            } else {
+                Box(
+                    modifier = messageModifier.combinedClickable(
+                        onClick = {
+                            if (isLongMessage) {
+                                isExpanded = !isExpanded
+                            }
+                        },
+                        onLongClick = {
+                            isMenuOpen = true
+                        }
+                    )
+                ) {
+                    ConversationBlockContent(
+                        content = block.content,
+                        isUserBlock = isUserBlock,
+                        showPreview = showPreview,
+                        blockContainerColor = MaterialTheme.colorScheme.background,
+                        blockTextColor = blockTextColor
+                    )
                 }
             }
         }
@@ -169,6 +166,92 @@ fun ConversationOutputBlockCard(
                 isMenuOpen = false
             }
         )
+    }
+}
+
+@Composable
+private fun StructuredBlockHeader(
+    block: ConversationOutputBlock,
+    canCopy: Boolean,
+    onCopy: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = buildConversationBlockHeader(block),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+            modifier = Modifier.weight(1f)
+        )
+
+        if (canCopy) {
+            IconButton(
+                onClick = onCopy,
+                modifier = Modifier
+                    .height(28.dp)
+                    .widthIn(min = 28.dp)
+            ) {
+                Text(
+                    text = "⧉",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationBlockContent(
+    content: String,
+    isUserBlock: Boolean,
+    showPreview: Boolean,
+    blockContainerColor: androidx.compose.ui.graphics.Color,
+    blockTextColor: androidx.compose.ui.graphics.Color
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = content,
+            style = MaterialTheme.typography.bodySmall,
+            color = blockTextColor,
+            maxLines = if (showPreview) 5 else Int.MAX_VALUE,
+            textAlign = if (isUserBlock) TextAlign.End else TextAlign.Start,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        if (showPreview) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                blockContainerColor.copy(alpha = 0.00f),
+                                blockContainerColor.copy(alpha = 0.86f),
+                                blockContainerColor
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Text(
+                    text = "⌄",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = blockTextColor,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+        }
     }
 }
 
@@ -287,6 +370,45 @@ private fun buildConversationBlockHeader(
     } else {
         "$typeLabel · ${block.title}"
     }
+}
+
+private fun shouldRenderAsStructuredBlock(
+    block: ConversationOutputBlock
+): Boolean {
+    return when (block.type) {
+        ConversationOutputBlockType.CODE_BLOCK,
+        ConversationOutputBlockType.JSON_BLOCK,
+        ConversationOutputBlockType.TABLE_BLOCK,
+        ConversationOutputBlockType.ERROR_BLOCK,
+        ConversationOutputBlockType.TRACE_BLOCK,
+        ConversationOutputBlockType.MEMORY_BLOCK -> true
+
+        ConversationOutputBlockType.TEXT_BLOCK -> isStructuredText(block.content)
+        ConversationOutputBlockType.MARKDOWN_BLOCK -> isStructuredText(block.content)
+    }
+}
+
+private fun shouldShowInlineCopyButton(
+    block: ConversationOutputBlock
+): Boolean {
+    return when (block.type) {
+        ConversationOutputBlockType.CODE_BLOCK,
+        ConversationOutputBlockType.JSON_BLOCK,
+        ConversationOutputBlockType.TABLE_BLOCK -> true
+        else -> false
+    }
+}
+
+private fun isStructuredText(
+    content: String
+): Boolean {
+    val trimmed = content.trim()
+    return trimmed.contains("\n") ||
+            trimmed.startsWith("-") ||
+            trimmed.startsWith("*") ||
+            trimmed.startsWith("#") ||
+            trimmed.startsWith("{") ||
+            trimmed.startsWith("[")
 }
 
 private fun shouldUseMessagePreview(
