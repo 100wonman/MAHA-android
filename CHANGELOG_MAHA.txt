@@ -1,4 +1,158 @@
 ==============================
+[2026-04-29 21:45] MAHA 로컬 파일 저장소 구조 설계
+==============================
+
+[지시문 전체]
+[설계 모드]
+
+이번 단계는 “MAHA 로컬 파일 저장소 구조 설계”다.
+
+목표:
+- 대화 세션, 대화 기록, Worker 시스템 인스트럭션, RAG용 데이터, 실행 로그를 로컬 기기에 파일 형태로 저장할 구조를 설계한다.
+- 사용자가 삼성 “내 파일” 앱에서 확인 가능한 저장 구조를 목표로 한다.
+- 이번 단계는 구현이 아니라 저장소 설계다.
+
+[설계 범위]
+- Documents/MAHA 기반 저장 위치 검토
+- Android/data 앱 전용 외부 저장소 대안 검토
+- MAHA 폴더 구조 설계
+- conversations / workers / rag / runs / settings / exports 구조 설계
+- session.json / messages.jsonl / summary.md 파일 포맷 설계
+- Worker 시스템 인스트럭션 md/json 저장 구조 설계
+- RAG 원본/청크/인덱스 메타데이터 구조 설계
+- ConversationFileStore / WorkerInstructionStore / RagFileStore / RunLogFileStore / MahaStorageManager 책임 설계
+- 1차 구현 범위 확정
+
+핵심 방향:
+- Room/DataStore 단독 구조가 아니라 파일 기반 저장소를 우선 검토한다.
+- 최종 목표 저장 위치는 Documents/MAHA/ 를 우선 후보로 둔다.
+- Android 권한/SAF 이슈가 있으면 대안도 함께 정리한다.
+
+설계 범위:
+
+1. 저장 루트 위치 설계
+   - 1순위:
+     - Documents/MAHA/
+   - 대안:
+     - Android/data/com.maha.app/files/MAHA/
+   - 각 방식의 장단점 정리
+   - 삼성 내 파일 앱에서 확인 가능성 정리
+   - Android 버전별 권한 이슈 정리
+
+2. 폴더 구조 설계
+
+권장 초안:
+
+MAHA/
+├─ conversations/
+│  ├─ session_{sessionId}/
+│  │  ├─ session.json
+│  │  ├─ messages.jsonl
+│  │  ├─ summary.md
+│  │  └─ attachments/
+│  │
+├─ workers/
+│  ├─ worker_{workerId}.md
+│  └─ worker_{workerId}.json
+│
+├─ rag/
+│  ├─ documents/
+│  ├─ chunks/
+│  ├─ embeddings/
+│  └─ index_metadata.json
+│
+├─ runs/
+│  ├─ run_{runId}.json
+│  └─ run_logs.jsonl
+│
+├─ settings/
+│  ├─ app_settings.json
+│  ├─ providers.json
+│  └─ model_preferences.json
+│
+└─ exports/
+   └─ conversation_exports/
+
+3. 파일 포맷 설계
+   - session.json:
+     - 세션 메타데이터
+   - messages.jsonl:
+     - 메시지 단위 append-friendly 로그
+   - summary.md:
+     - 사람이 읽을 수 있는 요약
+   - worker_*.md:
+     - Worker 시스템 인스트럭션
+   - worker_*.json:
+     - Worker 설정값
+   - run_*.json:
+     - 단일 실행 기록
+   - run_logs.jsonl:
+     - 전체 실행 로그 누적
+   - index_metadata.json:
+     - RAG 인덱스 메타데이터
+
+4. 데이터 책임 설계
+   - ConversationFileStore
+     - 대화 세션 저장/불러오기
+   - WorkerInstructionStore
+     - Worker 시스템 인스트럭션 저장/불러오기
+   - RagFileStore
+     - RAG 원본/청크/인덱스 메타데이터 관리
+   - RunLogFileStore
+     - 실행 로그 저장
+   - MahaStorageManager
+     - 루트 디렉토리 관리
+     - 초기 폴더 생성
+     - 저장소 상태 점검
+
+5. 1차 구현 범위 제안
+   - 이번 설계 후 바로 구현할 1차 범위를 정한다.
+   - 권장 1차 구현:
+     - MAHA 루트 폴더 생성
+     - conversations 폴더 생성
+     - session.json 저장
+     - messages.jsonl 저장
+     - 앱 재시작 후 대화 세션 목록 복구
+   - Worker/RAG/Run 저장은 후속 단계로 분리한다.
+
+6. 금지 사항
+   - 이번 단계에서 실제 코드 구현 금지
+   - Room DB 도입 금지
+   - DataStore 도입 금지
+   - RAG 실제 구현 금지
+   - embedding/vector index 구현 금지
+   - Provider/Worker/ExecutionEngine 수정 금지
+   - 기존 ConversationViewModel 구조 변경 금지
+
+완료 기준:
+- MAHA 로컬 파일 저장소 폴더 구조 확정
+- 저장 위치 후보와 권한 이슈 정리
+- 파일 포맷별 역할 확정
+- Store/Manager 책임 분리 설계
+- 1차 구현 범위 확정
+- 다음 구현 단계 지시 가능 상태
+
+결과 보고:
+- 추천 저장 위치
+- 폴더 구조
+- 파일 포맷별 역할
+- Android 권한/SAF 고려사항
+- 1차 구현 범위
+- 후속 단계 목록
+
+[결과]
+(성공)
+
+[적용 내용]
+-
+
+[문제 및 해결]
+-
+
+[다음 작업 예정]
+MAHA 로컬 파일 저장소 1차 구현
+
+==============================
 [2026-04-29 21:30] ConversationViewModel 기반 세션 상태 보존
 ==============================
 
