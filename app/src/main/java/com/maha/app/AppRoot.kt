@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -59,6 +60,7 @@ fun AppRoot() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val conversationViewModel: ConversationViewModel = viewModel()
 
     val agentList = remember { mutableStateListOf<Agent>() }
     val runList = remember { mutableStateListOf<Run>() }
@@ -66,7 +68,11 @@ fun AppRoot() {
     val executionStateMap = remember { mutableStateMapOf<String, String>() }
     val discoveredModelList = remember { mutableStateListOf<DiscoveredModel>() }
     val executionHistoryLogList = remember { mutableStateListOf<ExecutionHistoryLog>() }
-    val conversationSessionList = remember { mutableStateListOf<ConversationSession>() }
+    val conversationSessions = conversationViewModel.conversationSessions
+    val selectedConversationSessionId = conversationViewModel.selectedConversationSessionId
+    val conversationInputText = conversationViewModel.inputText
+    val conversationSearchEnabled = conversationViewModel.searchEnabled
+    val conversationModeLabel = conversationViewModel.modeLabel
 
     var selectedAgentId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRunId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -75,10 +81,6 @@ fun AppRoot() {
     var isScenarioScreenOpen by rememberSaveable { mutableStateOf(false) }
     var isSettingsScreenOpen by rememberSaveable { mutableStateOf(false) }
     var isConversationListScreenOpen by rememberSaveable { mutableStateOf(false) }
-    var selectedConversationSessionId by rememberSaveable { mutableStateOf<String?>(null) }
-    var conversationInputText by rememberSaveable { mutableStateOf("") }
-    var conversationSearchEnabled by rememberSaveable { mutableStateOf(false) }
-    var conversationModeLabel by rememberSaveable { mutableStateOf("일반") }
     var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var isConversationGlobalSettingsOpen by rememberSaveable { mutableStateOf(false) }
@@ -123,9 +125,6 @@ fun AppRoot() {
 
         executionHistoryLogList.clear()
         executionHistoryLogList.addAll(StorageManager.loadExecutionHistoryLogs(context))
-
-        conversationSessionList.clear()
-        conversationSessionList.addAll(createDummyConversationSessions())
 
         val loadedAgents = StorageManager.loadAgents(context)
         val safeAgents = if (loadedAgents.isEmpty()) {
@@ -251,7 +250,7 @@ fun AppRoot() {
                 isConversationGlobalSettingsOpen = false
                 selectedConversationSettingsPage = null
             }
-            selectedConversationSessionId != null -> selectedConversationSessionId = null
+            selectedConversationSessionId != null -> conversationViewModel.clearSelectedSession()
             isConversationListScreenOpen -> isConversationListScreenOpen = false
             isWorkModeOpen && selectedAgentId == null && selectedRunId == null && !isScenarioScreenOpen && !isSettingsScreenOpen && !isModelCatalogScreenOpen && !isExecutionLogScreenOpen -> isWorkModeOpen = false
             pendingRunPrecheck != null -> pendingRunPrecheck = null
@@ -312,7 +311,7 @@ fun AppRoot() {
                             modelSelectionAgentId = null
                             isWorkModeOpen = true
                             isConversationListScreenOpen = false
-                            selectedConversationSessionId = null
+                            conversationViewModel.clearSelectedSession()
                             isScenarioScreenOpen = false
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
@@ -614,10 +613,10 @@ fun AppRoot() {
                 modeLabel = conversationModeLabel,
                 searchEnabled = conversationSearchEnabled,
                 onModeSelected = { selectedMode ->
-                    conversationModeLabel = selectedMode
+                    conversationViewModel.updateModeLabel(selectedMode)
                 },
                 onSearchEnabledChange = { enabled ->
-                    conversationSearchEnabled = enabled
+                    conversationViewModel.updateSearchEnabled(enabled)
                 },
                 onDismiss = {
                     showConversationSettingsDialog = false
@@ -632,41 +631,10 @@ fun AppRoot() {
                     editingText = newText
                 },
                 onSave = {
-                    val editedText = editingText.trim()
-                    if (editedText.isNotBlank()) {
-                        val targetSessionId = selectedConversationSessionId
-                        val targetSessionIndex = conversationSessionList.indexOfFirst {
-                            it.sessionId == targetSessionId
-                        }
-
-                        if (targetSessionIndex != -1) {
-                            val targetSession = conversationSessionList[targetSessionIndex]
-                            val updatedMessages = targetSession.messages.map { message ->
-                                if (message.messageId == targetMessageId && message.role == ConversationRole.USER) {
-                                    message.copy(
-                                        blocks = message.blocks.map { block ->
-                                            if (
-                                                block.type == ConversationOutputBlockType.TEXT_BLOCK ||
-                                                block.type == ConversationOutputBlockType.MARKDOWN_BLOCK
-                                            ) {
-                                                block.copy(content = editedText)
-                                            } else {
-                                                block
-                                            }
-                                        }
-                                    )
-                                } else {
-                                    message
-                                }
-                            }
-
-                            conversationSessionList[targetSessionIndex] = targetSession.copy(
-                                lastMessageSummary = editedText.take(60),
-                                updatedAt = getCurrentTimeText(),
-                                messages = updatedMessages
-                            )
-                        }
-                    }
+                    conversationViewModel.updateUserMessage(
+                        messageId = targetMessageId,
+                        newText = editingText
+                    )
 
                     editingMessageId = null
                     editingText = ""
@@ -693,7 +661,7 @@ fun AppRoot() {
             }
 
             selectedConversationSessionId != null -> {
-                val session = conversationSessionList.find {
+                val session = conversationSessions.find {
                     it.sessionId == selectedConversationSessionId
                 }
 
@@ -704,106 +672,12 @@ fun AppRoot() {
                         searchEnabled = conversationSearchEnabled,
                         modeLabel = conversationModeLabel,
                         isRunning = conversationIsRunning,
-                        onInputTextChange = { newText ->
-                            conversationInputText = newText
-                        },
-                        onSend = {
-                            val textToSend = conversationInputText.trim()
-                            if (textToSend.isBlank()) {
-                                return@ConversationRoomScreen
-                            }
-
-                            val targetSessionId = selectedConversationSessionId
-                            val targetIndex = conversationSessionList.indexOfFirst {
-                                it.sessionId == targetSessionId
-                            }
-
-                            if (targetIndex != -1) {
-                                val targetSession = conversationSessionList[targetIndex]
-                                val nowText = getCurrentTimeText()
-                                val currentTimeMillis = System.currentTimeMillis()
-                                val runId = "conversation_run_$currentTimeMillis"
-
-                                val userMessage = ConversationMessage(
-                                    messageId = "message_user_$currentTimeMillis",
-                                    sessionId = targetSession.sessionId,
-                                    role = ConversationRole.USER,
-                                    createdAt = nowText,
-                                    blocks = listOf(
-                                        ConversationOutputBlock(
-                                            blockId = "block_user_$currentTimeMillis",
-                                            type = ConversationOutputBlockType.TEXT_BLOCK,
-                                            title = "사용자 입력",
-                                            content = textToSend,
-                                            collapsed = false
-                                        )
-                                    ),
-                                    linkedRunId = runId
-                                )
-
-                                val assistantMessage = ConversationMessage(
-                                    messageId = "message_assistant_$currentTimeMillis",
-                                    sessionId = targetSession.sessionId,
-                                    role = ConversationRole.ASSISTANT,
-                                    createdAt = nowText,
-                                    blocks = listOf(
-                                        ConversationOutputBlock(
-                                            blockId = "block_assistant_$currentTimeMillis",
-                                            type = ConversationOutputBlockType.TEXT_BLOCK,
-                                            title = "더미 응답",
-                                            content = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.",
-                                            collapsed = false
-                                        ),
-                                        ConversationOutputBlock(
-                                            blockId = "block_trace_$currentTimeMillis",
-                                            type = ConversationOutputBlockType.TRACE_BLOCK,
-                                            title = "실행 과정",
-                                            content = "입력 수신 → 더미 응답 생성 → 화면 갱신",
-                                            collapsed = true
-                                        )
-                                    ),
-                                    linkedRunId = runId
-                                )
-
-                                val latestRun = createDummyConversationRun(targetSession.sessionId).copy(
-                                    runId = runId,
-                                    userInput = textToSend,
-                                    totalLatencySec = 1.1,
-                                    totalRetryCount = 0,
-                                    workerResults = listOf(
-                                        ConversationWorkerResult(
-                                            workerName = "Dummy Conversation Worker",
-                                            providerName = "DUMMY",
-                                            modelName = "dummy",
-                                            status = "COMPLETED",
-                                            latencySec = 1.1,
-                                            retryCount = 0,
-                                            tokensPerSecond = null,
-                                            errorType = "",
-                                            outputSummary = "더미 응답 생성 완료",
-                                            rawOutput = "Dummy response"
-                                        )
-                                    )
-                                )
-
-                                conversationSessionList[targetIndex] = targetSession.copy(
-                                    lastMessageSummary = textToSend.take(60),
-                                    updatedAt = nowText,
-                                    messages = targetSession.messages + userMessage + assistantMessage,
-                                    latestRun = latestRun
-                                )
-                            }
-
-                            conversationInputText = ""
-                        },
-                        onToggleSearch = {
-                            conversationSearchEnabled = !conversationSearchEnabled
-                        },
-                        onModeChange = { newMode ->
-                            conversationModeLabel = newMode
-                        },
+                        onInputTextChange = conversationViewModel::updateInputText,
+                        onSend = conversationViewModel::sendMessage,
+                        onToggleSearch = conversationViewModel::toggleSearchEnabled,
+                        onModeChange = conversationViewModel::updateModeLabel,
                         onBack = {
-                            selectedConversationSessionId = null
+                            conversationViewModel.clearSelectedSession()
                         },
                         onOpenSettings = {
                             showConversationSettingsDialog = true
@@ -825,32 +699,26 @@ fun AppRoot() {
                         }
                     )
                 } else {
-                    selectedConversationSessionId = null
-                    isConversationListScreenOpen = true
+                    ConversationMissingSessionFallback(
+                        onBackClick = {
+                            conversationViewModel.clearSelectedSession()
+                            isConversationListScreenOpen = true
+                        }
+                    )
                 }
             }
 
             isConversationListScreenOpen -> {
                 ConversationSessionListScreen(
-                    sessions = conversationSessionList,
+                    sessions = conversationSessions,
                     onBackClick = {
                         isConversationListScreenOpen = false
                     },
                     onNewConversationClick = {
-                        val newSession = ConversationSession(
-                            sessionId = "conversation_${System.currentTimeMillis()}",
-                            title = "새 대화",
-                            lastMessageSummary = "아직 메시지가 없습니다.",
-                            updatedAt = getCurrentTimeText(),
-                            messages = emptyList(),
-                            memorySummary = ""
-                        )
-
-                        conversationSessionList.add(0, newSession)
-                        selectedConversationSessionId = newSession.sessionId
+                        conversationViewModel.createNewSession()
                     },
                     onSessionClick = { session ->
-                        selectedConversationSessionId = session.sessionId
+                        conversationViewModel.selectSession(session.sessionId)
                     }
                 )
             }
@@ -1184,126 +1052,156 @@ fun AppRoot() {
                     )
                 } else {
                     AgentListScreen(
-                    agentList = agentList,
-                    runList = runList,
-                    executionStateMap = executionStateMap,
-                    isRunAllRunning = isRunAllRunning || isSearchingModels,
-                    promptText = promptText,
-                    onPromptTextChange = { newPrompt ->
-                        promptText = newPrompt
-                    },
-                    onMenuClick = {
-                        scope.launch { drawerState.open() }
-                    },
-                    onAgentClick = { agent ->
-                        if (
-                            agent.id.isNotBlank() &&
-                            agentList.any { it.id == agent.id } &&
-                            !isRunAllRunning &&
-                            runningAgentId == null &&
-                            !isSearchingModels
-                        ) {
-                            selectedAgentId = agent.id
-                        }
-                    },
-                    onAddAgentClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                        agentList = agentList,
+                        runList = runList,
+                        executionStateMap = executionStateMap,
+                        isRunAllRunning = isRunAllRunning || isSearchingModels,
+                        promptText = promptText,
+                        onPromptTextChange = { newPrompt ->
+                            promptText = newPrompt
+                        },
+                        onMenuClick = {
+                            scope.launch { drawerState.open() }
+                        },
+                        onAgentClick = { agent ->
+                            if (
+                                agent.id.isNotBlank() &&
+                                agentList.any { it.id == agent.id } &&
+                                !isRunAllRunning &&
+                                runningAgentId == null &&
+                                !isSearchingModels
+                            ) {
+                                selectedAgentId = agent.id
+                            }
+                        },
+                        onAddAgentClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val newAgent = createNewAgent(existingAgents = agentList)
-                        agentList.add(newAgent)
-                        executionStateMap[newAgent.id] = "WAITING"
-                        selectedAgentId = newAgent.id
-                    },
-                    onSaveScenarioClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            val newAgent = createNewAgent(existingAgents = agentList)
+                            agentList.add(newAgent)
+                            executionStateMap[newAgent.id] = "WAITING"
+                            selectedAgentId = newAgent.id
+                        },
+                        onSaveScenarioClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val safeAgents = normalizeAgents(agentList)
-                        val newScenario = Scenario(
-                            id = generateUniqueScenarioId(scenarioList),
-                            name = "Scenario ${scenarioList.size + 1}",
-                            agents = safeAgents.map { it.copy() },
-                            savedAt = getCurrentTimeText()
-                        )
+                            val safeAgents = normalizeAgents(agentList)
+                            val newScenario = Scenario(
+                                id = generateUniqueScenarioId(scenarioList),
+                                name = "Scenario ${scenarioList.size + 1}",
+                                agents = safeAgents.map { it.copy() },
+                                savedAt = getCurrentTimeText()
+                            )
 
-                        scenarioList.removeAll { it.id == newScenario.id }
-                        scenarioList.add(0, newScenario)
-                    },
-                    onOpenScenarioListClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        isScenarioScreenOpen = true
-                        isSettingsScreenOpen = false
-                        isModelCatalogScreenOpen = false
-                        isExecutionLogScreenOpen = false
-                    },
-                    onApplyGemini31FlashLiteToAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            scenarioList.removeAll { it.id == newScenario.id }
+                            scenarioList.add(0, newScenario)
+                        },
+                        onOpenScenarioListClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            isScenarioScreenOpen = true
+                            isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
+                        },
+                        onApplyGemini31FlashLiteToAllClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        isApplyFallbackModelDialogOpen = true
-                    },
-                    onShowModelRecommendationsClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            isApplyFallbackModelDialogOpen = true
+                        },
+                        onShowModelRecommendationsClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val recommendations = ModelRecommendationManager.buildRecommendations(
-                            agents = agentList.toList(),
-                            logs = executionHistoryLogList.toList(),
-                            testRecords = ModelTestManager.getAllRecords(context)
-                        )
+                            val recommendations = ModelRecommendationManager.buildRecommendations(
+                                agents = agentList.toList(),
+                                logs = executionHistoryLogList.toList(),
+                                testRecords = ModelTestManager.getAllRecords(context)
+                            )
 
-                        pendingRecommendations = recommendations
-                        isRecommendationDialogOpen = true
-                    },
-                    onMoveUpClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentUp(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onMoveDownClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentDown(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onRunItemClick = { run ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        selectedRunId = run.runId
-                    },
-                    onRunAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            pendingRecommendations = recommendations
+                            isRecommendationDialogOpen = true
+                        },
+                        onMoveUpClick = { agent ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            moveAgentUp(
+                                targetAgent = agent,
+                                agentList = agentList
+                            )
+                        },
+                        onMoveDownClick = { agent ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            moveAgentDown(
+                                targetAgent = agent,
+                                agentList = agentList
+                            )
+                        },
+                        onRunItemClick = { run ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            selectedRunId = run.runId
+                        },
+                        onRunAllClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
-                            context = context,
-                            agents = agentList.toList(),
-                            fallbackProviderName = savedProvider
-                        )
-                    }
-                )
+                            pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                                context = context,
+                                agents = agentList.toList(),
+                                fallbackProviderName = savedProvider
+                            )
+                        }
+                    )
                 }
             }
         }
     }
 }
 
+
+@Composable
+fun ConversationMissingSessionFallback(
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0B1020))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "대화 세션을 찾을 수 없습니다.",
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "뒤로 가기를 눌러 세션 목록으로 돌아가세요.",
+            color = Color(0xFF94A3B8)
+        )
+
+        Button(
+            onClick = onBackClick
+        ) {
+            Text(text = "세션 목록으로")
+        }
+    }
+}
 
 internal fun createDefaultAgents(): List<Agent> {
     return listOf(

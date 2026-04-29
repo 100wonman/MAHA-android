@@ -1,4 +1,291 @@
 ==============================
+[2026-04-29 21:30] ConversationViewModel 기반 세션 상태 보존
+==============================
+
+[지시문 전체]
+[구현 모드]
+
+이번 단계는 “ConversationViewModel 기반 세션 상태 보존”이다.
+
+목표:
+- 화면 회전 시 대화방이 세션 목록으로 튕기는 문제를 해결한다.
+- 새 대화 생성 후 회전 시 새 세션이 사라지는 문제를 해결한다.
+- conversationSessionList를 remember가 아니라 ViewModel이 소유하게 한다.
+- 수정 성공 후 즉시 커밋하여 새 기준점을 만든다.
+
+[확정 원인]
+- conversationSessionList가 remember로 선언되어 있어 화면 회전 시 초기화됨
+- selectedConversationSessionId는 살아 있어도 세션 리스트가 비어서 ROOM 유지 실패
+- 새 대화 세션도 회전 후 사라짐
+
+[구현 범위]
+- ConversationViewModel 추가
+- conversationSessions를 ViewModel에서 소유
+- selectedConversationSessionId를 ViewModel에서 소유
+- inputText를 ViewModel에서 소유
+- createDummyConversationSessions를 ViewModel init에서 1회 호출
+- 새 대화 생성 시 기존 리스트에 추가
+- AppRoot의 remember 기반 conversationSessionList 제거
+- currentConversationScreen은 기존 rememberSaveable 유지
+- 기존 BackHandler / UI 정책 유지
+- 회전 및 세션 목록 보존 테스트
+- 빌드 검증
+- 성공 후 커밋
+
+[구현 모드]
+
+이번 단계는 “ConversationViewModel 기반 세션 상태 보존”이다.
+
+목표:
+- 화면 회전 시 대화방이 세션 목록으로 튕기는 문제를 해결한다.
+- 새 대화 생성 후 회전 시 새 세션이 사라지는 문제를 해결한다.
+- conversationSessionList를 remember가 아니라 ViewModel이 소유하게 한다.
+- 수정 성공 후 즉시 커밋하여 새 기준점을 만든다.
+
+현재 확정 원인:
+- conversationSessionList가 아래처럼 remember로만 선언되어 있음.
+
+val conversationSessionList = remember { mutableStateListOf<ConversationSession>() }
+
+문제:
+- remember는 Activity 재생성/화면 회전 시 초기화됨
+- 새 대화 세션 목록이 사라짐
+- selectedConversationSessionId는 살아 있어도 해당 세션이 리스트에 없어 ROOM 유지 실패
+- 결과적으로 대화방이 세션 목록으로 튕김
+
+--------------------------------------------------
+1. ConversationViewModel 추가
+--------------------------------------------------
+
+신규 파일 예시:
+- conversation/ConversationViewModel.kt
+
+역할:
+- conversationSessionList 소유
+- selectedConversationSessionId 소유
+- conversationInputText 소유
+- 빠른 설정 상태 일부 소유 가능
+  - selectedMode 또는 modeLabel
+  - searchEnabled
+  - quickSettingsExpanded
+- 새 대화 생성 함수 제공
+- 메시지 추가 함수 제공
+- 세션 선택 함수 제공
+
+조건:
+- 이번 단계에서는 Repository / Room / DataStore 사용 금지
+- 앱 종료 후 영구 저장은 목표 아님
+- 화면 회전 생명주기 보존만 목표
+
+--------------------------------------------------
+2. ViewModel 상태 구조
+--------------------------------------------------
+
+권장 상태:
+
+class ConversationViewModel : ViewModel() {
+    val conversationSessions = mutableStateListOf<ConversationSession>()
+
+    var selectedConversationSessionId by mutableStateOf<String?>(null)
+        private set
+
+    var inputText by mutableStateOf("")
+        private set
+
+    var selectedMode by mutableStateOf("자동")
+        private set
+
+    var searchEnabled by mutableStateOf(false)
+        private set
+
+    var quickSettingsExpanded by mutableStateOf(false)
+        private set
+
+    init {
+        if (conversationSessions.isEmpty()) {
+            conversationSessions.addAll(createDummyConversationSessions())
+        }
+    }
+
+    fun selectSession(sessionId: String) { ... }
+
+    fun createNewSession(): String { ... }
+
+    fun updateInputText(value: String) { ... }
+
+    fun sendMessage() { ... }
+}
+
+주의:
+- createDummyConversationSessions()는 init에서 1회만 호출
+- 새 대화 생성 시 기존 리스트를 덮어쓰지 말 것
+- conversationSessions = listOf(newSession) 같은 방식 금지
+- mutableStateListOf에 add(0, newSession) 또는 add(newSession) 사용
+
+--------------------------------------------------
+3. AppRoot 수정 범위 제한
+--------------------------------------------------
+
+AppRoot에서는 기존 remember 기반 conversationSessionList를 제거한다.
+
+변경:
+- val conversationViewModel: ConversationViewModel = viewModel()
+- conversationViewModel.conversationSessions 사용
+- selectedConversationSessionId는 ViewModel 값 사용
+- inputText는 ViewModel 값 사용
+
+주의:
+- AppRoot 전체 재작성 금지
+- 기존 화면 분기 구조 유지
+- BackHandler 정책 변경 금지
+- UI polish 변경 금지
+
+--------------------------------------------------
+4. 대화 화면 연결
+--------------------------------------------------
+
+ConversationSessionListScreen:
+- sessions = conversationViewModel.conversationSessions
+- 새 대화 버튼:
+  - val newId = conversationViewModel.createNewSession()
+  - currentConversationScreen = ROOM
+- 기존 세션 클릭:
+  - conversationViewModel.selectSession(sessionId)
+  - currentConversationScreen = ROOM
+
+ConversationRoomScreen:
+- session = selectedConversationSessionId로 sessions에서 찾은 값
+- inputText = conversationViewModel.inputText
+- onInputTextChange = conversationViewModel::updateInputText
+- onSend = conversationViewModel::sendMessage
+
+조건:
+- session이 null이면 무조건 세션 목록으로 강제 이동하지 말고, 우선 fallback 표시 또는 안전 처리
+- 다만 정상 상태에서는 회전 후 session이 null이면 안 됨
+
+--------------------------------------------------
+5. currentConversationScreen 처리
+--------------------------------------------------
+
+currentConversationScreen은 기존 rememberSaveable 유지 가능.
+
+중요:
+- conversationSessions만 ViewModel로 옮겨도 새 세션 증발 문제는 해결됨
+- selectedConversationSessionId도 ViewModel로 옮기면 더 안정적임
+- AppRoot의 rememberSaveable selectedConversationSessionId와 ViewModel selectedId가 중복되지 않게 하나로 통일
+
+권장:
+- selectedConversationSessionId는 ViewModel 소유
+- currentConversationScreen은 AppRoot rememberSaveable 유지
+
+--------------------------------------------------
+6. isDataLoaded 정리
+--------------------------------------------------
+
+문제 가능성이 있는 상태:
+var isDataLoaded by remember { mutableStateOf(false) }
+
+처리:
+- 대화 세션 초기화와 관련된 isDataLoaded가 있다면 제거하거나 ViewModel init로 이동
+- 화면 회전 시 dummy 세션을 다시 덮어쓰지 않게 한다
+- 작업모드 데이터 로딩과 관련된 isDataLoaded라면 건드리지 말 것
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+반드시 아래 순서로 테스트한다.
+
+테스트 A: 기존 세션 회전
+1. 앱 실행
+2. 대화모드 진입
+3. 기존 세션 클릭
+4. 대화방 진입
+5. 화면 회전
+6. 대화방에 그대로 남아야 함
+
+테스트 B: 새 세션 회전
+1. 대화 세션 목록
+2. 새 대화 생성
+3. 입력창에 텍스트 작성
+4. 화면 회전
+5. 새 대화방에 그대로 남아야 함
+6. 입력 중 텍스트가 유지되어야 함
+7. 뒤로가기
+8. 세션 목록에 새 대화가 남아 있어야 함
+
+테스트 C: 여러 새 세션
+1. 새 대화 3개 생성
+2. 세션 목록으로 돌아가기
+3. 생성한 3개가 모두 목록에 있어야 함
+4. 화면 회전
+5. 목록 유지되어야 함
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+- UI polish 추가 금지
+- OutputBlock 렌더링 변경 금지
+- 실행 정보 패널 UI 변경 금지
+- 작업모드 ViewModel화 금지
+- Repository 도입 금지
+- Room/DataStore 도입 금지
+- Navigation Compose 도입 금지
+- Provider / Worker / ExecutionEngine / ModelRouter 수정 금지
+- AppRoot 대규모 재작성 금지
+- PC2에서 실패했던 상태 수정 방식 재사용 금지
+
+--------------------------------------------------
+완료 기준:
+- 회전 시 기존 대화방에서 튕기지 않음
+- 회전 시 새 대화방에서 튕기지 않음
+- 새 대화 생성 후 회전해도 세션이 사라지지 않음
+- 입력 중 회전해도 inputText 유지
+- 새 대화 여러 개 생성 시 모두 목록에 유지
+- 기존 뒤로가기 ROOM → SESSION_LIST 유지
+- 기존 UI 기능 정상 유지
+- 빌드 성공
+- 성공 후 커밋 완료
+
+--------------------------------------------------
+결과 보고:
+- ConversationViewModel 추가 여부
+- conversationSessions 소유 위치
+- selectedConversationSessionId 소유 위치
+- inputText 소유 위치
+- createDummyConversationSessions 호출 위치
+- 회전 테스트 결과
+- 세션 목록 보존 테스트 결과
+- 변경 파일 목록
+- 빌드 결과
+- 커밋 해시
+
+[결과]
+(빌드 성공)
+
+[적용 내용]
+
+[문제 및 해결]
+-
+
+[테스트 결과]
+1. 테스트 A: 기존 세션 회전
+- 기존 세션 클릭 → 대화방 진입 → 화면 회전
+- 결과: 통과, 대화방 유지됨
+
+2. 테스트 B: 새 세션 회전
+- 새 대화 생성 → 입력 작성 → 화면 회전 → 뒤로가기
+- 결과: 통과, 새 대화방 유지 / inputText 유지 / 세션 목록에 새 대화 유지
+
+3. 테스트 C: 여러 새 세션
+- 새 대화 3개 생성 → 목록 복귀 → 화면 회전
+- 결과: 통과, 생성한 3개 세션 모두 유지
+
+[다음 작업 예정]
+대화방 최종 UI 완성 또는 OutputBlock 고급 렌더링
+
+==============================
 [2026-04-29 HH:mm] 대화방 UX 2차 정밀 보정
 ==============================
 
