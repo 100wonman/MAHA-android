@@ -1,9 +1,12 @@
 package com.maha.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -110,6 +113,30 @@ fun AppRoot() {
 
     var promptText by rememberSaveable {
         mutableStateOf("Create a simple MAHA workflow summary.")
+    }
+
+    val storageFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        val permissionFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, permissionFlags)
+        }.onSuccess {
+            conversationViewModel.connectSafStorage(uri)
+            Toast.makeText(context, "저장 폴더가 연결되었습니다.", Toast.LENGTH_SHORT).show()
+        }.onFailure { exception ->
+            Toast.makeText(
+                context,
+                "저장 폴더 권한 유지 실패: ${exception.message ?: "알 수 없는 오류"}",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -612,17 +639,14 @@ fun AppRoot() {
             ConversationSettingsDialog(
                 modeLabel = conversationModeLabel,
                 searchEnabled = conversationSearchEnabled,
-                onModeSelected = { selectedMode ->
-                    conversationViewModel.updateModeLabel(selectedMode)
-                },
-                onSearchEnabledChange = { enabled ->
-                    conversationViewModel.updateSearchEnabled(enabled)
-                },
+                onModeSelected = conversationViewModel::updateModeLabel,
+                onSearchEnabledChange = conversationViewModel::updateSearchEnabled,
                 onDismiss = {
                     showConversationSettingsDialog = false
                 }
             )
         }
+
 
         editingMessageId?.let { targetMessageId ->
             ConversationMessageEditDialog(
@@ -650,8 +674,17 @@ fun AppRoot() {
             selectedConversationSessionId != null && isConversationGlobalSettingsOpen -> {
                 ConversationGlobalSettingsScreen(
                     selectedPage = selectedConversationSettingsPage,
+                    storageStatusText = conversationViewModel.storageStatusText,
+                    storageLocationText = conversationViewModel.storageLocationText,
                     onPageSelected = { page ->
                         selectedConversationSettingsPage = page
+                    },
+                    onSelectStorageFolderClick = {
+                        storageFolderLauncher.launch(null)
+                    },
+                    onUseFallbackStorageClick = {
+                        conversationViewModel.useFallbackStorage()
+                        Toast.makeText(context, "기본 앱 저장소를 사용합니다.", Toast.LENGTH_SHORT).show()
                     },
                     onBackClick = {
                         isConversationGlobalSettingsOpen = false
@@ -1052,120 +1085,120 @@ fun AppRoot() {
                     )
                 } else {
                     AgentListScreen(
-                        agentList = agentList,
-                        runList = runList,
-                        executionStateMap = executionStateMap,
-                        isRunAllRunning = isRunAllRunning || isSearchingModels,
-                        promptText = promptText,
-                        onPromptTextChange = { newPrompt ->
-                            promptText = newPrompt
-                        },
-                        onMenuClick = {
-                            scope.launch { drawerState.open() }
-                        },
-                        onAgentClick = { agent ->
-                            if (
-                                agent.id.isNotBlank() &&
-                                agentList.any { it.id == agent.id } &&
-                                !isRunAllRunning &&
-                                runningAgentId == null &&
-                                !isSearchingModels
-                            ) {
-                                selectedAgentId = agent.id
-                            }
-                        },
-                        onAddAgentClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val newAgent = createNewAgent(existingAgents = agentList)
-                            agentList.add(newAgent)
-                            executionStateMap[newAgent.id] = "WAITING"
-                            selectedAgentId = newAgent.id
-                        },
-                        onSaveScenarioClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val safeAgents = normalizeAgents(agentList)
-                            val newScenario = Scenario(
-                                id = generateUniqueScenarioId(scenarioList),
-                                name = "Scenario ${scenarioList.size + 1}",
-                                agents = safeAgents.map { it.copy() },
-                                savedAt = getCurrentTimeText()
-                            )
-
-                            scenarioList.removeAll { it.id == newScenario.id }
-                            scenarioList.add(0, newScenario)
-                        },
-                        onOpenScenarioListClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            isScenarioScreenOpen = true
-                            isSettingsScreenOpen = false
-                            isModelCatalogScreenOpen = false
-                            isExecutionLogScreenOpen = false
-                        },
-                        onApplyGemini31FlashLiteToAllClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            isApplyFallbackModelDialogOpen = true
-                        },
-                        onShowModelRecommendationsClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val recommendations = ModelRecommendationManager.buildRecommendations(
-                                agents = agentList.toList(),
-                                logs = executionHistoryLogList.toList(),
-                                testRecords = ModelTestManager.getAllRecords(context)
-                            )
-
-                            pendingRecommendations = recommendations
-                            isRecommendationDialogOpen = true
-                        },
-                        onMoveUpClick = { agent ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            moveAgentUp(
-                                targetAgent = agent,
-                                agentList = agentList
-                            )
-                        },
-                        onMoveDownClick = { agent ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            moveAgentDown(
-                                targetAgent = agent,
-                                agentList = agentList
-                            )
-                        },
-                        onRunItemClick = { run ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            selectedRunId = run.runId
-                        },
-                        onRunAllClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
-                                context = context,
-                                agents = agentList.toList(),
-                                fallbackProviderName = savedProvider
-                            )
+                    agentList = agentList,
+                    runList = runList,
+                    executionStateMap = executionStateMap,
+                    isRunAllRunning = isRunAllRunning || isSearchingModels,
+                    promptText = promptText,
+                    onPromptTextChange = { newPrompt ->
+                        promptText = newPrompt
+                    },
+                    onMenuClick = {
+                        scope.launch { drawerState.open() }
+                    },
+                    onAgentClick = { agent ->
+                        if (
+                            agent.id.isNotBlank() &&
+                            agentList.any { it.id == agent.id } &&
+                            !isRunAllRunning &&
+                            runningAgentId == null &&
+                            !isSearchingModels
+                        ) {
+                            selectedAgentId = agent.id
                         }
-                    )
+                    },
+                    onAddAgentClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val newAgent = createNewAgent(existingAgents = agentList)
+                        agentList.add(newAgent)
+                        executionStateMap[newAgent.id] = "WAITING"
+                        selectedAgentId = newAgent.id
+                    },
+                    onSaveScenarioClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val safeAgents = normalizeAgents(agentList)
+                        val newScenario = Scenario(
+                            id = generateUniqueScenarioId(scenarioList),
+                            name = "Scenario ${scenarioList.size + 1}",
+                            agents = safeAgents.map { it.copy() },
+                            savedAt = getCurrentTimeText()
+                        )
+
+                        scenarioList.removeAll { it.id == newScenario.id }
+                        scenarioList.add(0, newScenario)
+                    },
+                    onOpenScenarioListClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        isScenarioScreenOpen = true
+                        isSettingsScreenOpen = false
+                        isModelCatalogScreenOpen = false
+                        isExecutionLogScreenOpen = false
+                    },
+                    onApplyGemini31FlashLiteToAllClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        isApplyFallbackModelDialogOpen = true
+                    },
+                    onShowModelRecommendationsClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val recommendations = ModelRecommendationManager.buildRecommendations(
+                            agents = agentList.toList(),
+                            logs = executionHistoryLogList.toList(),
+                            testRecords = ModelTestManager.getAllRecords(context)
+                        )
+
+                        pendingRecommendations = recommendations
+                        isRecommendationDialogOpen = true
+                    },
+                    onMoveUpClick = { agent ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        moveAgentUp(
+                            targetAgent = agent,
+                            agentList = agentList
+                        )
+                    },
+                    onMoveDownClick = { agent ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        moveAgentDown(
+                            targetAgent = agent,
+                            agentList = agentList
+                        )
+                    },
+                    onRunItemClick = { run ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        selectedRunId = run.runId
+                    },
+                    onRunAllClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                            context = context,
+                            agents = agentList.toList(),
+                            fallbackProviderName = savedProvider
+                        )
+                    }
+                )
                 }
             }
         }
@@ -1493,4 +1526,194 @@ fun buildDummyOutput(
     input: String
 ): String {
     return "Step $stepNumber - $agentName output based on: $input"
+}
+
+
+@Composable
+private fun ConversationGlobalSettingsScreen(
+    selectedPage: String?,
+    storageStatusText: String,
+    storageLocationText: String,
+    onPageSelected: (String) -> Unit,
+    onSelectStorageFolderClick: () -> Unit,
+    onUseFallbackStorageClick: () -> Unit,
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF050A0F))
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        TextButton(onClick = onBackClick) {
+            Text(text = "←", color = Color.White)
+        }
+
+        if (selectedPage == null) {
+            Text(
+                text = "대화모드 설정",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = "전역 설정 메인",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFB8BCC6)
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "일반 설정",
+                subtitle = "테마, 폰트, 색상 설정",
+                onClick = { onPageSelected("general") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "대화 설정",
+                subtitle = "모드, 검색, Worker 기본값",
+                onClick = { onPageSelected("conversation") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "출력 블록 설정",
+                subtitle = "블록 표시, 복사, 접기 정책",
+                onClick = { onPageSelected("output") }
+            )
+
+            ConversationGlobalSettingsCard(
+                title = "메모리 / RAG",
+                subtitle = "후속 단계에서 연결 예정",
+                onClick = { onPageSelected("rag") }
+            )
+        } else {
+            Text(
+                text = when (selectedPage) {
+                    "conversation" -> "대화 설정"
+                    "general" -> "일반 설정"
+                    "output" -> "출력 블록 설정"
+                    "rag" -> "메모리 / RAG"
+                    else -> "대화 설정"
+                },
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = "상세 설정 placeholder",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFB8BCC6)
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF3A3F49)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = when (selectedPage) {
+                            "conversation" -> "대화 설정 상세 페이지"
+                            "general" -> "일반 설정 상세 페이지"
+                            "output" -> "출력 블록 설정 상세 페이지"
+                            "rag" -> "메모리 / RAG 상세 페이지"
+                            else -> "대화 설정 상세 페이지"
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    Text(
+                        text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
+                        color = Color(0xFFD0D3DA)
+                    )
+                }
+            }
+
+            if (selectedPage == "conversation") {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF3A3F49)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "로컬 저장소",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+
+                        Text(
+                            text = "상태: $storageStatusText",
+                            color = Color(0xFFD0D3DA)
+                        )
+
+                        Text(
+                            text = "위치: $storageLocationText",
+                            color = Color(0xFFD0D3DA)
+                        )
+
+                        Button(
+                            onClick = onSelectStorageFolderClick,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "저장 폴더 선택")
+                        }
+
+                        TextButton(
+                            onClick = onUseFallbackStorageClick,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "기본 앱 저장소 사용")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationGlobalSettingsCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF3A3F49)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color(0xFFD0D3DA)
+            )
+        }
+    }
 }

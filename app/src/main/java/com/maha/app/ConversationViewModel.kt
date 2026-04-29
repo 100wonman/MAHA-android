@@ -1,12 +1,22 @@
 package com.maha.app
 
+import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 
-class ConversationViewModel : ViewModel() {
+class ConversationViewModel(
+    application: Application
+) : AndroidViewModel(application) {
+    private val storageManager = MahaStorageManager(application.applicationContext)
+    private val conversationFileStore = ConversationFileStore(
+        context = application.applicationContext,
+        storageManager = storageManager
+    )
+
     val conversationSessions = mutableStateListOf<ConversationSession>()
 
     var selectedConversationSessionId by mutableStateOf<String?>(null)
@@ -24,10 +34,32 @@ class ConversationViewModel : ViewModel() {
     var quickSettingsExpanded by mutableStateOf(false)
         private set
 
+    var storageStatusText by mutableStateOf(storageManager.getStorageStatusText())
+        private set
+
+    var storageLocationText by mutableStateOf(storageManager.getStorageLocationText())
+        private set
+
     init {
-        if (conversationSessions.isEmpty()) {
-            conversationSessions.addAll(createDummyConversationSessions())
-        }
+        storageManager.ensureDirectories()
+        refreshStorageState()
+        loadInitialSessions()
+    }
+
+    fun connectSafStorage(uri: Uri) {
+        storageManager.saveSafRootUri(uri)
+        storageManager.ensureDirectories()
+        refreshStorageState()
+    }
+
+    fun useFallbackStorage() {
+        storageManager.clearSafRootUri()
+        storageManager.ensureDirectories()
+        refreshStorageState()
+
+        conversationSessions.clear()
+        loadInitialSessions()
+        selectedConversationSessionId = null
     }
 
     fun selectSession(sessionId: String) {
@@ -54,6 +86,7 @@ class ConversationViewModel : ViewModel() {
 
         conversationSessions.add(0, newSession)
         selectedConversationSessionId = sessionId
+        conversationFileStore.saveSession(newSession)
 
         return sessionId
     }
@@ -156,12 +189,17 @@ class ConversationViewModel : ViewModel() {
             )
         )
 
-        conversationSessions[targetIndex] = targetSession.copy(
+        val updatedSession = targetSession.copy(
             lastMessageSummary = textToSend.take(60),
             updatedAt = nowText,
             messages = targetSession.messages + userMessage + assistantMessage,
             latestRun = latestRun
         )
+
+        conversationSessions[targetIndex] = updatedSession
+        conversationFileStore.appendMessage(targetSession.sessionId, userMessage)
+        conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
+        conversationFileStore.saveSession(updatedSession)
 
         inputText = ""
     }
@@ -200,10 +238,39 @@ class ConversationViewModel : ViewModel() {
             }
         }
 
-        conversationSessions[targetSessionIndex] = targetSession.copy(
+        val updatedSession = targetSession.copy(
             lastMessageSummary = editedText.take(60),
             updatedAt = getCurrentTimeText(),
             messages = updatedMessages
         )
+
+        conversationSessions[targetSessionIndex] = updatedSession
+        conversationFileStore.saveSession(updatedSession)
+    }
+
+    private fun loadInitialSessions() {
+        val loadedSessions = conversationFileStore.loadSessions()
+
+        if (loadedSessions.isNotEmpty()) {
+            conversationSessions.clear()
+            conversationSessions.addAll(loadedSessions)
+            return
+        }
+
+        if (conversationSessions.isEmpty()) {
+            val dummySessions = createDummyConversationSessions()
+            conversationSessions.addAll(dummySessions)
+            dummySessions.forEach { session ->
+                conversationFileStore.saveSession(session)
+                session.messages.forEach { message ->
+                    conversationFileStore.appendMessage(session.sessionId, message)
+                }
+            }
+        }
+    }
+
+    private fun refreshStorageState() {
+        storageStatusText = storageManager.getStorageStatusText()
+        storageLocationText = storageManager.getStorageLocationText()
     }
 }

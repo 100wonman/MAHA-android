@@ -1,4 +1,87 @@
 ==============================
+[2026-04-30 01:00] SAF 기반 Documents 저장소 연결
+==============================
+
+[구현 모드]
+
+작업명:
+SAF 기반 Documents/MAHA 저장소 연결
+
+목표:
+- 사용자가 삼성 “내 파일” 앱에서 확인 가능한 Documents/MAHA 저장소를 선택/연결할 수 있게 한다.
+- 기존 app-specific 저장소(getExternalFilesDir/null/MAHA)는 fallback으로 유지한다.
+- 기존 ConversationFileStore 저장/복구 기능은 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ SAF 폴더 선택 UI 연결
+✔ ACTION_OPEN_DOCUMENT_TREE 사용
+✔ 선택한 폴더 URI persistable permission 저장
+✔ MahaStorageManager가 SAF 저장소 사용 가능 여부 판단
+✔ SAF 선택 전에는 기존 app-specific 저장소 사용
+✔ 선택 후에는 SAF 기반 Documents/MAHA 구조 사용
+
+이번 단계에서 구현 금지:
+
+❌ Worker 저장
+❌ RAG 저장
+❌ RunLog 저장
+❌ Room / DataStore
+❌ UI 대규모 변경
+❌ ConversationViewModel 구조 대규모 변경
+❌ Provider / Worker / ExecutionEngine 수정
+
+[작업]
+- ACTION_OPEN_DOCUMENT_TREE 기반 저장 폴더 선택 추가
+- SAF URI persistable permission 저장
+- MahaStorageManager 저장소 모드 확장
+- ConversationFileStore SAF / app-specific 저장 분기 추가
+- 저장소 상태 표시 UI 추가
+- 기존 app-specific 저장소 fallback 유지
+
+[결과]
+성공
+
+[핵심 변경]
+- SAF appendMessage 로직을 기존 messages.jsonl 파일 재사용 방식으로 수정
+- createFile 반복 호출로 messages.json.json / messages.json(1).json 생성되던 문제 해결
+- 메시지 전송 시 기존 selectedConversationSessionId의 session 폴더만 사용
+- 메시지 전송 시 conversationSessions에 새 세션을 추가하지 않도록 유지
+- session.json은 같은 sessionId의 updatedAt/messageCount 갱신 용도로만 저장
+
+[저장소 동작]
+- SAF 선택: 성공
+- 권한 유지: 성공
+- fallback 저장소: 유지
+- 삼성 내 파일 확인: 가능
+
+[문제]
+- 없음
+
+[테스트 결과]
+- SAF 선택 전 저장/복구: 기존 fallback 유지
+- SAF 선택 후 저장/복구: 성공
+- 앱 재시작 후 권한 유지: 성공
+- 내 파일 확인: 성공
+- 메시지 전송 시 세션 중복 생성: 없음 / 성공
+- messages.jsonl 단일 파일 생성: 성공
+- messages.json.json 추가 생성 없음: 성공
+- 앱 재시작 후 메시지 유지: 성공
+
+[변경 파일]
+- ConversationFileStore.kt
+
+[빌드]
+성공
+
+[다음 작업]
+- app-specific 저장소 → Documents/MAHA 마이그레이션
+
+==============================
 [2026-04-29 21:45] MAHA 로컬 파일 저장소 구조 설계
 ==============================
 
