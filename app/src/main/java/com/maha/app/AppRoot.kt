@@ -11,7 +11,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,8 +49,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -317,6 +321,10 @@ fun AppRoot() {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = isWorkModeOpen &&
+                !isConversationListScreenOpen &&
+                selectedConversationSessionId == null &&
+                !isConversationGlobalSettingsOpen,
         drawerContent = {
             ModalDrawerSheet {
                 Spacer(modifier = Modifier.height(20.dp))
@@ -716,7 +724,7 @@ fun AppRoot() {
         }
 
         when {
-            selectedConversationSessionId != null && isConversationGlobalSettingsOpen -> {
+            isConversationGlobalSettingsOpen && (selectedConversationSessionId != null || isConversationListScreenOpen) -> {
                 ConversationGlobalSettingsScreen(
                     selectedPage = selectedConversationSettingsPage,
                     storageStatusText = conversationViewModel.storageStatusText,
@@ -754,38 +762,66 @@ fun AppRoot() {
                 }
 
                 if (session != null) {
-                    ConversationRoomScreen(
-                        session = session,
-                        inputText = conversationInputText,
-                        searchEnabled = conversationSearchEnabled,
-                        modeLabel = conversationModeLabel,
-                        isRunning = conversationIsRunning,
-                        onInputTextChange = conversationViewModel::updateInputText,
-                        onSend = conversationViewModel::sendMessage,
-                        onToggleSearch = conversationViewModel::toggleSearchEnabled,
-                        onModeChange = conversationViewModel::updateModeLabel,
-                        onBack = {
-                            conversationViewModel.clearSelectedSession()
-                        },
-                        onOpenSettings = {
-                            showConversationSettingsDialog = true
-                        },
-                        onOpenGlobalSettings = {
-                            isConversationGlobalSettingsOpen = true
-                            selectedConversationSettingsPage = null
-                        },
-                        onEditMessage = { messageId, currentText ->
-                            editingMessageId = messageId
-                            editingText = currentText
-                        },
-                        onAssistantEditUnsupported = {
-                            Toast.makeText(
-                                context,
-                                "ASSISTANT 메시지 편집은 추후 지원합니다.",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                var totalDrag = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        totalDrag = 0f
+                                    },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        totalDrag += dragAmount
+                                        if (totalDrag > 120f) {
+                                            isConversationGlobalSettingsOpen = true
+                                            selectedConversationSettingsPage = null
+                                            totalDrag = 0f
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        totalDrag = 0f
+                                    },
+                                    onDragCancel = {
+                                        totalDrag = 0f
+                                    }
+                                )
+                            }
+                    ) {
+                        ConversationRoomScreen(
+                            session = session,
+                            inputText = conversationInputText,
+                            searchEnabled = conversationSearchEnabled,
+                            modeLabel = conversationModeLabel,
+                            isRunning = conversationIsRunning,
+                            onInputTextChange = conversationViewModel::updateInputText,
+                            onSend = conversationViewModel::sendMessage,
+                            onToggleSearch = conversationViewModel::toggleSearchEnabled,
+                            onModeChange = conversationViewModel::updateModeLabel,
+                            onBack = {
+                                conversationViewModel.clearSelectedSession()
+                            },
+                            onOpenSettings = {
+                                showConversationSettingsDialog = true
+                            },
+                            onOpenGlobalSettings = {
+                                isConversationGlobalSettingsOpen = true
+                                selectedConversationSettingsPage = null
+                            },
+                            onEditMessage = { messageId, currentText ->
+                                editingMessageId = messageId
+                                editingText = currentText
+                            },
+                            onAssistantEditUnsupported = {
+                                Toast.makeText(
+                                    context,
+                                    "ASSISTANT 메시지 편집은 추후 지원합니다.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    }
+
                 } else {
                     ConversationMissingSessionFallback(
                         onBackClick = {
@@ -797,24 +833,53 @@ fun AppRoot() {
             }
 
             isConversationListScreenOpen -> {
-                ConversationSessionListScreen(
-                    sessions = conversationSessions,
-                    favoriteSessionIds = conversationViewModel.favoriteSessionIds,
-                    searchQuery = conversationViewModel.sessionSearchQuery,
-                    onSearchQueryChange = conversationViewModel::updateSessionSearchQuery,
-                    onBackClick = {
-                        isConversationListScreenOpen = false
-                    },
-                    onNewConversationClick = {
-                        conversationViewModel.createNewSession()
-                    },
-                    onSessionClick = { session ->
-                        conversationViewModel.selectSession(session.sessionId)
-                    },
-                    onRenameSession = conversationViewModel::renameSession,
-                    onToggleFavorite = conversationViewModel::toggleFavorite,
-                    onDeleteSession = conversationViewModel::deleteSession
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            var totalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    totalDrag = 0f
+                                },
+                                onHorizontalDrag = { _, dragAmount ->
+                                    totalDrag += dragAmount
+                                    if (totalDrag > 120f) {
+                                        isConversationGlobalSettingsOpen = true
+                                        selectedConversationSettingsPage = null
+                                        totalDrag = 0f
+                                    }
+                                },
+                                onDragEnd = {
+                                    totalDrag = 0f
+                                },
+                                onDragCancel = {
+                                    totalDrag = 0f
+                                }
+                            )
+                        }
+                ) {
+                    ConversationSessionListScreen(
+                        sessions = conversationSessions,
+                        favoriteSessionIds = conversationViewModel.favoriteSessionIds,
+                        searchQuery = conversationViewModel.sessionSearchQuery,
+                        onSearchQueryChange = conversationViewModel::updateSessionSearchQuery,
+                        onOpenGlobalSettings = {
+                            isConversationGlobalSettingsOpen = true
+                            selectedConversationSettingsPage = null
+                        },
+                        onNewConversationClick = {
+                            conversationViewModel.createNewSession()
+                        },
+                        onSessionClick = { session ->
+                            conversationViewModel.selectSession(session.sessionId)
+                        },
+                        onRenameSession = conversationViewModel::renameSession,
+                        onToggleFavorite = conversationViewModel::toggleFavorite,
+                        onDeleteSession = conversationViewModel::deleteSession
+                    )
+                }
+
             }
 
             selectedRun != null -> {

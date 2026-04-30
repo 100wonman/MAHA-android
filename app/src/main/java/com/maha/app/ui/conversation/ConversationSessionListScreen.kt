@@ -5,7 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -30,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
@@ -44,7 +47,7 @@ fun ConversationSessionListScreen(
     favoriteSessionIds: List<String>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    onBackClick: () -> Unit,
+    onOpenGlobalSettings: () -> Unit,
     onNewConversationClick: () -> Unit,
     onSessionClick: (ConversationSession) -> Unit,
     onRenameSession: (String, String) -> Unit,
@@ -81,7 +84,7 @@ fun ConversationSessionListScreen(
             }
         )
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -95,172 +98,181 @@ fun ConversationSessionListScreen(
             .padding(WindowInsets.safeDrawing.asPaddingValues())
             .padding(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            TextButton(onClick = onBackClick) {
-                Text(
-                    text = "←",
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "대화",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Text(
-                    text = "대화 세션 목록",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Card(
-                onClick = onNewConversationClick,
-                shape = conversationUnifiedCardShape(),
-                colors = CardDefaults.cardColors(
-                    containerColor = conversationUnifiedCardColor()
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "+ 새 대화",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+                TextButton(onClick = onOpenGlobalSettings) {
+                    Text(
+                        text = "☰",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "대화",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "대화 세션 목록",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = {
-                    Text(text = "대화 검색")
-                },
-                placeholder = {
-                    Text(text = "제목 또는 마지막 메시지 검색")
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        TextButton(
-                            onClick = {
-                                onSearchQueryChange("")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    label = {
+                        Text(text = "대화 검색")
+                    },
+                    placeholder = {
+                        Text(text = "제목 또는 마지막 메시지 검색")
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            TextButton(
+                                onClick = {
+                                    onSearchQueryChange("")
+                                }
+                            ) {
+                                Text(text = "X")
                             }
-                        ) {
-                            Text(text = "X")
                         }
                     }
-                }
-            )
-
-            if (searchQuery.isNotEmpty()) {
-                TextButton(
-                    onClick = {
-                        onSearchQueryChange("")
-                        clearSearchFocus()
-                    }
-                ) {
-                    Text(text = "취소")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (visibleSessions.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = conversationUnifiedCardShape(),
-                colors = CardDefaults.cardColors(
-                    containerColor = conversationUnifiedCardColor()
                 )
-            ) {
-                Text(
-                    text = "검색 결과가 없습니다.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(
-                    items = visibleSessions,
-                    key = { session -> session.sessionId }
-                ) { session ->
-                    val isFavorite = favoriteSessionIds.contains(session.sessionId)
 
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    onSessionClick(session)
-                                },
-                                onLongClick = {
-                                    menuSession = session
-                                }
-                            ),
-                        shape = conversationUnifiedCardShape(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = conversationUnifiedCardColor()
-                        )
+                if (searchQuery.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            onSearchQueryChange("")
+                            clearSearchFocus()
+                        }
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        Text(text = "취소")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (visibleSessions.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = conversationUnifiedCardShape(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = conversationUnifiedCardColor()
+                    )
+                ) {
+                    Text(
+                        text = "검색 결과가 없습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 96.dp)
+                ) {
+                    items(
+                        items = visibleSessions,
+                        key = { session -> session.sessionId }
+                    ) { session ->
+                        val isFavorite = favoriteSessionIds.contains(session.sessionId)
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = {
+                                        onSessionClick(session)
+                                    },
+                                    onLongClick = {
+                                        menuSession = session
+                                    }
+                                ),
+                            shape = conversationUnifiedCardShape(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = conversationUnifiedCardColor()
+                            )
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (isFavorite) "★" else "☆",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Text(
+                                        text = session.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
                                 Text(
-                                    text = if (isFavorite) "★" else "☆",
-                                    style = MaterialTheme.typography.titleMedium,
+                                    text = session.lastMessageSummary,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
 
                                 Text(
-                                    text = session.title,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f)
+                                    text = session.updatedAt,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
                                 )
                             }
-
-                            Text(
-                                text = session.lastMessageSummary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Text(
-                                text = session.updatedAt,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
-                            )
                         }
                     }
                 }
             }
+        }
+
+        Card(
+            onClick = onNewConversationClick,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 4.dp, bottom = 4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.onSurface
+            )
+        ) {
+            Text(
+                text = "+ 새 대화",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.background,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
+            )
         }
     }
 
