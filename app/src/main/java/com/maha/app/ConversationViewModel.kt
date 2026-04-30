@@ -35,6 +35,9 @@ class ConversationViewModel(
     var quickSettingsExpanded by mutableStateOf(false)
         private set
 
+    var sessionSearchQuery by mutableStateOf("")
+        private set
+
     var storageStatusText by mutableStateOf(storageManager.getStorageStatusText())
         private set
 
@@ -190,6 +193,10 @@ class ConversationViewModel(
 
     fun updateQuickSettingsExpanded(value: Boolean) {
         quickSettingsExpanded = value
+    }
+
+    fun updateSessionSearchQuery(value: String) {
+        sessionSearchQuery = value
     }
 
     fun sendMessage() {

@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 fun ConversationSessionListScreen(
     sessions: List<ConversationSession>,
     favoriteSessionIds: List<String>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
     onBackClick: () -> Unit,
     onNewConversationClick: () -> Unit,
     onSessionClick: (ConversationSession) -> Unit,
@@ -49,6 +51,24 @@ fun ConversationSessionListScreen(
     var renameTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
     var renameText by remember { mutableStateOf("") }
     var deleteTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
+
+    val normalizedQuery = searchQuery.trim()
+    val visibleSessions = sessions
+        .filter { session ->
+            if (normalizedQuery.isBlank()) {
+                true
+            } else {
+                session.title.contains(normalizedQuery, ignoreCase = true) ||
+                        session.lastMessageSummary.contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+        .sortedWith(
+            compareByDescending<ConversationSession> { session ->
+                favoriteSessionIds.contains(session.sessionId)
+            }.thenByDescending { session ->
+                session.updatedAt
+            }
+        )
 
     Column(
         modifier = Modifier
@@ -100,67 +120,99 @@ fun ConversationSessionListScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = {
+                Text(text = "대화 검색")
+            },
+            placeholder = {
+                Text(text = "제목 또는 마지막 메시지 검색")
+            }
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(
-                items = sessions,
-                key = { session -> session.sessionId }
-            ) { session ->
-                val isFavorite = favoriteSessionIds.contains(session.sessionId)
+        if (visibleSessions.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = conversationUnifiedCardShape(),
+                colors = CardDefaults.cardColors(
+                    containerColor = conversationUnifiedCardColor()
+                )
+            ) {
+                Text(
+                    text = "검색 결과가 없습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(
+                    items = visibleSessions,
+                    key = { session -> session.sessionId }
+                ) { session ->
+                    val isFavorite = favoriteSessionIds.contains(session.sessionId)
 
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = {
-                                onSessionClick(session)
-                            },
-                            onLongClick = {
-                                menuSession = session
-                            }
-                        ),
-                    shape = conversationUnifiedCardShape(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = conversationUnifiedCardColor()
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    onSessionClick(session)
+                                },
+                                onLongClick = {
+                                    menuSession = session
+                                }
+                            ),
+                        shape = conversationUnifiedCardShape(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = conversationUnifiedCardColor()
+                        )
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (isFavorite) "★" else "☆",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Text(
+                                    text = session.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
                             Text(
-                                text = if (isFavorite) "★" else "☆",
-                                style = MaterialTheme.typography.titleMedium,
+                                text = session.lastMessageSummary,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
 
                             Text(
-                                text = session.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f)
+                                text = session.updatedAt,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
                             )
                         }
-
-                        Text(
-                            text = session.lastMessageSummary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Text(
-                            text = session.updatedAt,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
-                        )
                     }
                 }
             }

@@ -800,6 +800,8 @@ fun AppRoot() {
                 ConversationSessionListScreen(
                     sessions = conversationSessions,
                     favoriteSessionIds = conversationViewModel.favoriteSessionIds,
+                    searchQuery = conversationViewModel.sessionSearchQuery,
+                    onSearchQueryChange = conversationViewModel::updateSessionSearchQuery,
                     onBackClick = {
                         isConversationListScreenOpen = false
                     },
