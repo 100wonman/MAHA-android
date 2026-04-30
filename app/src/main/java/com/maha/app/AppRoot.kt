@@ -274,6 +274,10 @@ fun AppRoot() {
         }
 
         when {
+            isConversationGlobalSettingsOpen && selectedConversationSettingsPage != null -> {
+                selectedConversationSettingsPage = null
+            }
+
             isConversationGlobalSettingsOpen -> {
                 isConversationGlobalSettingsOpen = false
                 selectedConversationSettingsPage = null
@@ -734,8 +738,12 @@ fun AppRoot() {
                         isAppStorageMigrationDialogOpen = true
                     },
                     onBackClick = {
-                        isConversationGlobalSettingsOpen = false
-                        selectedConversationSettingsPage = null
+                        if (selectedConversationSettingsPage != null) {
+                            selectedConversationSettingsPage = null
+                        } else {
+                            isConversationGlobalSettingsOpen = false
+                            selectedConversationSettingsPage = null
+                        }
                     }
                 )
             }
@@ -1688,7 +1696,7 @@ private fun ConversationGlobalSettingsScreen(
                 }
             }
 
-            if (selectedPage == "conversation") {
+            if (selectedPage == "rag") {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = Color(0xFF3A3F49)
