@@ -1,9 +1,7 @@
 package com.maha.app
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -33,7 +31,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,7 +132,7 @@ fun ConversationRoomScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (message.role == ConversationRole.ASSISTANT) {
-                            ConversationRunSummaryPanel(
+                            ConversationRunSummaryPanelReadable(
                                 run = session.latestRun ?: createDummyConversationRun(session.sessionId)
                             )
                         }
@@ -144,6 +141,7 @@ fun ConversationRoomScreen(
                             ConversationOutputBlockRenderer(
                                 block = block,
                                 role = message.role,
+                                createdAt = message.createdAt,
                                 canEdit = message.role == ConversationRole.USER,
                                 onEditRequest = {
                                     onEditMessage(message.messageId, block.content)
@@ -187,11 +185,11 @@ private fun EmptyConversationCard() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationOutputBlockRenderer(
     block: ConversationOutputBlock,
     role: ConversationRole,
+    createdAt: String,
     canEdit: Boolean,
     onEditRequest: () -> Unit,
     onUnsupportedEditRequest: () -> Unit
@@ -202,6 +200,7 @@ private fun ConversationOutputBlockRenderer(
     if (role == ConversationRole.USER) {
         UserMessageBlock(
             text = block.content,
+            createdAt = createdAt,
             canEdit = canEdit,
             onEditRequest = onEditRequest,
             onUnsupportedEditRequest = onUnsupportedEditRequest
@@ -263,85 +262,207 @@ private fun ConversationOutputBlockRenderer(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UserMessageBlock(
     text: String,
+    createdAt: String,
     canEdit: Boolean,
     onEditRequest: () -> Unit,
     onUnsupportedEditRequest: () -> Unit
 ) {
-    var showMenu by rememberSaveable { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth(0.8f)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = {
-                        if (canEdit) {
-                            showMenu = true
-                        } else {
-                            onUnsupportedEditRequest()
-                        }
-                    }
-                ),
+            modifier = Modifier.fillMaxWidth(0.8f),
             shape = conversationUnifiedCardShape(),
             colors = CardDefaults.cardColors(
                 containerColor = conversationUnifiedCardColor()
             )
         ) {
-            Text(
-                text = text,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2f
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-    }
-
-    if (showMenu) {
-        AlertDialog(
-            onDismissRequest = { showMenu = false },
-            title = { Text(text = "메시지 관리") },
-            text = { Text(text = "사용자 메시지를 수정할 수 있습니다.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showMenu = false
-                        onEditRequest()
-                    }
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "수정")
+                    Text(
+                        text = createdAt.ifBlank { "입력 시각 없음" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (canEdit) {
+                                    onEditRequest()
+                                } else {
+                                    onUnsupportedEditRequest()
+                                }
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Text(
+                                text = "✎",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(text))
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Text(
+                                text = "⧉",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMenu = false }) {
-                    Text(text = "취소")
+
+                SelectionContainer {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
-        )
+        }
     }
 }
 
 @Composable
 private fun AssistantPlainTextBlock(text: String) {
-    Text(
-        text = text,
+    SelectionContainer {
+        Text(
+            text = text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodyLarge.copy(
+                lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun ConversationRunSummaryPanelReadable(run: ConversationRun) {
+    val clipboardManager = LocalClipboardManager.current
+    var isCollapsed by rememberSaveable(run.runId) { mutableStateOf(true) }
+    val copyText = buildString {
+        appendLine("runId: ${run.runId}")
+        appendLine("input: ${run.userInput}")
+        appendLine("latencySec: ${run.totalLatencySec}")
+        appendLine("retryCount: ${run.totalRetryCount}")
+        run.workerResults.forEach { worker ->
+            appendLine("worker: ${worker.workerName}")
+            appendLine("provider: ${worker.providerName}")
+            appendLine("model: ${worker.modelName}")
+            appendLine("status: ${worker.status}")
+            appendLine("latencySec: ${worker.latencySec}")
+            appendLine("retryCount: ${worker.retryCount}")
+            appendLine("tokensPerSecond: ${worker.tokensPerSecond ?: "-"}")
+            appendLine("errorType: ${worker.errorType}")
+            appendLine("summary: ${worker.outputSummary}")
+            appendLine("rawOutput: ${worker.rawOutput}")
+        }
+    }
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.bodyLarge.copy(
-            lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
-        ),
-        color = MaterialTheme.colorScheme.onSurface
-    )
+            .clickable {
+                isCollapsed = !isCollapsed
+            },
+        shape = conversationUnifiedCardShape(),
+        colors = CardDefaults.cardColors(
+            containerColor = conversationUnifiedCardColor()
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "실행 정보",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "${run.workerResults.size} worker · ${run.totalLatencySec}s · retry ${run.totalRetryCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(copyText))
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Text(
+                        text = "⧉",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            if (!isCollapsed) {
+                SelectionContainer {
+                    Text(
+                        text = copyText.trim(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        softWrap = false
+                    )
+                }
+            }
+
+            Text(
+                text = if (isCollapsed) "⌄" else "⌃",
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+            )
+        }
+    }
 }
 
 @Composable
@@ -362,7 +483,13 @@ private fun StructuredOutputBlock(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                if (initiallyCollapsed) {
+                    isCollapsed = !isCollapsed
+                }
+            },
         shape = conversationUnifiedCardShape(),
         colors = CardDefaults.cardColors(
             containerColor = containerColor
@@ -397,23 +524,33 @@ private fun StructuredOutputBlock(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
+                    IconButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(content))
-                        }
+                        },
+                        modifier = Modifier.size(34.dp)
                     ) {
-                        Text(text = "복사")
+                        Text(
+                            text = "⧉",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
 
-                    TextButton(
+                    IconButton(
                         onClick = {
                             isCollapsed = !isCollapsed
-                        }
+                        },
+                        modifier = Modifier.size(34.dp)
                     ) {
-                        Text(text = if (isCollapsed) "펼치기" else "접기")
+                        Text(
+                            text = if (isCollapsed) "⌄" else "⌃",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
@@ -431,23 +568,21 @@ private fun CodeContent(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 360.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.38f),
-                shape = conversationUnifiedCardShape()
-            )
             .verticalScroll(rememberScrollState())
             .horizontalScroll(rememberScrollState())
-            .padding(14.dp)
+            .padding(horizontal = 2.dp, vertical = 4.dp)
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.widthIn(min = 0.dp)
-        )
+        SelectionContainer {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                softWrap = false
+            )
+        }
     }
 }
 
@@ -459,37 +594,38 @@ private fun TableContent(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .background(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                shape = conversationUnifiedCardShape()
-            )
-            .padding(10.dp),
+            .padding(horizontal = 2.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         if (rows.isEmpty()) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            SelectionContainer {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    softWrap = false
+                )
+            }
             return@Column
         }
 
         rows.forEachIndexed { rowIndex, cells ->
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 cells.forEach { cell ->
-                    Text(
-                        text = cell,
-                        modifier = Modifier
-                            .widthIn(min = 88.dp, max = 220.dp)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        style = if (rowIndex == 0) {
-                            MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        } else {
-                            MaterialTheme.typography.bodySmall
-                        },
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = cell,
+                            modifier = Modifier
+                                .widthIn(min = 88.dp, max = 260.dp)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            style = if (rowIndex == 0) {
+                                MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            } else {
+                                MaterialTheme.typography.bodySmall
+                            },
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
         }
