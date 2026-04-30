@@ -1,7 +1,10 @@
 package com.maha.app
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +18,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -27,6 +33,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +41,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -131,10 +141,9 @@ fun ConversationRoomScreen(
                         }
 
                         message.blocks.forEach { block ->
-                            ConversationOutputBlockCard(
+                            ConversationOutputBlockRenderer(
                                 block = block,
                                 role = message.role,
-                                sentAt = message.createdAt,
                                 canEdit = message.role == ConversationRole.USER,
                                 onEditRequest = {
                                     onEditMessage(message.messageId, block.content)
@@ -176,6 +185,398 @@ private fun EmptyConversationCard() {
             )
         }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ConversationOutputBlockRenderer(
+    block: ConversationOutputBlock,
+    role: ConversationRole,
+    canEdit: Boolean,
+    onEditRequest: () -> Unit,
+    onUnsupportedEditRequest: () -> Unit
+) {
+    val blockTypeName = block.type.name
+    val isTextLike = blockTypeName == "TEXT_BLOCK" || blockTypeName == "MARKDOWN_BLOCK"
+
+    if (role == ConversationRole.USER) {
+        UserMessageBlock(
+            text = block.content,
+            canEdit = canEdit,
+            onEditRequest = onEditRequest,
+            onUnsupportedEditRequest = onUnsupportedEditRequest
+        )
+        return
+    }
+
+    if (isTextLike) {
+        AssistantPlainTextBlock(text = block.content)
+        return
+    }
+
+    when (blockTypeName) {
+        "CODE_BLOCK" -> StructuredOutputBlock(
+            title = block.title.ifBlank { "Code" },
+            label = detectCodeLabel(block.title, block.content),
+            content = block.content,
+            initiallyCollapsed = false
+        ) {
+            CodeContent(text = block.content)
+        }
+
+        "JSON_BLOCK" -> StructuredOutputBlock(
+            title = block.title.ifBlank { "JSON" },
+            label = "json",
+            content = block.content,
+            initiallyCollapsed = false
+        ) {
+            CodeContent(text = prettyJsonText(block.content))
+        }
+
+        "TABLE_BLOCK" -> StructuredOutputBlock(
+            title = block.title.ifBlank { "Table" },
+            label = "table",
+            content = block.content,
+            initiallyCollapsed = false
+        ) {
+            TableContent(text = block.content)
+        }
+
+        "ERROR_BLOCK", "TRACE_BLOCK", "MEMORY_BLOCK" -> StructuredOutputBlock(
+            title = block.title.ifBlank { blockTypeName.removeSuffix("_BLOCK") },
+            label = blockTypeName.removeSuffix("_BLOCK").lowercase(),
+            content = block.content,
+            initiallyCollapsed = true,
+            isWarning = blockTypeName == "ERROR_BLOCK"
+        ) {
+            CodeContent(text = block.content)
+        }
+
+        else -> StructuredOutputBlock(
+            title = block.title.ifBlank { blockTypeName.removeSuffix("_BLOCK") },
+            label = blockTypeName.removeSuffix("_BLOCK").lowercase(),
+            content = block.content,
+            initiallyCollapsed = block.collapsed
+        ) {
+            CodeContent(text = block.content)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun UserMessageBlock(
+    text: String,
+    canEdit: Boolean,
+    onEditRequest: () -> Unit,
+    onUnsupportedEditRequest: () -> Unit
+) {
+    var showMenu by rememberSaveable { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        if (canEdit) {
+                            showMenu = true
+                        } else {
+                            onUnsupportedEditRequest()
+                        }
+                    }
+                ),
+            shape = conversationUnifiedCardShape(),
+            colors = CardDefaults.cardColors(
+                containerColor = conversationUnifiedCardColor()
+            )
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2f
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+
+    if (showMenu) {
+        AlertDialog(
+            onDismissRequest = { showMenu = false },
+            title = { Text(text = "메시지 관리") },
+            text = { Text(text = "사용자 메시지를 수정할 수 있습니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMenu = false
+                        onEditRequest()
+                    }
+                ) {
+                    Text(text = "수정")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMenu = false }) {
+                    Text(text = "취소")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AssistantPlainTextBlock(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.bodyLarge.copy(
+            lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
+        ),
+        color = MaterialTheme.colorScheme.onSurface
+    )
+}
+
+@Composable
+private fun StructuredOutputBlock(
+    title: String,
+    label: String,
+    content: String,
+    initiallyCollapsed: Boolean,
+    isWarning: Boolean = false,
+    body: @Composable () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var isCollapsed by rememberSaveable(title, content) { mutableStateOf(initiallyCollapsed) }
+    val containerColor = if (isWarning) {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.24f)
+    } else {
+        conversationUnifiedCardColor()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = conversationUnifiedCardShape(),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(content))
+                        }
+                    ) {
+                        Text(text = "복사")
+                    }
+
+                    TextButton(
+                        onClick = {
+                            isCollapsed = !isCollapsed
+                        }
+                    ) {
+                        Text(text = if (isCollapsed) "펼치기" else "접기")
+                    }
+                }
+            }
+
+            if (!isCollapsed) {
+                body()
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeContent(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 360.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.38f),
+                shape = conversationUnifiedCardShape()
+            )
+            .verticalScroll(rememberScrollState())
+            .horizontalScroll(rememberScrollState())
+            .padding(14.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = FontFamily.Monospace,
+                lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.widthIn(min = 0.dp)
+        )
+    }
+}
+
+@Composable
+private fun TableContent(text: String) {
+    val rows = parseTableRows(text)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
+                shape = conversationUnifiedCardShape()
+            )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (rows.isEmpty()) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            return@Column
+        }
+
+        rows.forEachIndexed { rowIndex, cells ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                cells.forEach { cell ->
+                    Text(
+                        text = cell,
+                        modifier = Modifier
+                            .widthIn(min = 88.dp, max = 220.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        style = if (rowIndex == 0) {
+                            MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        } else {
+                            MaterialTheme.typography.bodySmall
+                        },
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun detectCodeLabel(title: String, content: String): String {
+    val lowerTitle = title.lowercase()
+    return when {
+        lowerTitle.contains("kotlin") -> "kotlin"
+        lowerTitle.contains("json") -> "json"
+        lowerTitle.contains("xml") -> "xml"
+        lowerTitle.contains("gradle") -> "gradle"
+        content.trimStart().startsWith("{") -> "json"
+        else -> "code"
+    }
+}
+
+private fun prettyJsonText(text: String): String {
+    val trimmed = text.trim()
+    if (trimmed.isBlank()) return text
+
+    val result = StringBuilder()
+    var indent = 0
+    var inString = false
+    var escape = false
+
+    trimmed.forEach { char ->
+        when {
+            escape -> {
+                result.append(char)
+                escape = false
+            }
+
+            char == '\\' && inString -> {
+                result.append(char)
+                escape = true
+            }
+
+            char == '"' -> {
+                result.append(char)
+                inString = !inString
+            }
+
+            !inString && (char == '{' || char == '[') -> {
+                result.append(char).append('\n')
+                indent += 1
+                result.append("  ".repeat(indent))
+            }
+
+            !inString && (char == '}' || char == ']') -> {
+                result.append('\n')
+                indent = (indent - 1).coerceAtLeast(0)
+                result.append("  ".repeat(indent)).append(char)
+            }
+
+            !inString && char == ',' -> {
+                result.append(char).append('\n')
+                result.append("  ".repeat(indent))
+            }
+
+            !inString && char == ':' -> {
+                result.append(": ")
+            }
+
+            !inString && char.isWhitespace() -> Unit
+            else -> result.append(char)
+        }
+    }
+
+    return result.toString()
+}
+
+private fun parseTableRows(text: String): List<List<String>> {
+    return text
+        .lines()
+        .map { line -> line.trim() }
+        .filter { line -> line.isNotBlank() }
+        .filterNot { line -> line.matches(Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$")) }
+        .map { line ->
+            line
+                .trim('|')
+                .split('|')
+                .map { cell -> cell.trim() }
+                .filter { cell -> cell.isNotBlank() }
+        }
+        .filter { cells -> cells.isNotEmpty() }
 }
 
 @Composable
