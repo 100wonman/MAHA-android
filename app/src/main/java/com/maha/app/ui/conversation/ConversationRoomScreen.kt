@@ -19,7 +19,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -33,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -42,6 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,6 +69,14 @@ fun ConversationRoomScreen(
     onEditMessage: (String, String) -> Unit,
     onAssistantEditUnsupported: () -> Unit
 ) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(session.messages.size) {
+        if (session.messages.isNotEmpty()) {
+            listState.animateScrollToItem(session.messages.size)
+        }
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -116,6 +130,7 @@ fun ConversationRoomScreen(
             }
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -127,13 +142,28 @@ fun ConversationRoomScreen(
                     }
                 }
 
-                items(session.messages) { message ->
+                itemsIndexed(session.messages) { index, message ->
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        val triggerText = if (message.role == ConversationRole.ASSISTANT && index > 0) {
+                            session.messages[index - 1].blocks.joinToString("\n") { block -> block.content }
+                        } else {
+                            ""
+                        }
+
+                        val displayBlocks = if (message.role == ConversationRole.ASSISTANT) {
+                            message.blocks + createHighlightTestBlocks(
+                                triggerText = triggerText,
+                                createdAt = message.createdAt
+                            )
+                        } else {
+                            message.blocks
+                        }
+
                         val traceBlocks = if (message.role == ConversationRole.ASSISTANT) {
-                            message.blocks.filter { block -> block.type.name == "TRACE_BLOCK" }
+                            displayBlocks.filter { block -> block.type.name == "TRACE_BLOCK" }
                         } else {
                             emptyList()
                         }
@@ -145,7 +175,7 @@ fun ConversationRoomScreen(
                             )
                         }
 
-                        message.blocks
+                        displayBlocks
                             .filterNot { block ->
                                 message.role == ConversationRole.ASSISTANT && block.type.name == "TRACE_BLOCK"
                             }
@@ -166,6 +196,52 @@ fun ConversationRoomScreen(
             }
         }
     }
+}
+
+private fun createHighlightTestBlocks(
+    triggerText: String,
+    createdAt: String
+): List<ConversationOutputBlock> {
+    val blocks = mutableListOf<ConversationOutputBlock>()
+    val baseId = createdAt.ifBlank { "highlight_test" }
+        .replace(Regex("[^A-Za-z0-9_가-힣]"), "_")
+
+    if (triggerText.contains("코드테스트", ignoreCase = true)) {
+        blocks.add(
+            ConversationOutputBlock(
+                blockId = "block_code_test_$baseId",
+                type = ConversationOutputBlockType.CODE_BLOCK,
+                title = "kotlin",
+                content = """fun test() {
+    val name = "GPT"
+    val count = 3
+    if (count > 0) {
+        println(name)
+    }
+}""".trimIndent(),
+                collapsed = false
+            )
+        )
+    }
+
+    if (triggerText.contains("json테스트", ignoreCase = true)) {
+        blocks.add(
+            ConversationOutputBlock(
+                blockId = "block_json_test_$baseId",
+                type = ConversationOutputBlockType.JSON_BLOCK,
+                title = "json",
+                content = """{
+  "name": "GPT",
+  "count": 3,
+  "active": true,
+  "tags": ["ai", "test"]
+}""".trimIndent(),
+                collapsed = false
+            )
+        )
+    }
+
+    return blocks
 }
 
 @Composable
@@ -232,7 +308,10 @@ private fun ConversationOutputBlockRenderer(
             content = block.content,
             initiallyCollapsed = false
         ) {
-            CodeContent(text = block.content)
+            CodeContent(
+                text = block.content,
+                isJson = detectCodeLabel(block.title, block.content) == "json"
+            )
         }
 
         "JSON_BLOCK" -> StructuredOutputBlock(
@@ -241,7 +320,10 @@ private fun ConversationOutputBlockRenderer(
             content = block.content,
             initiallyCollapsed = false
         ) {
-            CodeContent(text = prettyJsonText(block.content))
+            CodeContent(
+                text = prettyJsonText(block.content),
+                isJson = true
+            )
         }
 
         "TABLE_BLOCK" -> StructuredOutputBlock(
@@ -746,11 +828,13 @@ private fun StructuredOutputBlock(
         )
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -806,14 +890,30 @@ private fun StructuredOutputBlock(
             }
 
             if (!isCollapsed) {
-                body()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    body()
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CodeContent(text: String) {
+private fun CodeContent(
+    text: String,
+    isJson: Boolean = false
+) {
+    val annotatedText = if (isJson) {
+        highlightJsonText(text)
+    } else {
+        highlightCodeText(text)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -824,14 +924,182 @@ private fun CodeContent(text: String) {
     ) {
         SelectionContainer {
             Text(
-                text = text,
+                text = annotatedText,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = FontFamily.Monospace,
-                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
                 ),
-                color = MaterialTheme.colorScheme.onSurface,
                 softWrap = false
             )
+        }
+    }
+}
+
+@Composable
+private fun highlightCodeText(text: String): AnnotatedString {
+    val baseColor = MaterialTheme.colorScheme.onSurface
+    val keywordColor = Color(0xFF82AAFF)
+    val stringColor = Color(0xFFC3E88D)
+    val numberColor = Color(0xFFF78C6C)
+    val commentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f)
+    val symbolColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+    val keywords = setOf(
+        "fun", "val", "var", "if", "else", "return", "for", "while", "when",
+        "class", "object", "interface", "data", "sealed", "private", "public",
+        "internal", "override", "import", "package", "null", "true", "false",
+        "try", "catch", "finally", "suspend", "launch", "remember"
+    )
+
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
+            when {
+                char == '/' && index + 1 < text.length && text[index + 1] == '/' -> {
+                    val end = text.indexOf('\n', index).let { if (it == -1) text.length else it }
+                    withStyle(SpanStyle(color = commentColor)) {
+                        append(text.substring(index, end))
+                    }
+                    index = end
+                }
+
+                char == '"' -> {
+                    val start = index
+                    index += 1
+                    var escaped = false
+                    while (index < text.length) {
+                        val current = text[index]
+                        if (current == '"' && !escaped) {
+                            index += 1
+                            break
+                        }
+                        escaped = current == '\\' && !escaped
+                        if (current != '\\') escaped = false
+                        index += 1
+                    }
+                    withStyle(SpanStyle(color = stringColor)) {
+                        append(text.substring(start, index.coerceAtMost(text.length)))
+                    }
+                }
+
+                char.isDigit() -> {
+                    val start = index
+                    while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+                        index += 1
+                    }
+                    withStyle(SpanStyle(color = numberColor)) {
+                        append(text.substring(start, index))
+                    }
+                }
+
+                char.isLetter() || char == '_' -> {
+                    val start = index
+                    while (index < text.length && (text[index].isLetterOrDigit() || text[index] == '_')) {
+                        index += 1
+                    }
+                    val word = text.substring(start, index)
+                    if (word in keywords) {
+                        withStyle(SpanStyle(color = keywordColor, fontWeight = FontWeight.SemiBold)) {
+                            append(word)
+                        }
+                    } else {
+                        withStyle(SpanStyle(color = baseColor)) {
+                            append(word)
+                        }
+                    }
+                }
+
+                char in "{}[]().,;:<>+-=*/!&|" -> {
+                    withStyle(SpanStyle(color = symbolColor)) {
+                        append(char)
+                    }
+                    index += 1
+                }
+
+                else -> {
+                    withStyle(SpanStyle(color = baseColor)) {
+                        append(char)
+                    }
+                    index += 1
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun highlightJsonText(text: String): AnnotatedString {
+    val baseColor = MaterialTheme.colorScheme.onSurface
+    val keyColor = Color(0xFF82AAFF)
+    val stringColor = Color(0xFFC3E88D)
+    val numberColor = Color(0xFFF78C6C)
+    val boolNullColor = Color(0xFFC792EA)
+    val symbolColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val char = text[index]
+            when {
+                char == '"' -> {
+                    val start = index
+                    index += 1
+                    var escaped = false
+                    while (index < text.length) {
+                        val current = text[index]
+                        if (current == '"' && !escaped) {
+                            index += 1
+                            break
+                        }
+                        escaped = current == '\\' && !escaped
+                        if (current != '\\') escaped = false
+                        index += 1
+                    }
+                    var lookAhead = index
+                    while (lookAhead < text.length && text[lookAhead].isWhitespace()) lookAhead += 1
+                    val isKey = lookAhead < text.length && text[lookAhead] == ':'
+                    withStyle(SpanStyle(color = if (isKey) keyColor else stringColor)) {
+                        append(text.substring(start, index.coerceAtMost(text.length)))
+                    }
+                }
+
+                char.isDigit() || char == '-' -> {
+                    val start = index
+                    index += 1
+                    while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+                        index += 1
+                    }
+                    withStyle(SpanStyle(color = numberColor)) {
+                        append(text.substring(start, index))
+                    }
+                }
+
+                text.startsWith("true", index) || text.startsWith("false", index) || text.startsWith("null", index) -> {
+                    val token = when {
+                        text.startsWith("true", index) -> "true"
+                        text.startsWith("false", index) -> "false"
+                        else -> "null"
+                    }
+                    withStyle(SpanStyle(color = boolNullColor, fontWeight = FontWeight.SemiBold)) {
+                        append(token)
+                    }
+                    index += token.length
+                }
+
+                char in "{}[],:" -> {
+                    withStyle(SpanStyle(color = symbolColor)) {
+                        append(char)
+                    }
+                    index += 1
+                }
+
+                else -> {
+                    withStyle(SpanStyle(color = baseColor)) {
+                        append(char)
+                    }
+                    index += 1
+                }
+            }
         }
     }
 }

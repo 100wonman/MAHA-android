@@ -122,15 +122,17 @@ class ConversationFileStore(
                     return@forEach
                 }
 
-                val targetDirName = "$SESSION_DIR_PREFIX$sessionId"
-                val existingTargetDir = safConversationsDir.listFiles()
-                    .firstOrNull { it.isDirectory && it.name == targetDirName }
+                val sessionTitle = runCatching {
+                    JSONObject(sessionFile.readText()).optString("title", "새 대화")
+                }.getOrDefault("새 대화")
 
+                val existingTargetDir = findSafSessionDir(sessionId)
                 if (existingTargetDir != null) {
                     skippedCount += 1
                     return@forEach
                 }
 
+                val targetDirName = buildSessionDirectoryName(sessionTitle, sessionId)
                 val targetSessionDir = safConversationsDir.createDirectory(targetDirName)
                 if (targetSessionDir == null) {
                     failedCount += 1
@@ -185,7 +187,7 @@ class ConversationFileStore(
         session: ConversationSession,
         isFavorite: Boolean
     ) {
-        val sessionDir = getFileSessionDir(session.sessionId)
+        val sessionDir = getReadableFileSessionDir(session)
         sessionDir.mkdirs()
 
         File(sessionDir, SESSION_FILE_NAME).writeText(
@@ -194,18 +196,22 @@ class ConversationFileStore(
     }
 
     private fun appendMessageToFile(sessionId: String, message: ConversationMessage) {
-        val sessionDir = getFileSessionDir(sessionId)
+        val sessionDir = findFileSessionDir(sessionId) ?: getLegacyFileSessionDir(sessionId)
         sessionDir.mkdirs()
 
         File(sessionDir, MESSAGES_FILE_NAME).appendText(messageToJson(message).toString() + "\n")
     }
 
     private fun deleteSessionFromFile(sessionId: String): Boolean {
-        val sessionDir = getFileSessionDir(sessionId)
-        return if (sessionDir.exists()) {
-            sessionDir.deleteRecursively()
-        } else {
-            true
+        val sessionDirs = findFileSessionDirs(sessionId)
+        if (sessionDirs.isEmpty()) return true
+
+        return sessionDirs.all { sessionDir ->
+            if (sessionDir.exists()) {
+                sessionDir.deleteRecursively()
+            } else {
+                true
+            }
         }
     }
 
@@ -231,15 +237,18 @@ class ConversationFileStore(
             val sessionId = json.optString("sessionId")
             if (sessionId.isBlank()) return null
 
-            jsonToSession(
+            val session = jsonToSession(
                 json = json,
-                messages = loadFileMessages(sessionId)
+                messages = loadFileMessages(sessionDir)
             )
+
+            ensureReadableFileSessionDir(session, sessionDir)
+            session
         }.getOrNull()
     }
 
-    private fun loadFileMessages(sessionId: String): List<ConversationMessage> {
-        val messageFile = File(getFileSessionDir(sessionId), MESSAGES_FILE_NAME)
+    private fun loadFileMessages(sessionDir: File): List<ConversationMessage> {
+        val messageFile = File(sessionDir, MESSAGES_FILE_NAME)
         if (!messageFile.exists()) return emptyList()
 
         return messageFile.readLines().mapNotNull { line ->
@@ -253,13 +262,13 @@ class ConversationFileStore(
         session: ConversationSession,
         isFavorite: Boolean
     ) {
-        val sessionDir = getSafSessionDir(session.sessionId) ?: return
+        val sessionDir = getReadableSafSessionDir(session) ?: return
         val sessionFile = getOrCreateExactFile(sessionDir, SESSION_FILE_NAME) ?: return
         writeDocumentText(sessionFile, sessionToJson(session, isFavorite).toString(2))
     }
 
     private fun appendMessageToSaf(sessionId: String, message: ConversationMessage) {
-        val sessionDir = getSafSessionDir(sessionId) ?: return
+        val sessionDir = findSafSessionDir(sessionId) ?: getLegacySafSessionDir(sessionId) ?: return
         val messageFile = getOrCreateExactFile(sessionDir, MESSAGES_FILE_NAME) ?: return
 
         val currentText = readDocumentText(messageFile).trimEnd()
@@ -274,13 +283,12 @@ class ConversationFileStore(
     }
 
     private fun deleteSessionFromSaf(sessionId: String): Boolean {
-        val conversationsDir = storageManager.getSafConversationsDocument() ?: return false
-        val sessionDirName = "$SESSION_DIR_PREFIX$sessionId"
-        val sessionDir = conversationsDir.listFiles()
-            .firstOrNull { it.isDirectory && it.name == sessionDirName }
-            ?: return true
+        val sessionDirs = findSafSessionDirs(sessionId)
+        if (sessionDirs.isEmpty()) return true
 
-        deleteDocumentTree(sessionDir)
+        sessionDirs.forEach { sessionDir ->
+            deleteDocumentTree(sessionDir)
+        }
         return true
     }
 
@@ -312,10 +320,13 @@ class ConversationFileStore(
             val sessionId = json.optString("sessionId")
             if (sessionId.isBlank()) return null
 
-            jsonToSession(
+            val session = jsonToSession(
                 json = json,
                 messages = loadSafMessages(sessionDir)
             )
+
+            ensureReadableSafSessionDir(session, sessionDir)
+            session
         }.getOrNull()
     }
 
@@ -433,7 +444,8 @@ class ConversationFileStore(
             val sessionFile = findExactFile(sessionDir, SESSION_FILE_NAME) ?: return null
             runCatching { JSONObject(readDocumentText(sessionFile)) }.getOrNull()
         } else {
-            val sessionFile = File(getFileSessionDir(sessionId), SESSION_FILE_NAME)
+            val sessionDir = findFileSessionDir(sessionId) ?: return null
+            val sessionFile = File(sessionDir, SESSION_FILE_NAME)
             if (!sessionFile.exists()) return null
             runCatching { JSONObject(sessionFile.readText()) }.getOrNull()
         }
@@ -457,11 +469,94 @@ class ConversationFileStore(
         }.getOrDefault(false)
     }
 
-    private fun getFileSessionDir(sessionId: String): File {
+    private fun ensureReadableFileSessionDir(
+        session: ConversationSession,
+        sourceSessionDir: File
+    ) {
+        val targetSessionDir = getReadableFileSessionDir(session)
+        if (sourceSessionDir.canonicalPath == targetSessionDir.canonicalPath) return
+
+        targetSessionDir.mkdirs()
+
+        val sourceSessionFile = File(sourceSessionDir, SESSION_FILE_NAME)
+        val targetSessionFile = File(targetSessionDir, SESSION_FILE_NAME)
+        if (sourceSessionFile.exists()) {
+            runCatching { sourceSessionFile.copyTo(targetSessionFile, overwrite = true) }
+        }
+
+        val sourceMessagesFile = File(sourceSessionDir, MESSAGES_FILE_NAME)
+        val targetMessagesFile = File(targetSessionDir, MESSAGES_FILE_NAME)
+        if (sourceMessagesFile.exists() && !targetMessagesFile.exists()) {
+            runCatching { sourceMessagesFile.copyTo(targetMessagesFile, overwrite = false) }
+        }
+    }
+
+    private fun ensureReadableSafSessionDir(
+        session: ConversationSession,
+        sourceSessionDir: DocumentFile
+    ) {
+        val targetSessionDir = getReadableSafSessionDir(session) ?: return
+        if (sourceSessionDir.uri == targetSessionDir.uri) return
+
+        val sourceSessionFile = findExactFile(sourceSessionDir, SESSION_FILE_NAME)
+        if (sourceSessionFile != null) {
+            val targetSessionFile = getOrCreateExactFile(targetSessionDir, SESSION_FILE_NAME)
+            if (targetSessionFile != null) {
+                writeDocumentText(targetSessionFile, readDocumentText(sourceSessionFile))
+            }
+        }
+
+        val sourceMessagesFile = findExactFile(sourceSessionDir, MESSAGES_FILE_NAME)
+        val targetMessagesFile = findExactFile(targetSessionDir, MESSAGES_FILE_NAME)
+        if (sourceMessagesFile != null && targetMessagesFile == null) {
+            val createdMessagesFile = getOrCreateExactFile(targetSessionDir, MESSAGES_FILE_NAME)
+            if (createdMessagesFile != null) {
+                writeDocumentText(createdMessagesFile, readDocumentText(sourceMessagesFile))
+            }
+        }
+    }
+
+    private fun getReadableFileSessionDir(session: ConversationSession): File {
+        return File(storageManager.getConversationsDir(), buildSessionDirectoryName(session.title, session.sessionId))
+    }
+
+    private fun getLegacyFileSessionDir(sessionId: String): File {
         return File(storageManager.getConversationsDir(), "$SESSION_DIR_PREFIX$sessionId")
     }
 
-    private fun getSafSessionDir(sessionId: String): DocumentFile? {
+    private fun findFileSessionDir(sessionId: String): File? {
+        return findFileSessionDirs(sessionId).firstOrNull()
+    }
+
+    private fun findFileSessionDirs(sessionId: String): List<File> {
+        val conversationsDir = storageManager.getConversationsDir()
+        if (!conversationsDir.exists()) return emptyList()
+
+        return conversationsDir
+            .listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith(SESSION_DIR_PREFIX) }
+            ?.filter { sessionDir ->
+                val sessionFile = File(sessionDir, SESSION_FILE_NAME)
+                if (sessionFile.exists()) {
+                    readSessionIdFromFile(sessionFile) == sessionId
+                } else {
+                    sessionDir.name == "$SESSION_DIR_PREFIX$sessionId" ||
+                            sessionDir.name.endsWith("_${shortSessionId(sessionId)}")
+                }
+            }
+            ?: emptyList()
+    }
+
+    private fun getReadableSafSessionDir(session: ConversationSession): DocumentFile? {
+        val conversationsDir = storageManager.getSafConversationsDocument() ?: return null
+        val directoryName = buildSessionDirectoryName(session.title, session.sessionId)
+
+        return conversationsDir.listFiles()
+            .firstOrNull { it.isDirectory && it.name == directoryName }
+            ?: conversationsDir.createDirectory(directoryName)
+    }
+
+    private fun getLegacySafSessionDir(sessionId: String): DocumentFile? {
         val conversationsDir = storageManager.getSafConversationsDocument() ?: return null
         val directoryName = "$SESSION_DIR_PREFIX$sessionId"
 
@@ -471,11 +566,47 @@ class ConversationFileStore(
     }
 
     private fun findSafSessionDir(sessionId: String): DocumentFile? {
-        val conversationsDir = storageManager.getSafConversationsDocument() ?: return null
-        val directoryName = "$SESSION_DIR_PREFIX$sessionId"
+        return findSafSessionDirs(sessionId).firstOrNull()
+    }
+
+    private fun findSafSessionDirs(sessionId: String): List<DocumentFile> {
+        val conversationsDir = storageManager.getSafConversationsDocument() ?: return emptyList()
 
         return conversationsDir.listFiles()
-            .firstOrNull { it.isDirectory && it.name == directoryName }
+            .filter { it.isDirectory && it.name?.startsWith(SESSION_DIR_PREFIX) == true }
+            .filter { sessionDir ->
+                val sessionFile = findExactFile(sessionDir, SESSION_FILE_NAME)
+                if (sessionFile != null) {
+                    runCatching { JSONObject(readDocumentText(sessionFile)).optString("sessionId") }.getOrNull() == sessionId
+                } else {
+                    val directoryName = sessionDir.name.orEmpty()
+                    directoryName == "$SESSION_DIR_PREFIX$sessionId" ||
+                            directoryName.endsWith("_${shortSessionId(sessionId)}")
+                }
+            }
+    }
+
+    private fun buildSessionDirectoryName(title: String, sessionId: String): String {
+        return "$SESSION_DIR_PREFIX${safeTitle(title)}_${shortSessionId(sessionId)}"
+    }
+
+    private fun safeTitle(title: String): String {
+        val cleanedTitle = title
+            .trim()
+            .replace(Regex("\\s+"), "_")
+            .replace(Regex("[^0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ_\\-]"), "")
+            .trim('_', '-')
+
+        return cleanedTitle
+            .take(MAX_SAFE_TITLE_LENGTH)
+            .ifBlank { "untitled" }
+    }
+
+    private fun shortSessionId(sessionId: String): String {
+        return sessionId
+            .filter { it.isLetterOrDigit() }
+            .take(SHORT_ID_LENGTH)
+            .ifBlank { sessionId.take(SHORT_ID_LENGTH).ifBlank { "unknown" } }
     }
 
     private fun getOrCreateExactFile(directory: DocumentFile, fileName: String): DocumentFile? {
@@ -514,6 +645,8 @@ class ConversationFileStore(
         private const val SESSION_FILE_NAME = "session.json"
         private const val MESSAGES_FILE_NAME = "messages.jsonl"
         private const val SAF_PLAIN_FILE_MIME_TYPE = "application/octet-stream"
+        private const val MAX_SAFE_TITLE_LENGTH = 20
+        private const val SHORT_ID_LENGTH = 6
     }
 }
 

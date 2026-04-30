@@ -1,4 +1,112 @@
 ==============================
+[2026-04-30 20:00] 대화방 자동 스크롤 및 코드 하이라이트 보정
+==============================
+
+[작업]
+- 메시지 전송 후 최신 메시지 자동 스크롤 추가
+- LazyListState 기반 스크롤 제어 적용
+- CODE_BLOCK 하이라이트 렌더링 경로 수정
+- JSON_BLOCK 하이라이트 렌더링 경로 수정
+- 테스트용 코드/json 블록 표시 확인
+
+[구현 모드]
+
+작업명:
+대화방 자동 스크롤 및 코드 하이라이트 적용 확인
+
+목표:
+- 메시지 전송 후 새 USER 메시지와 ASSISTANT 답변 위치로 자동 스크롤되게 한다.
+- CODE/JSON 블록 하이라이트가 실제 렌더링에 적용되지 않는 문제를 수정한다.
+
+1. 자동 스크롤 구현
+
+대상:
+- ConversationRoomScreen.kt
+
+요구:
+- 메시지 리스트에 LazyListState 적용
+- 메시지 수가 증가하면 가장 아래로 자동 스크롤
+- USER 전송 후 답변 블록 생성까지 반영되도록 LaunchedEffect 사용
+
+권장:
+val listState = rememberLazyListState()
+
+LaunchedEffect(messages.size) {
+    if (messages.isNotEmpty()) {
+        listState.animateScrollToItem(messages.lastIndex)
+    }
+}
+
+조건:
+- 기존 수동 스크롤 유지
+- 화면 회전 상태 보존 깨지지 않게 할 것
+- ViewModel / FileStore / SAF 수정 금지
+
+2. 코드 하이라이트 적용 확인
+
+문제:
+- 테스트용 CODE/JSON 블록은 출력되지만 색상 하이라이트가 전혀 보이지 않음
+
+확인:
+- CODE_BLOCK 렌더링 경로에서 AnnotatedString 함수가 실제 호출되는지 확인
+- Text(text = content)로 일반 출력 중이면 Text(annotatedString)으로 교체
+- JSON_BLOCK도 JSON용 AnnotatedString 적용
+- 키워드/문자열/숫자 색상이 현재 배경에서 확실히 보이도록 MaterialTheme 색상 사용
+
+금지:
+- 외부 라이브러리 추가 금지
+- ViewModel 수정 금지
+- FileStore 수정 금지
+- OutputBlock 타입 변경 금지
+
+완료 기준:
+- 메시지 전송 후 자동으로 최신 메시지 위치로 스크롤됨
+- 코드테스트 입력 시 CODE_BLOCK 하이라이트가 눈에 보임
+- json테스트 입력 시 JSON_BLOCK 하이라이트가 눈에 보임
+- 기존 메시지 저장/복구 정상
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- LazyListState 적용으로 메시지 수 증가 시 최신 메시지 위치로 자동 스크롤
+- LaunchedEffect(session.messages.size)로 USER/ASSISTANT 메시지 추가 후 스크롤 반영
+- CODE_BLOCK 렌더링 경로에서 AnnotatedString 하이라이트를 실제 Text에 적용
+- JSON_BLOCK 렌더링 경로에서 JSON 전용 AnnotatedString 하이라이트를 실제 Text에 적용
+- 외부 라이브러리 없이 Regex/스캔 기반 색상 구분 유지
+
+[자동 스크롤 테스트]
+- USER 전송 후 스크롤: 성공
+- ASSISTANT 답변 후 스크롤: 성공
+- 기존 수동 스크롤: 정상
+
+[하이라이트 테스트]
+- CODE_BLOCK 출력: 성공
+- CODE 색상 변화: 성공
+- JSON_BLOCK 출력: 성공
+- JSON 색상 변화: 성공
+
+[기존 기능 영향]
+- 메시지 저장/복구: 정상
+- SAF 저장: 정상
+- 세션 기능: 정상
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+
+[빌드]
+성공
+
+[다음 작업]
+코드 하이라이트 2차 개선 또는 더미 테스트 블록 제거
+
+==============================
 [2026-04-30 20:00] 대화방 입력 UX 정리
 ==============================
 
