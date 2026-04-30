@@ -140,7 +140,7 @@ fun ConversationRoomScreen(
 
                         if (message.role == ConversationRole.ASSISTANT) {
                             ConversationRunSummaryPanelReadable(
-                                run = session.latestRun ?: createDummyConversationRun(session.sessionId),
+                                run = displayRunForConversation(session.sessionId, session.latestRun),
                                 traceBlocks = traceBlocks
                             )
                         }
@@ -514,6 +514,29 @@ private fun ConversationRunSummaryPanelReadable(
             }
         }
     }
+}
+
+
+private fun displayRunForConversation(
+    sessionId: String,
+    latestRun: ConversationRun?
+): ConversationRun {
+    val fallbackRun = createDummyConversationRun(sessionId)
+    val run = latestRun ?: fallbackRun
+    val hasOnlyDummyWorker = run.workerResults.size == 1 &&
+            run.workerResults.firstOrNull()?.workerName?.contains("Dummy", ignoreCase = true) == true
+
+    if (!hasOnlyDummyWorker) {
+        return run
+    }
+
+    return fallbackRun.copy(
+        runId = run.runId,
+        userInput = run.userInput,
+        status = run.status,
+        totalLatencySec = run.totalLatencySec,
+        totalRetryCount = run.totalRetryCount
+    )
 }
 
 private fun buildRunSummaryCopyText(run: ConversationRun): String {
@@ -958,6 +981,8 @@ private fun ConversationInputPanel(
     val keyboardController = LocalSoftwareKeyboardController.current
     val modeOptions = listOf("자동", "일반", "코드", "검증")
     var isQuickSettingsExpanded by rememberSaveable { mutableStateOf(false) }
+    val trimmedInput = inputText.trim()
+    val canSend = trimmedInput.isNotEmpty() && !isRunning
 
     Card(
         modifier = modifier,
@@ -968,7 +993,7 @@ private fun ConversationInputPanel(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -979,16 +1004,28 @@ private fun ConversationInputPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "모드: $modeLabel   검색: ${if (searchEnabled) "ON" else "OFF"}   Worker: 추후",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                    modifier = Modifier.weight(1f)
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "빠른 설정",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+                    )
+
+                    Text(
+                        text = "모드 $modeLabel · 검색 ${if (searchEnabled) "ON" else "OFF"} · Worker 추후",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1
+                    )
+                }
 
                 Text(
-                    text = if (isQuickSettingsExpanded) "v" else ">",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = if (isQuickSettingsExpanded) "⌃" else "⌄",
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -999,11 +1036,23 @@ private fun ConversationInputPanel(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "모드 선택",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "모드 선택",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        )
+
+                        Text(
+                            text = "Worker: 추후 지원",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1041,11 +1090,19 @@ private fun ConversationInputPanel(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "검색 사용: ${if (searchEnabled) "ON" else "OFF"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "검색 사용",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                            )
+
+                            Text(
+                                text = if (searchEnabled) "대화 전송 시 검색 보조 ON" else "대화 전송 시 검색 보조 OFF",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                            )
+                        }
 
                         Switch(
                             checked = searchEnabled,
@@ -1054,42 +1111,27 @@ private fun ConversationInputPanel(
                             }
                         )
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Worker 선택",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                        )
-
-                        Text(
-                            text = "추후 지원",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
-                        )
-                    }
                 }
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Bottom
             ) {
                 BasicTextField(
                     value = inputText,
                     onValueChange = onInputTextChange,
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 44.dp, max = 120.dp)
+                        .heightIn(min = 48.dp, max = 132.dp)
                         .padding(vertical = 8.dp),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.18f
                     ),
+                    minLines = 1,
+                    maxLines = 5,
                     decorationBox = { innerTextField ->
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -1099,7 +1141,7 @@ private fun ConversationInputPanel(
                                 Text(
                                     text = "메시지를 입력하세요.",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
                                 )
                             }
 
@@ -1110,19 +1152,22 @@ private fun ConversationInputPanel(
 
                 IconButton(
                     onClick = {
-                        keyboardController?.hide()
-                        onSend()
+                        if (canSend) {
+                            keyboardController?.hide()
+                            onSend()
+                        }
                     },
-                    enabled = inputText.isNotBlank() && !isRunning,
-                    modifier = Modifier.size(38.dp)
+                    enabled = canSend,
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Text(
-                        text = "➤",
+                        text = if (isRunning) "…" else "➤",
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (inputText.isNotBlank()) {
+                        fontWeight = FontWeight.Bold,
+                        color = if (canSend) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
                         }
                     )
                 }
