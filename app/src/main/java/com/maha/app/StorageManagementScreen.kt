@@ -49,13 +49,32 @@ fun StorageManagementScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scrollState = rememberScrollState()
+    val storageManager = remember { MahaStorageManager(context.applicationContext) }
+    val conversationFileStore = remember {
+        ConversationFileStore(
+            context = context.applicationContext,
+            storageManager = storageManager
+        )
+    }
 
     var snapshot by remember { mutableStateOf(loadAppSpecificStorageSnapshot(context)) }
     var fileViewerState by remember { mutableStateOf<StorageFileViewerState?>(null) }
     var deleteTarget by remember { mutableStateOf<StorageSessionFileItem?>(null) }
+    var backupResultMessage by remember { mutableStateOf<String?>(null) }
+    var isSafReady by remember { mutableStateOf(storageManager.isSafReady()) }
 
     fun refreshSnapshot() {
         snapshot = loadAppSpecificStorageSnapshot(context)
+        isSafReady = storageManager.isSafReady()
+    }
+
+    fun showBackupResult(result: ConversationBackupResult) {
+        backupResultMessage = buildString {
+            append("백업 결과\n")
+            append("copied: ${result.copiedCount}\n")
+            append("skipped: ${result.skippedCount}\n")
+            append("failed: ${result.failedCount}")
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -69,7 +88,13 @@ fun StorageManagementScreen(
             .padding(bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        StorageStatusCard(snapshot = snapshot)
+        StorageStatusCard(
+            snapshot = snapshot,
+            isSafReady = isSafReady,
+            onBackupAll = {
+                showBackupResult(conversationFileStore.backupAllSessionsToSaf())
+            }
+        )
 
         Text(
             text = "대화 세션 파일",
@@ -93,6 +118,7 @@ fun StorageManagementScreen(
             snapshot.sessions.forEach { item ->
                 StorageSessionCard(
                     item = item,
+                    isBackupEnabled = isSafReady,
                     onOpenSessionJson = {
                         fileViewerState = StorageFileViewerState(
                             title = "session.json",
@@ -106,6 +132,9 @@ fun StorageManagementScreen(
                             fileName = "${item.folderName}/messages.jsonl",
                             content = item.messagesFile.readTextSafely()
                         )
+                    },
+                    onBackup = {
+                        showBackupResult(conversationFileStore.backupSessionToSaf(item.sessionId))
                     },
                     onDelete = {
                         deleteTarget = item
@@ -164,6 +193,19 @@ fun StorageManagementScreen(
         )
     }
 
+    backupResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { backupResultMessage = null },
+            title = { Text(text = "백업 결과") },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = { backupResultMessage = null }) {
+                    Text(text = "확인")
+                }
+            }
+        )
+    }
+
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -195,7 +237,11 @@ fun StorageManagementScreen(
 }
 
 @Composable
-private fun StorageStatusCard(snapshot: AppSpecificStorageSnapshot) {
+private fun StorageStatusCard(
+    snapshot: AppSpecificStorageSnapshot,
+    isSafReady: Boolean,
+    onBackupAll: () -> Unit
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
         modifier = Modifier.fillMaxWidth()
@@ -215,6 +261,24 @@ private fun StorageStatusCard(snapshot: AppSpecificStorageSnapshot) {
             StorageInfoRow(label = "세션 수", value = "${snapshot.sessionCount}개")
             StorageInfoRow(label = "파일 수", value = "${snapshot.fileCount}개")
             StorageInfoRow(label = "대략적 용량", value = formatBytes(snapshot.totalBytes))
+            StorageInfoRow(
+                label = "SAF 백업",
+                value = if (isSafReady) "연결됨" else "미연결"
+            )
+            Button(
+                onClick = onBackupAll,
+                enabled = isSafReady && snapshot.sessions.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "전체 세션 백업")
+            }
+            if (!isSafReady) {
+                Text(
+                    text = "SAF 백업 폴더 연결 후 백업할 수 있습니다.",
+                    color = Color(0xFFB8BCC6),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
@@ -222,8 +286,10 @@ private fun StorageStatusCard(snapshot: AppSpecificStorageSnapshot) {
 @Composable
 private fun StorageSessionCard(
     item: StorageSessionFileItem,
+    isBackupEnabled: Boolean,
     onOpenSessionJson: () -> Unit,
     onOpenMessages: () -> Unit,
+    onBackup: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -261,6 +327,14 @@ private fun StorageSessionCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "messages.jsonl 보기")
+                }
+
+                Button(
+                    onClick = onBackup,
+                    enabled = isBackupEnabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "선택 세션 백업")
                 }
 
                 TextButton(

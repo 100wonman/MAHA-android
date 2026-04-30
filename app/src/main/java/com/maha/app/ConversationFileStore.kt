@@ -166,6 +166,113 @@ class ConversationFileStore(
         )
     }
 
+    private fun findAppSpecificSessionDir(sessionId: String): File? {
+        return findFileSessionDirs(sessionId)
+            .firstOrNull { sessionDir ->
+                sessionDir.isDirectory && File(sessionDir, SESSION_FILE_NAME).exists()
+            }
+    }
+
+    private fun backupAppSpecificSessionDirToSaf(sourceSessionDir: File): ConversationBackupResult {
+        val sessionFile = File(sourceSessionDir, SESSION_FILE_NAME)
+        if (!sessionFile.exists()) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+        }
+
+        val sessionJson = runCatching { JSONObject(sessionFile.readText()) }.getOrNull()
+            ?: return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+
+        val sessionId = sessionJson.optString("sessionId").takeIf { it.isNotBlank() }
+            ?: return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+
+        val safConversationsDir = storageManager.getSafConversationsDocument()
+            ?: return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+
+        if (findSafSessionDir(sessionId) != null) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 1, failedCount = 0)
+        }
+
+        val title = sessionJson.optString("title", "untitled")
+        val targetDirectoryName = buildBackupSessionDirectoryName(title, sessionId)
+
+        if (safConversationsDir.findFile(targetDirectoryName) != null) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 1, failedCount = 0)
+        }
+
+        val targetSessionDir = safConversationsDir.createDirectory(targetDirectoryName)
+            ?: return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+
+        val sessionCopied = copyFileToSafDirectory(
+            sourceFile = sessionFile,
+            targetDirectory = targetSessionDir,
+            targetFileName = SESSION_FILE_NAME
+        )
+
+        val messagesFile = File(sourceSessionDir, MESSAGES_FILE_NAME)
+        val messagesCopied = if (messagesFile.exists()) {
+            copyFileToSafDirectory(
+                sourceFile = messagesFile,
+                targetDirectory = targetSessionDir,
+                targetFileName = MESSAGES_FILE_NAME
+            )
+        } else {
+            true
+        }
+
+        return if (sessionCopied && messagesCopied) {
+            ConversationBackupResult(copiedCount = 1, skippedCount = 0, failedCount = 0)
+        } else {
+            ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+        }
+    }
+
+
+    fun backupSessionToSaf(sessionId: String): ConversationBackupResult {
+        if (!storageManager.isSafReady()) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+        }
+
+        val sourceSessionDir = findAppSpecificSessionDir(sessionId)
+            ?: return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+
+        return backupAppSpecificSessionDirToSaf(sourceSessionDir)
+    }
+
+    fun backupAllSessionsToSaf(): ConversationBackupResult {
+        if (!storageManager.isSafReady()) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 1)
+        }
+
+        val conversationsDir = storageManager.getConversationsDir()
+        if (!conversationsDir.exists()) {
+            return ConversationBackupResult(copiedCount = 0, skippedCount = 0, failedCount = 0)
+        }
+
+        var copiedCount = 0
+        var skippedCount = 0
+        var failedCount = 0
+
+        conversationsDir
+            .listFiles()
+            ?.filter { sessionDir ->
+                sessionDir.isDirectory &&
+                        sessionDir.name.startsWith(SESSION_DIR_PREFIX) &&
+                        File(sessionDir, SESSION_FILE_NAME).exists()
+            }
+            ?.forEach { sessionDir ->
+                val result = backupAppSpecificSessionDirToSaf(sessionDir)
+                copiedCount += result.copiedCount
+                skippedCount += result.skippedCount
+                failedCount += result.failedCount
+            }
+
+        return ConversationBackupResult(
+            copiedCount = copiedCount,
+            skippedCount = skippedCount,
+            failedCount = failedCount
+        )
+    }
+
     private fun saveSessionInternal(
         session: ConversationSession,
         isFavorite: Boolean
@@ -537,6 +644,29 @@ class ConversationFileStore(
         return "$SESSION_DIR_PREFIX$sessionId"
     }
 
+
+    private fun buildBackupSessionDirectoryName(title: String, sessionId: String): String {
+        return "${SESSION_DIR_PREFIX}${safeTitleForDirectory(title)}_${safeSessionIdForDirectory(sessionId)}"
+    }
+
+    private fun safeTitleForDirectory(title: String): String {
+        val converted = title
+            .trim()
+            .replace(Regex("\\s+"), "_")
+            .filter { char -> char.isLetterOrDigit() || char == '_' || char == '-' }
+            .take(SAFE_TITLE_MAX_LENGTH)
+            .trim('_', '-')
+
+        return converted.ifBlank { "untitled" }
+    }
+
+    private fun safeSessionIdForDirectory(sessionId: String): String {
+        return sessionId
+            .trim()
+            .filter { char -> char.isLetterOrDigit() || char == '_' || char == '-' }
+            .ifBlank { "unknown" }
+    }
+
     private fun shortSessionId(sessionId: String): String {
         return sessionId
             .filter { it.isLetterOrDigit() }
@@ -581,8 +711,16 @@ class ConversationFileStore(
         private const val MESSAGES_FILE_NAME = "messages.jsonl"
         private const val SAF_PLAIN_FILE_MIME_TYPE = "application/octet-stream"
         private const val SHORT_ID_LENGTH = 6
+        private const val SAFE_TITLE_MAX_LENGTH = 20
     }
 }
+
+
+data class ConversationBackupResult(
+    val copiedCount: Int,
+    val skippedCount: Int,
+    val failedCount: Int
+)
 
 
 data class ConversationMigrationResult(
