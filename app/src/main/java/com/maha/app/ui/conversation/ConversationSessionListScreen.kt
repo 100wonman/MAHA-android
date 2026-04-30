@@ -3,6 +3,7 @@ package com.maha.app
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -51,6 +55,13 @@ fun ConversationSessionListScreen(
     var renameTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
     var renameText by remember { mutableStateOf("") }
     var deleteTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun clearSearchFocus() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
 
     val normalizedQuery = searchQuery.trim()
     val visibleSessions = sessions
@@ -73,6 +84,13 @@ fun ConversationSessionListScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = {
+                        clearSearchFocus()
+                    }
+                )
+            }
             .background(MaterialTheme.colorScheme.background)
             .padding(WindowInsets.safeDrawing.asPaddingValues())
             .padding(16.dp)
@@ -122,18 +140,45 @@ fun ConversationSessionListScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = {
-                Text(text = "대화 검색")
-            },
-            placeholder = {
-                Text(text = "제목 또는 마지막 메시지 검색")
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = {
+                    Text(text = "대화 검색")
+                },
+                placeholder = {
+                    Text(text = "제목 또는 마지막 메시지 검색")
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        TextButton(
+                            onClick = {
+                                onSearchQueryChange("")
+                            }
+                        ) {
+                            Text(text = "X")
+                        }
+                    }
+                }
+            )
+
+            if (searchQuery.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        onSearchQueryChange("")
+                        clearSearchFocus()
+                    }
+                ) {
+                    Text(text = "취소")
+                }
             }
-        )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
