@@ -18,6 +18,7 @@ class ConversationViewModel(
     )
 
     val conversationSessions = mutableStateListOf<ConversationSession>()
+    val favoriteSessionIds = mutableStateListOf<String>()
 
     var selectedConversationSessionId by mutableStateOf<String?>(null)
         private set
@@ -61,6 +62,7 @@ class ConversationViewModel(
         refreshStorageState()
 
         conversationSessions.clear()
+        favoriteSessionIds.clear()
         loadInitialSessions()
         selectedConversationSessionId = null
     }
@@ -71,6 +73,7 @@ class ConversationViewModel(
         refreshStorageState()
 
         conversationSessions.clear()
+        favoriteSessionIds.clear()
         loadInitialSessions()
         selectedConversationSessionId = null
     }
@@ -83,7 +86,9 @@ class ConversationViewModel(
 
         if (storageManager.isSafReady()) {
             conversationSessions.clear()
+            favoriteSessionIds.clear()
             conversationSessions.addAll(conversationFileStore.loadSessions())
+            reloadFavoriteSessionIds()
             selectedConversationSessionId = null
         }
 
@@ -114,9 +119,57 @@ class ConversationViewModel(
 
         conversationSessions.add(0, newSession)
         selectedConversationSessionId = sessionId
-        conversationFileStore.saveSession(newSession)
+        conversationFileStore.updateSession(newSession, isFavorite = false)
 
         return sessionId
+    }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        val trimmedTitle = newTitle.trim()
+        if (trimmedTitle.isBlank()) return
+
+        val targetIndex = conversationSessions.indexOfFirst { it.sessionId == sessionId }
+        if (targetIndex == -1) return
+
+        val currentSession = conversationSessions[targetIndex]
+        val updatedSession = currentSession.copy(
+            title = trimmedTitle,
+            updatedAt = getCurrentTimeText()
+        )
+
+        conversationSessions[targetIndex] = updatedSession
+        conversationFileStore.updateSession(
+            session = updatedSession,
+            isFavorite = favoriteSessionIds.contains(sessionId)
+        )
+    }
+
+    fun toggleFavorite(sessionId: String) {
+        val targetSession = conversationSessions.firstOrNull { it.sessionId == sessionId } ?: return
+        val willBeFavorite = !favoriteSessionIds.contains(sessionId)
+
+        if (willBeFavorite) {
+            favoriteSessionIds.add(sessionId)
+        } else {
+            favoriteSessionIds.remove(sessionId)
+        }
+
+        conversationFileStore.updateSession(
+            session = targetSession,
+            isFavorite = willBeFavorite
+        )
+    }
+
+    fun deleteSession(sessionId: String) {
+        conversationFileStore.deleteSession(sessionId)
+        conversationSessions.removeAll { it.sessionId == sessionId }
+        favoriteSessionIds.remove(sessionId)
+
+        if (selectedConversationSessionId == sessionId) {
+            selectedConversationSessionId = null
+        }
+
+        refreshStorageState()
     }
 
     fun updateInputText(value: String) {
@@ -227,7 +280,10 @@ class ConversationViewModel(
         conversationSessions[targetIndex] = updatedSession
         conversationFileStore.appendMessage(targetSession.sessionId, userMessage)
         conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
-        conversationFileStore.saveSession(updatedSession)
+        conversationFileStore.updateSession(
+            session = updatedSession,
+            isFavorite = favoriteSessionIds.contains(targetSession.sessionId)
+        )
 
         inputText = ""
     }
@@ -273,7 +329,10 @@ class ConversationViewModel(
         )
 
         conversationSessions[targetSessionIndex] = updatedSession
-        conversationFileStore.saveSession(updatedSession)
+        conversationFileStore.updateSession(
+            session = updatedSession,
+            isFavorite = favoriteSessionIds.contains(targetSessionId)
+        )
     }
 
     private fun loadInitialSessions() {
@@ -282,6 +341,7 @@ class ConversationViewModel(
         if (loadedSessions.isNotEmpty()) {
             conversationSessions.clear()
             conversationSessions.addAll(loadedSessions)
+            reloadFavoriteSessionIds()
             return
         }
 
@@ -289,10 +349,20 @@ class ConversationViewModel(
             val dummySessions = createDummyConversationSessions()
             conversationSessions.addAll(dummySessions)
             dummySessions.forEach { session ->
-                conversationFileStore.saveSession(session)
+                conversationFileStore.updateSession(session, isFavorite = false)
                 session.messages.forEach { message ->
                     conversationFileStore.appendMessage(session.sessionId, message)
                 }
+            }
+            favoriteSessionIds.clear()
+        }
+    }
+
+    private fun reloadFavoriteSessionIds() {
+        favoriteSessionIds.clear()
+        conversationSessions.forEach { session ->
+            if (conversationFileStore.isSessionFavorite(session.sessionId)) {
+                favoriteSessionIds.add(session.sessionId)
             }
         }
     }

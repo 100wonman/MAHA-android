@@ -11,12 +11,33 @@ class ConversationFileStore(
     private val storageManager: MahaStorageManager
 ) {
     fun saveSession(session: ConversationSession) {
+        saveSessionInternal(
+            session = session,
+            isFavorite = readSessionFavorite(session.sessionId)
+        )
+    }
+
+    fun updateSession(
+        session: ConversationSession,
+        isFavorite: Boolean? = null
+    ) {
+        saveSessionInternal(
+            session = session,
+            isFavorite = isFavorite ?: readSessionFavorite(session.sessionId)
+        )
+    }
+
+    fun isSessionFavorite(sessionId: String): Boolean {
+        return readSessionFavorite(sessionId)
+    }
+
+    fun deleteSession(sessionId: String): Boolean {
         storageManager.ensureDirectories()
 
-        if (storageManager.isSafReady()) {
-            saveSessionToSaf(session)
+        return if (storageManager.isSafReady()) {
+            deleteSessionFromSaf(sessionId)
         } else {
-            saveSessionToFile(session)
+            deleteSessionFromFile(sessionId)
         }
     }
 
@@ -39,7 +60,6 @@ class ConversationFileStore(
             loadSessionsFromFile()
         }
     }
-
 
     fun getAppSpecificSessionCount(): Int {
         val conversationsDir = storageManager.getConversationsDir()
@@ -148,11 +168,29 @@ class ConversationFileStore(
         )
     }
 
-    private fun saveSessionToFile(session: ConversationSession) {
+    private fun saveSessionInternal(
+        session: ConversationSession,
+        isFavorite: Boolean
+    ) {
+        storageManager.ensureDirectories()
+
+        if (storageManager.isSafReady()) {
+            saveSessionToSaf(session, isFavorite)
+        } else {
+            saveSessionToFile(session, isFavorite)
+        }
+    }
+
+    private fun saveSessionToFile(
+        session: ConversationSession,
+        isFavorite: Boolean
+    ) {
         val sessionDir = getFileSessionDir(session.sessionId)
         sessionDir.mkdirs()
 
-        File(sessionDir, SESSION_FILE_NAME).writeText(sessionToJson(session).toString(2))
+        File(sessionDir, SESSION_FILE_NAME).writeText(
+            sessionToJson(session, isFavorite).toString(2)
+        )
     }
 
     private fun appendMessageToFile(sessionId: String, message: ConversationMessage) {
@@ -160,6 +198,15 @@ class ConversationFileStore(
         sessionDir.mkdirs()
 
         File(sessionDir, MESSAGES_FILE_NAME).appendText(messageToJson(message).toString() + "\n")
+    }
+
+    private fun deleteSessionFromFile(sessionId: String): Boolean {
+        val sessionDir = getFileSessionDir(sessionId)
+        return if (sessionDir.exists()) {
+            sessionDir.deleteRecursively()
+        } else {
+            true
+        }
     }
 
     private fun loadSessionsFromFile(): List<ConversationSession> {
@@ -202,10 +249,13 @@ class ConversationFileStore(
         }
     }
 
-    private fun saveSessionToSaf(session: ConversationSession) {
+    private fun saveSessionToSaf(
+        session: ConversationSession,
+        isFavorite: Boolean
+    ) {
         val sessionDir = getSafSessionDir(session.sessionId) ?: return
         val sessionFile = getOrCreateExactFile(sessionDir, SESSION_FILE_NAME) ?: return
-        writeDocumentText(sessionFile, sessionToJson(session).toString(2))
+        writeDocumentText(sessionFile, sessionToJson(session, isFavorite).toString(2))
     }
 
     private fun appendMessageToSaf(sessionId: String, message: ConversationMessage) {
@@ -221,6 +271,26 @@ class ConversationFileStore(
         }
 
         writeDocumentText(messageFile, updatedText)
+    }
+
+    private fun deleteSessionFromSaf(sessionId: String): Boolean {
+        val conversationsDir = storageManager.getSafConversationsDocument() ?: return false
+        val sessionDirName = "$SESSION_DIR_PREFIX$sessionId"
+        val sessionDir = conversationsDir.listFiles()
+            .firstOrNull { it.isDirectory && it.name == sessionDirName }
+            ?: return true
+
+        deleteDocumentTree(sessionDir)
+        return true
+    }
+
+    private fun deleteDocumentTree(documentFile: DocumentFile) {
+        if (documentFile.isDirectory) {
+            documentFile.listFiles().forEach { child ->
+                deleteDocumentTree(child)
+            }
+        }
+        documentFile.delete()
     }
 
     private fun loadSessionsFromSaf(): List<ConversationSession> {
@@ -262,15 +332,19 @@ class ConversationFileStore(
             .toList()
     }
 
-    private fun sessionToJson(session: ConversationSession): JSONObject {
+    private fun sessionToJson(
+        session: ConversationSession,
+        isFavorite: Boolean
+    ): JSONObject {
         return JSONObject().apply {
             put("sessionId", session.sessionId)
             put("title", session.title)
-            put("createdAt", session.updatedAt)
+            put("createdAt", readSessionCreatedAt(session.sessionId) ?: session.updatedAt)
             put("updatedAt", session.updatedAt)
             put("messageCount", session.messages.size)
             put("lastMessageSummary", session.lastMessageSummary)
             put("memorySummary", session.memorySummary)
+            put("isFavorite", isFavorite)
         }
     }
 
@@ -345,6 +419,26 @@ class ConversationFileStore(
         )
     }
 
+    private fun readSessionFavorite(sessionId: String): Boolean {
+        return readSessionJson(sessionId)?.optBoolean("isFavorite", false) ?: false
+    }
+
+    private fun readSessionCreatedAt(sessionId: String): String? {
+        return readSessionJson(sessionId)?.optString("createdAt")?.takeIf { it.isNotBlank() }
+    }
+
+    private fun readSessionJson(sessionId: String): JSONObject? {
+        return if (storageManager.isSafReady()) {
+            val sessionDir = findSafSessionDir(sessionId) ?: return null
+            val sessionFile = findExactFile(sessionDir, SESSION_FILE_NAME) ?: return null
+            runCatching { JSONObject(readDocumentText(sessionFile)) }.getOrNull()
+        } else {
+            val sessionFile = File(getFileSessionDir(sessionId), SESSION_FILE_NAME)
+            if (!sessionFile.exists()) return null
+            runCatching { JSONObject(sessionFile.readText()) }.getOrNull()
+        }
+    }
+
     private fun readSessionIdFromFile(sessionFile: File): String? {
         return runCatching {
             JSONObject(sessionFile.readText()).optString("sessionId").takeIf { it.isNotBlank() }
@@ -374,6 +468,14 @@ class ConversationFileStore(
         return conversationsDir.listFiles()
             .firstOrNull { it.isDirectory && it.name == directoryName }
             ?: conversationsDir.createDirectory(directoryName)
+    }
+
+    private fun findSafSessionDir(sessionId: String): DocumentFile? {
+        val conversationsDir = storageManager.getSafConversationsDocument() ?: return null
+        val directoryName = "$SESSION_DIR_PREFIX$sessionId"
+
+        return conversationsDir.listFiles()
+            .firstOrNull { it.isDirectory && it.name == directoryName }
     }
 
     private fun getOrCreateExactFile(directory: DocumentFile, fileName: String): DocumentFile? {

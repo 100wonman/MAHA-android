@@ -799,6 +799,7 @@ fun AppRoot() {
             isConversationListScreenOpen -> {
                 ConversationSessionListScreen(
                     sessions = conversationSessions,
+                    favoriteSessionIds = conversationViewModel.favoriteSessionIds,
                     onBackClick = {
                         isConversationListScreenOpen = false
                     },
@@ -807,7 +808,10 @@ fun AppRoot() {
                     },
                     onSessionClick = { session ->
                         conversationViewModel.selectSession(session.sessionId)
-                    }
+                    },
+                    onRenameSession = conversationViewModel::renameSession,
+                    onToggleFavorite = conversationViewModel::toggleFavorite,
+                    onDeleteSession = conversationViewModel::deleteSession
                 )
             }
 

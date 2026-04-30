@@ -1,6 +1,8 @@
 package com.maha.app
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,23 +16,40 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConversationSessionListScreen(
     sessions: List<ConversationSession>,
+    favoriteSessionIds: List<String>,
     onBackClick: () -> Unit,
     onNewConversationClick: () -> Unit,
-    onSessionClick: (ConversationSession) -> Unit
+    onSessionClick: (ConversationSession) -> Unit,
+    onRenameSession: (String, String) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onDeleteSession: (String) -> Unit
 ) {
+    var menuSession by remember { mutableStateOf<ConversationSession?>(null) }
+    var renameTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteTargetSession by remember { mutableStateOf<ConversationSession?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -58,7 +77,7 @@ fun ConversationSessionListScreen(
                 )
 
                 Text(
-                    text = "더미 세션 목록",
+                    text = "대화 세션 목록",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -86,12 +105,23 @@ fun ConversationSessionListScreen(
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(sessions) { session ->
+            items(
+                items = sessions,
+                key = { session -> session.sessionId }
+            ) { session ->
+                val isFavorite = favoriteSessionIds.contains(session.sessionId)
+
                 Card(
-                    onClick = {
-                        onSessionClick(session)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = {
+                                onSessionClick(session)
+                            },
+                            onLongClick = {
+                                menuSession = session
+                            }
+                        ),
                     shape = conversationUnifiedCardShape(),
                     colors = CardDefaults.cardColors(
                         containerColor = conversationUnifiedCardColor()
@@ -101,12 +131,24 @@ fun ConversationSessionListScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = session.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = if (isFavorite) "★" else "☆",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Text(
+                                text = session.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
 
                         Text(
                             text = session.lastMessageSummary,
@@ -123,5 +165,162 @@ fun ConversationSessionListScreen(
                 }
             }
         }
+    }
+
+    val activeMenuSession = menuSession
+    if (activeMenuSession != null) {
+        AlertDialog(
+            onDismissRequest = {
+                menuSession = null
+            },
+            title = {
+                Text(text = "대화방 관리")
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = activeMenuSession.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "이 대화방에 적용할 작업을 선택하세요.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            renameTargetSession = activeMenuSession
+                            renameText = activeMenuSession.title
+                            menuSession = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "이름 변경")
+                    }
+
+                    Button(
+                        onClick = {
+                            onToggleFavorite(activeMenuSession.sessionId)
+                            menuSession = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (favoriteSessionIds.contains(activeMenuSession.sessionId)) {
+                                "즐겨찾기 해제"
+                            } else {
+                                "즐겨찾기 추가"
+                            }
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            deleteTargetSession = activeMenuSession
+                            menuSession = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "삭제")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        menuSession = null
+                    }
+                ) {
+                    Text(text = "취소")
+                }
+            }
+        )
+    }
+
+    val activeRenameSession = renameTargetSession
+    if (activeRenameSession != null) {
+        AlertDialog(
+            onDismissRequest = {
+                renameTargetSession = null
+            },
+            title = {
+                Text(text = "대화 이름 변경")
+            },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { value ->
+                        renameText = value
+                    },
+                    singleLine = true,
+                    label = {
+                        Text(text = "대화 이름")
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRenameSession(activeRenameSession.sessionId, renameText)
+                        renameTargetSession = null
+                    }
+                ) {
+                    Text(text = "저장")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        renameTargetSession = null
+                    }
+                ) {
+                    Text(text = "취소")
+                }
+            }
+        )
+    }
+
+    val activeDeleteSession = deleteTargetSession
+    if (activeDeleteSession != null) {
+        AlertDialog(
+            onDismissRequest = {
+                deleteTargetSession = null
+            },
+            title = {
+                Text(text = "대화 삭제")
+            },
+            text = {
+                Text(text = "이 대화 세션을 삭제합니다. 저장된 session.json과 messages.jsonl도 함께 삭제됩니다.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteSession(activeDeleteSession.sessionId)
+                        deleteTargetSession = null
+                    }
+                ) {
+                    Text(text = "삭제")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        deleteTargetSession = null
+                    }
+                ) {
+                    Text(text = "취소")
+                }
+            }
+        )
     }
 }
