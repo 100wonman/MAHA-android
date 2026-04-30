@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -131,24 +132,35 @@ fun ConversationRoomScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        val traceBlocks = if (message.role == ConversationRole.ASSISTANT) {
+                            message.blocks.filter { block -> block.type.name == "TRACE_BLOCK" }
+                        } else {
+                            emptyList()
+                        }
+
                         if (message.role == ConversationRole.ASSISTANT) {
                             ConversationRunSummaryPanelReadable(
-                                run = session.latestRun ?: createDummyConversationRun(session.sessionId)
+                                run = session.latestRun ?: createDummyConversationRun(session.sessionId),
+                                traceBlocks = traceBlocks
                             )
                         }
 
-                        message.blocks.forEach { block ->
-                            ConversationOutputBlockRenderer(
-                                block = block,
-                                role = message.role,
-                                createdAt = message.createdAt,
-                                canEdit = message.role == ConversationRole.USER,
-                                onEditRequest = {
-                                    onEditMessage(message.messageId, block.content)
-                                },
-                                onUnsupportedEditRequest = onAssistantEditUnsupported
-                            )
-                        }
+                        message.blocks
+                            .filterNot { block ->
+                                message.role == ConversationRole.ASSISTANT && block.type.name == "TRACE_BLOCK"
+                            }
+                            .forEach { block ->
+                                ConversationOutputBlockRenderer(
+                                    block = block,
+                                    role = message.role,
+                                    createdAt = message.createdAt,
+                                    canEdit = message.role == ConversationRole.USER,
+                                    onEditRequest = {
+                                        onEditMessage(message.messageId, block.content)
+                                    },
+                                    onUnsupportedEditRequest = onAssistantEditUnsupported
+                                )
+                            }
                     }
                 }
             }
@@ -366,25 +378,38 @@ private fun AssistantPlainTextBlock(text: String) {
 }
 
 @Composable
-private fun ConversationRunSummaryPanelReadable(run: ConversationRun) {
+private fun ConversationRunSummaryPanelReadable(
+    run: ConversationRun,
+    traceBlocks: List<ConversationOutputBlock> = emptyList()
+) {
     val clipboardManager = LocalClipboardManager.current
     var isCollapsed by rememberSaveable(run.runId) { mutableStateOf(true) }
+    val traceText = traceBlocks
+        .mapNotNull { block -> block.content.takeIf { it.isNotBlank() } }
+        .joinToString(separator = "\n\n")
+
+    val summaryCopyText = buildRunSummaryCopyText(run)
+    val traceCopyText = traceText.ifBlank { "실행과정 없음" }
+    val workerCopyTexts = run.workerResults.mapIndexed { index, worker ->
+        buildWorkerCopyText(index, worker)
+    }
+
     val copyText = buildString {
-        appendLine("runId: ${run.runId}")
-        appendLine("input: ${run.userInput}")
-        appendLine("latencySec: ${run.totalLatencySec}")
-        appendLine("retryCount: ${run.totalRetryCount}")
-        run.workerResults.forEach { worker ->
-            appendLine("worker: ${worker.workerName}")
-            appendLine("provider: ${worker.providerName}")
-            appendLine("model: ${worker.modelName}")
-            appendLine("status: ${worker.status}")
-            appendLine("latencySec: ${worker.latencySec}")
-            appendLine("retryCount: ${worker.retryCount}")
-            appendLine("tokensPerSecond: ${worker.tokensPerSecond ?: "-"}")
-            appendLine("errorType: ${worker.errorType}")
-            appendLine("summary: ${worker.outputSummary}")
-            appendLine("rawOutput: ${worker.rawOutput}")
+        appendLine(summaryCopyText)
+
+        if (traceText.isNotBlank()) {
+            appendLine()
+            appendLine("[실행과정]")
+            appendLine(traceText)
+        }
+
+        if (workerCopyTexts.isNotEmpty()) {
+            appendLine()
+            appendLine("[Worker별 실행정보]")
+            workerCopyTexts.forEach { workerText ->
+                appendLine(workerText)
+                appendLine()
+            }
         }
     }
 
@@ -400,11 +425,13 @@ private fun ConversationRunSummaryPanelReadable(run: ConversationRun) {
         )
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -423,44 +450,244 @@ private fun ConversationRunSummaryPanelReadable(run: ConversationRun) {
                     )
                 }
 
-                IconButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(copyText))
-                    },
-                    modifier = Modifier.size(34.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "⧉",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(copyText.trim()))
+                        },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Text(
+                            text = "⧉",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            isCollapsed = !isCollapsed
+                        },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Text(
+                            text = if (isCollapsed) "⌄" else "⌃",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
 
             if (!isCollapsed) {
-                SelectionContainer {
-                    Text(
-                        text = copyText.trim(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(top = 4.dp),
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.2f
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        softWrap = false
-                    )
+                RunFlatSection(
+                    title = "실행정보 요약",
+                    copyText = summaryCopyText
+                ) {
+                    RunSummarySection(run = run)
+                }
+
+                if (traceText.isNotBlank()) {
+                    RunFlatSection(
+                        title = "실행과정",
+                        copyText = traceCopyText
+                    ) {
+                        RunTraceSection(traceText = traceText)
+                    }
+                }
+
+                run.workerResults.forEachIndexed { index, worker ->
+                    val workerTitle = worker.workerName.ifBlank { "워커 ${index + 1}" }
+                    RunFlatSection(
+                        title = workerTitle,
+                        copyText = workerCopyTexts[index]
+                    ) {
+                        RunWorkerResultSection(
+                            index = index,
+                            worker = worker
+                        )
+                    }
                 }
             }
+        }
+    }
+}
 
+private fun buildRunSummaryCopyText(run: ConversationRun): String {
+    return buildString {
+        appendLine("[실행정보 요약]")
+        appendLine("runId: ${run.runId}")
+        appendLine("input: ${run.userInput}")
+        appendLine("status: ${run.status}")
+        appendLine("latencySec: ${run.totalLatencySec}")
+        appendLine("workerCount: ${run.workerResults.size}")
+        appendLine("retryCount: ${run.totalRetryCount}")
+    }.trim()
+}
+
+private fun buildWorkerCopyText(
+    index: Int,
+    worker: ConversationWorkerResult
+): String {
+    return buildString {
+        appendLine("[워커 ${index + 1}]")
+        appendLine("worker: ${worker.workerName}")
+        appendLine("provider: ${worker.providerName}")
+        appendLine("model: ${worker.modelName}")
+        appendLine("status: ${worker.status}")
+        appendLine("latencySec: ${worker.latencySec}")
+        appendLine("retryCount: ${worker.retryCount}")
+        appendLine("tokensPerSecond: ${worker.tokensPerSecond ?: "-"}")
+        appendLine("errorType: ${worker.errorType}")
+        appendLine("summary: ${worker.outputSummary}")
+        appendLine("rawOutput: ${worker.rawOutput}")
+    }.trim()
+}
+
+@Composable
+private fun RunFlatSection(
+    title: String,
+    copyText: String,
+    content: @Composable () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = if (isCollapsed) "⌄" else "⌃",
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
+
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(copyText))
+                },
+                modifier = Modifier.size(34.dp)
+            ) {
+                Text(
+                    text = "⧉",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+        )
+
+        content()
+    }
+}
+
+@Composable
+private fun RunSummarySection(run: ConversationRun) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "상태: ${run.status}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Text(
+            text = "총 시간: ${run.totalLatencySec}s · Worker: ${run.workerResults.size} · 재시도: ${run.totalRetryCount}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+        )
+    }
+}
+
+@Composable
+private fun RunTraceSection(traceText: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        SelectionContainer {
+            Text(
+                text = traceText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
+                ),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
+                softWrap = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun RunWorkerResultSection(
+    index: Int,
+    worker: ConversationWorkerResult
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "워커 ${index + 1}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
+        )
+
+        Text(
+            text = "${worker.providerName} · ${worker.modelName}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+        )
+
+        Text(
+            text = "상태: ${worker.status} · 시간: ${worker.latencySec}s · 재시도: ${worker.retryCount}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+        )
+
+        if (worker.errorType.isNotBlank()) {
+            Text(
+                text = "오류 유형: ${worker.errorType}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        if (worker.outputSummary.isNotBlank()) {
+            SelectionContainer {
+                Text(
+                    text = worker.outputSummary,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f)
+                )
+            }
         }
     }
 }
