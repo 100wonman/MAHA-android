@@ -10,16 +10,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
@@ -80,6 +85,7 @@ fun AppRoot() {
     val conversationSearchEnabled = conversationViewModel.searchEnabled
     val conversationModeLabel = conversationViewModel.modeLabel
 
+
     var selectedAgentId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRunId by rememberSaveable { mutableStateOf<String?>(null) }
     var modelSelectionAgentId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -117,6 +123,16 @@ fun AppRoot() {
     var promptText by rememberSaveable {
         mutableStateOf("Create a simple MAHA workflow summary.")
     }
+    LaunchedEffect(isWorkModeOpen, isConversationListScreenOpen, selectedConversationSessionId) {
+        val isConversationModeActive = isConversationListScreenOpen || selectedConversationSessionId != null
+        if (isConversationModeActive && workDrawerState.isOpen) {
+            workDrawerState.close()
+        }
+        if (!isConversationModeActive && conversationDrawerState.isOpen) {
+            conversationDrawerState.close()
+        }
+    }
+
 
     val storageFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -324,7 +340,10 @@ fun AppRoot() {
                 selectedConversationSessionId == null &&
                 !conversationDrawerState.isOpen,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(
+                modifier = Modifier.statusBarsPadding(),
+                drawerContainerColor = MaterialTheme.colorScheme.surface
+            ) {
                 Spacer(modifier = Modifier.height(20.dp))
 
                 DrawerHeader()
@@ -496,7 +515,10 @@ fun AppRoot() {
             gesturesEnabled = (isConversationListScreenOpen || selectedConversationSessionId != null) &&
                     !workDrawerState.isOpen,
             drawerContent = {
-                ModalDrawerSheet {
+                ModalDrawerSheet(
+                    modifier = Modifier.statusBarsPadding(),
+                    drawerContainerColor = MaterialTheme.colorScheme.surface
+                ) {
                     ConversationGlobalSettingsScreen(
                         selectedPage = selectedConversationSettingsPage,
                         storageStatusText = conversationViewModel.storageStatusText,
@@ -517,6 +539,13 @@ fun AppRoot() {
                         onImportAppSpecificStorageClick = {
                             isAppStorageMigrationDialogOpen = true
                         },
+                        onDeleteAppSpecificSession = { sessionId ->
+                            conversationViewModel.conversationSessions.removeAll { it.sessionId == sessionId }
+                            conversationViewModel.favoriteSessionIds.remove(sessionId)
+                            if (conversationViewModel.selectedConversationSessionId == sessionId) {
+                                conversationViewModel.clearSelectedSession()
+                            }
+                        },
                         onBackClick = {
                             if (selectedConversationSettingsPage != null) {
                                 selectedConversationSettingsPage = null
@@ -528,244 +557,244 @@ fun AppRoot() {
                 }
             }
         ) {
-        pendingRunPrecheck?.let { precheck ->
-            RunAllPrecheckDialog(
-                precheck = precheck,
-                onConfirmClick = {
-                    if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+            pendingRunPrecheck?.let { precheck ->
+                RunAllPrecheckDialog(
+                    precheck = precheck,
+                    onConfirmClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            pendingRunPrecheck = null
+                            return@RunAllPrecheckDialog
+                        }
+
                         pendingRunPrecheck = null
-                        return@RunAllPrecheckDialog
+
+                        scope.launch {
+                            isRunAllRunning = true
+
+                            try {
+                                syncExecutionStateMap(
+                                    agents = agentList,
+                                    executionStateMap = executionStateMap
+                                )
+
+                                val newRun = ExecutionEngine.runAllAgents(
+                                    agents = agentList.toList(),
+                                    existingRuns = runList.toList(),
+                                    inputPrompt = promptText,
+                                    onStateChange = { agentId, state ->
+                                        executionStateMap[agentId] = state
+                                    },
+                                    onExecutionHistoryLog = { log ->
+                                        executionHistoryLogList.add(0, log)
+                                        StorageManager.saveExecutionHistoryLogs(
+                                            context = context,
+                                            logs = executionHistoryLogList.toList()
+                                        )
+                                    }
+                                )
+
+                                runList.removeAll { it.runId == newRun.runId }
+                                runList.add(0, newRun)
+                            } catch (e: Exception) {
+                                agentList.forEach { agent ->
+                                    if (executionStateMap[agent.id] == "RUNNING") {
+                                        executionStateMap[agent.id] = "FAILED"
+                                    }
+                                }
+                            } finally {
+                                isRunAllRunning = false
+                            }
+                        }
+                    },
+                    onCancelClick = {
+                        pendingRunPrecheck = null
                     }
+                )
+            }
 
-                    pendingRunPrecheck = null
+            if (isApplyFallbackModelDialogOpen) {
+                val fallbackProvider = ApiKeyManager.getFallbackProvider(context)
+                val fallbackModel = ApiKeyManager.getFallbackModel(context)
 
-                    scope.launch {
-                        isRunAllRunning = true
-
-                        try {
-                            syncExecutionStateMap(
-                                agents = agentList,
-                                executionStateMap = executionStateMap
-                            )
-
-                            val newRun = ExecutionEngine.runAllAgents(
-                                agents = agentList.toList(),
-                                existingRuns = runList.toList(),
-                                inputPrompt = promptText,
-                                onStateChange = { agentId, state ->
-                                    executionStateMap[agentId] = state
-                                },
-                                onExecutionHistoryLog = { log ->
-                                    executionHistoryLogList.add(0, log)
-                                    StorageManager.saveExecutionHistoryLogs(
-                                        context = context,
-                                        logs = executionHistoryLogList.toList()
+                AlertDialog(
+                    onDismissRequest = {
+                        isApplyFallbackModelDialogOpen = false
+                    },
+                    title = {
+                        Text(text = "전체 Worker 모델 변경")
+                    },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(text = "모든 Worker의 Provider / Model을 Fallback 설정값으로 변경합니다.")
+                            Text(text = "Provider: $fallbackProvider")
+                            Text(text = "Model: $fallbackModel")
+                            Text(text = "기존 Worker별 Provider / Model 설정은 덮어쓰기됩니다.")
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val updatedAgents = agentList.map { agent ->
+                                    agent.copy(
+                                        providerName = fallbackProvider,
+                                        modelName = fallbackModel
                                     )
                                 }
-                            )
 
-                            runList.removeAll { it.runId == newRun.runId }
-                            runList.add(0, newRun)
-                        } catch (e: Exception) {
-                            agentList.forEach { agent ->
-                                if (executionStateMap[agent.id] == "RUNNING") {
-                                    executionStateMap[agent.id] = "FAILED"
-                                }
+                                agentList.clear()
+                                agentList.addAll(updatedAgents)
+
+                                StorageManager.saveAgents(context, agentList.toList())
+
+                                syncExecutionStateMap(
+                                    agents = agentList,
+                                    executionStateMap = executionStateMap
+                                )
+
+                                isApplyFallbackModelDialogOpen = false
                             }
-                        } finally {
-                            isRunAllRunning = false
+                        ) {
+                            Text(text = "확인 후 변경")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                isApplyFallbackModelDialogOpen = false
+                            }
+                        ) {
+                            Text(text = "취소")
                         }
                     }
-                },
-                onCancelClick = {
-                    pendingRunPrecheck = null
-                }
-            )
-        }
+                )
+            }
 
-        if (isApplyFallbackModelDialogOpen) {
-            val fallbackProvider = ApiKeyManager.getFallbackProvider(context)
-            val fallbackModel = ApiKeyManager.getFallbackModel(context)
+            if (isRecommendationDialogOpen) {
+                ModelRecommendationDialog(
+                    recommendations = pendingRecommendations,
+                    onApplyClick = {
+                        val applicableRecommendations = pendingRecommendations.filter { it.canApply }
 
-            AlertDialog(
-                onDismissRequest = {
-                    isApplyFallbackModelDialogOpen = false
-                },
-                title = {
-                    Text(text = "전체 Worker 모델 변경")
-                },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(text = "모든 Worker의 Provider / Model을 Fallback 설정값으로 변경합니다.")
-                        Text(text = "Provider: $fallbackProvider")
-                        Text(text = "Model: $fallbackModel")
-                        Text(text = "기존 Worker별 Provider / Model 설정은 덮어쓰기됩니다.")
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val updatedAgents = agentList.map { agent ->
+                        val updatedAgents = agentList.map { agent ->
+                            val recommendation = applicableRecommendations.firstOrNull {
+                                it.agentId == agent.id
+                            }
+
+                            if (recommendation == null) {
+                                agent
+                            } else {
                                 agent.copy(
-                                    providerName = fallbackProvider,
-                                    modelName = fallbackModel
+                                    providerName = recommendation.recommendedProviderName,
+                                    modelName = recommendation.recommendedModelName
                                 )
                             }
-
-                            agentList.clear()
-                            agentList.addAll(updatedAgents)
-
-                            StorageManager.saveAgents(context, agentList.toList())
-
-                            syncExecutionStateMap(
-                                agents = agentList,
-                                executionStateMap = executionStateMap
-                            )
-
-                            isApplyFallbackModelDialogOpen = false
                         }
-                    ) {
-                        Text(text = "확인 후 변경")
+
+                        agentList.clear()
+                        agentList.addAll(updatedAgents)
+
+                        StorageManager.saveAgents(context, agentList.toList())
+
+                        syncExecutionStateMap(
+                            agents = agentList,
+                            executionStateMap = executionStateMap
+                        )
+
+                        isRecommendationDialogOpen = false
+                        pendingRecommendations = emptyList()
+                    },
+                    onCancelClick = {
+                        isRecommendationDialogOpen = false
+                        pendingRecommendations = emptyList()
                     }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            isApplyFallbackModelDialogOpen = false
-                        }
-                    ) {
-                        Text(text = "취소")
+                )
+            }
+
+            if (showConversationSettingsDialog) {
+                ConversationSettingsDialog(
+                    modeLabel = conversationModeLabel,
+                    searchEnabled = conversationSearchEnabled,
+                    onModeSelected = conversationViewModel::updateModeLabel,
+                    onSearchEnabledChange = conversationViewModel::updateSearchEnabled,
+                    onDismiss = {
+                        showConversationSettingsDialog = false
                     }
-                }
-            )
-        }
+                )
+            }
 
-        if (isRecommendationDialogOpen) {
-            ModelRecommendationDialog(
-                recommendations = pendingRecommendations,
-                onApplyClick = {
-                    val applicableRecommendations = pendingRecommendations.filter { it.canApply }
 
-                    val updatedAgents = agentList.map { agent ->
-                        val recommendation = applicableRecommendations.firstOrNull {
-                            it.agentId == agent.id
+            editingMessageId?.let { targetMessageId ->
+                ConversationMessageEditDialog(
+                    messageText = editingText,
+                    onMessageTextChange = { newText ->
+                        editingText = newText
+                    },
+                    onSave = {
+                        conversationViewModel.updateUserMessage(
+                            messageId = targetMessageId,
+                            newText = editingText
+                        )
+
+                        editingMessageId = null
+                        editingText = ""
+                    },
+                    onDismiss = {
+                        editingMessageId = null
+                        editingText = ""
+                    }
+                )
+            }
+
+            if (isAppStorageMigrationDialogOpen) {
+                AlertDialog(
+                    onDismissRequest = {
+                        isAppStorageMigrationDialogOpen = false
+                    },
+                    title = {
+                        Text(text = "기존 앱 저장소에서 가져오기")
+                    },
+                    text = {
+                        Text(
+                            text = "기존 앱 저장소에 저장된 대화 세션을 현재 선택한 MAHA 폴더로 복사합니다. 기존 파일은 삭제하지 않습니다."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val result = conversationViewModel.migrateAppSpecificSessionsToSaf()
+                                Toast.makeText(
+                                    context,
+                                    "복사 ${result.copiedCount}개 / 건너뜀 ${result.skippedCount}개 / 실패 ${result.failedCount}개",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                isAppStorageMigrationDialogOpen = false
+                            }
+                        ) {
+                            Text(text = "가져오기")
                         }
-
-                        if (recommendation == null) {
-                            agent
-                        } else {
-                            agent.copy(
-                                providerName = recommendation.recommendedProviderName,
-                                modelName = recommendation.recommendedModelName
-                            )
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                isAppStorageMigrationDialogOpen = false
+                            }
+                        ) {
+                            Text(text = "취소")
                         }
                     }
+                )
+            }
 
-                    agentList.clear()
-                    agentList.addAll(updatedAgents)
-
-                    StorageManager.saveAgents(context, agentList.toList())
-
-                    syncExecutionStateMap(
-                        agents = agentList,
-                        executionStateMap = executionStateMap
-                    )
-
-                    isRecommendationDialogOpen = false
-                    pendingRecommendations = emptyList()
-                },
-                onCancelClick = {
-                    isRecommendationDialogOpen = false
-                    pendingRecommendations = emptyList()
-                }
-            )
-        }
-
-        if (showConversationSettingsDialog) {
-            ConversationSettingsDialog(
-                modeLabel = conversationModeLabel,
-                searchEnabled = conversationSearchEnabled,
-                onModeSelected = conversationViewModel::updateModeLabel,
-                onSearchEnabledChange = conversationViewModel::updateSearchEnabled,
-                onDismiss = {
-                    showConversationSettingsDialog = false
-                }
-            )
-        }
-
-
-        editingMessageId?.let { targetMessageId ->
-            ConversationMessageEditDialog(
-                messageText = editingText,
-                onMessageTextChange = { newText ->
-                    editingText = newText
-                },
-                onSave = {
-                    conversationViewModel.updateUserMessage(
-                        messageId = targetMessageId,
-                        newText = editingText
-                    )
-
-                    editingMessageId = null
-                    editingText = ""
-                },
-                onDismiss = {
-                    editingMessageId = null
-                    editingText = ""
-                }
-            )
-        }
-
-        if (isAppStorageMigrationDialogOpen) {
-            AlertDialog(
-                onDismissRequest = {
-                    isAppStorageMigrationDialogOpen = false
-                },
-                title = {
-                    Text(text = "기존 앱 저장소에서 가져오기")
-                },
-                text = {
-                    Text(
-                        text = "기존 앱 저장소에 저장된 대화 세션을 현재 선택한 MAHA 폴더로 복사합니다. 기존 파일은 삭제하지 않습니다."
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val result = conversationViewModel.migrateAppSpecificSessionsToSaf()
-                            Toast.makeText(
-                                context,
-                                "복사 ${result.copiedCount}개 / 건너뜀 ${result.skippedCount}개 / 실패 ${result.failedCount}개",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            isAppStorageMigrationDialogOpen = false
-                        }
-                    ) {
-                        Text(text = "가져오기")
+            when {
+                selectedConversationSessionId != null -> {
+                    val session = conversationSessions.find {
+                        it.sessionId == selectedConversationSessionId
                     }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            isAppStorageMigrationDialogOpen = false
-                        }
-                    ) {
-                        Text(text = "취소")
-                    }
-                }
-            )
-        }
 
-        when {
-            selectedConversationSessionId != null -> {
-                val session = conversationSessions.find {
-                    it.sessionId == selectedConversationSessionId
-                }
-
-                if (session != null) {
-                    ConversationRoomScreen(
+                    if (session != null) {
+                        ConversationRoomScreen(
                             session = session,
                             inputText = conversationInputText,
                             searchEnabled = conversationSearchEnabled,
@@ -801,18 +830,18 @@ fun AppRoot() {
                             }
                         )
 
-                } else {
-                    ConversationMissingSessionFallback(
-                        onBackClick = {
-                            conversationViewModel.clearSelectedSession()
-                            isConversationListScreenOpen = true
-                        }
-                    )
+                    } else {
+                        ConversationMissingSessionFallback(
+                            onBackClick = {
+                                conversationViewModel.clearSelectedSession()
+                                isConversationListScreenOpen = true
+                            }
+                        )
+                    }
                 }
-            }
 
-            isConversationListScreenOpen -> {
-                ConversationSessionListScreen(
+                isConversationListScreenOpen -> {
+                    ConversationSessionListScreen(
                         sessions = conversationSessions,
                         favoriteSessionIds = conversationViewModel.favoriteSessionIds,
                         searchQuery = conversationViewModel.sessionSearchQuery,
@@ -835,454 +864,454 @@ fun AppRoot() {
                         onDeleteSession = conversationViewModel::deleteSession
                     )
 
-            }
+                }
 
-            selectedRun != null -> {
-                RunDetailScreen(
-                    run = selectedRun,
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onBackClick = {
-                        selectedRunId = null
-                    }
-                )
-            }
-
-            isExecutionLogScreenOpen -> {
-                ExecutionLogScreen(
-                    logs = executionHistoryLogList,
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onBackClick = {
-                        isExecutionLogScreenOpen = false
-                    },
-                    onClearLogsClick = {
-                        executionHistoryLogList.clear()
-                        StorageManager.clearExecutionHistoryLogs(context)
-                    }
-                )
-            }
-
-            isModelCatalogScreenOpen -> {
-                ModelCatalogScreen(
-                    discoveredModels = discoveredModelList,
-                    selectedProviderName = modelSelectionAgent?.providerName ?: savedProvider,
-                    selectedModelName = modelSelectionAgent?.modelName ?: GeminiModelType.DEFAULT,
-                    isSelectionMode = modelSelectionAgent != null,
-                    isSearchingModels = isSearchingModels,
-                    modelSearchMessage = modelSearchMessage,
-                    onSearchApiModelsClick = {
-                        if (isSearchingModels) return@ModelCatalogScreen
-
-                        scope.launch {
-                            isSearchingModels = true
-                            modelSearchMessage = "Google + NVIDIA 모델을 검색하는 중입니다..."
-
-                            try {
-                                val googleModels = GoogleModelDiscoveryProvider.fetchModels()
-                                val nvidiaModels = NvidiaModelDiscoveryProvider.fetchModels()
-
-                                val allModels = googleModels + nvidiaModels
-
-                                if (allModels.isEmpty()) {
-                                    modelSearchMessage = "모델 검색 실패 또는 결과 없음"
-                                } else {
-                                    ModelCatalogManager.saveDiscoveredModels(context, allModels)
-
-                                    discoveredModelList.clear()
-                                    discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
-
-                                    val usableCount = allModels.count { it.isGenerateContentSupported }
-                                    val googleCount = googleModels.size
-                                    val nvidiaCount = nvidiaModels.size
-
-                                    modelSearchMessage =
-                                        "검색 완료\n" +
-                                                "Google: $googleCount\n" +
-                                                "NVIDIA: $nvidiaCount\n" +
-                                                "사용 가능: $usableCount"
-                                }
-                            } catch (exception: Exception) {
-                                modelSearchMessage =
-                                    "모델 검색 실패: ${exception.message ?: "알 수 없는 오류"}"
-                            } finally {
-                                isSearchingModels = false
-                            }
-                        }
-                    },
-                    onSelectModelClick = { modelName ->
-                        val targetAgentId = modelSelectionAgentId
-
-                        if (targetAgentId == null) {
-                            modelSearchMessage = "에이전트 선택 상태가 없습니다"
-                            return@ModelCatalogScreen
-                        }
-
-                        val safeModelName = modelName.trim().removePrefix("models/")
-
-                        val index = agentList.indexOfFirst { it.id == targetAgentId }
-                        if (index != -1) {
-                            val targetAgent = agentList[index]
-
-                            val updatedAgent = targetAgent.copy(
-                                modelName = safeModelName
-                            )
-
-                            agentList[index] = updatedAgent
-                            StorageManager.saveAgents(context, agentList.toList())
-
-                            selectedAgentId = targetAgentId
-                            modelSearchMessage = "모델 적용 완료: ${updatedAgent.providerName} / $safeModelName"
-                        } else {
-                            modelSearchMessage = "에이전트를 찾지 못했습니다"
-                        }
-
-                        modelSelectionAgentId = null
-                        isModelCatalogScreenOpen = false
-                    },
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onBackClick = {
-                        isModelCatalogScreenOpen = false
-                        if (modelSelectionAgentId != null) {
-                            selectedAgentId = modelSelectionAgentId
-                            modelSelectionAgentId = null
-                        }
-                    }
-                )
-            }
-
-            isSettingsScreenOpen -> {
-                SettingsScreen(
-                    savedGoogleApiKey = savedGoogleApiKey,
-                    savedProvider = savedProvider,
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onSaveGoogleApiKeyClick = { apiKey ->
-                        ApiKeyManager.saveGoogleApiKey(context, apiKey)
-                        savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
-                    },
-                    onSaveProviderClick = { provider ->
-                        ApiKeyManager.saveSelectedProvider(context, provider)
-                        savedProvider = ApiKeyManager.getSelectedProvider(context)
-                    },
-                    onBackClick = {
-                        isSettingsScreenOpen = false
-                    }
-                )
-            }
-
-            isScenarioScreenOpen -> {
-                ScenarioListScreen(
-                    scenarioList = scenarioList,
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onScenarioClick = { scenario ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@ScenarioListScreen
-                        }
-
-                        val safeScenarioAgents = normalizeAgents(scenario.agents)
-                        val finalAgents = if (safeScenarioAgents.isEmpty()) {
-                            createDefaultAgents()
-                        } else {
-                            safeScenarioAgents
-                        }
-
-                        agentList.clear()
-                        agentList.addAll(finalAgents)
-
-                        selectedAgentId = null
-                        selectedRunId = null
-                        modelSelectionAgentId = null
-                        isSettingsScreenOpen = false
-                        isModelCatalogScreenOpen = false
-                        isExecutionLogScreenOpen = false
-
-                        syncExecutionStateMap(
-                            agents = agentList,
-                            executionStateMap = executionStateMap
-                        )
-
-                        isScenarioScreenOpen = false
-                    },
-                    onBackClick = {
-                        isScenarioScreenOpen = false
-                    }
-                )
-            }
-
-            selectedAgent != null -> {
-                AgentDetailScreen(
-                    agent = selectedAgent,
-                    runList = sanitizeRunsWithAgents(
-                        runs = runList.filter { run ->
-                            run.results.any { it.agentId == selectedAgent.id }
+                selectedRun != null -> {
+                    RunDetailScreen(
+                        run = selectedRun,
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
                         },
-                        validAgents = agentList
-                    ),
-                    isAnyExecutionRunning = isRunAllRunning || runningAgentId != null || isSearchingModels,
-                    isCurrentAgentRunning = runningAgentId == selectedAgent.id,
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onSaveClick = { updatedAgent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentDetailScreen
-                        }
-
-                        val safeUpdatedAgent = sanitizeAgent(updatedAgent)
-                        val index = agentList.indexOfFirst { it.id == safeUpdatedAgent.id }
-
-                        if (index != -1) {
-                            agentList[index] = safeUpdatedAgent
-                            executionStateMap[safeUpdatedAgent.id] = "WAITING"
-                        }
-                    },
-                    onDeleteClick = { agentToDelete ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentDetailScreen
-                        }
-
-                        val remainingAgents = agentList.filter { it.id != agentToDelete.id }
-
-                        agentList.clear()
-                        agentList.addAll(
-                            if (remainingAgents.isEmpty()) {
-                                createDefaultAgents()
-                            } else {
-                                normalizeAgents(remainingAgents)
-                            }
-                        )
-
-                        selectedAgentId = null
-                        selectedRunId = null
-                        modelSelectionAgentId = null
-
-                        syncExecutionStateMap(
-                            agents = agentList,
-                            executionStateMap = executionStateMap
-                        )
-
-                        val safeRuns = sanitizeRunsWithAgents(
-                            runs = runList,
-                            validAgents = agentList
-                        )
-                        runList.clear()
-                        runList.addAll(safeRuns)
-
-                        val safeScenarios = sanitizeScenariosWithAgents(
-                            scenarios = scenarioList,
-                            fallbackAgents = agentList
-                        )
-                        scenarioList.clear()
-                        scenarioList.addAll(safeScenarios)
-                    },
-                    onRunClick = { agentToRun ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentDetailScreen
-                        }
-
-                        scope.launch {
-                            runningAgentId = agentToRun.id
-                            executionStateMap[agentToRun.id] = "RUNNING"
-
-                            try {
-                                val run = ExecutionEngine.runSingleAgent(
-                                    agent = agentToRun,
-                                    validAgents = agentList.toList(),
-                                    existingRuns = runList.toList(),
-                                    inputPrompt = promptText,
-                                    onStateChange = { agentId, state ->
-                                        executionStateMap[agentId] = state
-                                    },
-                                    onExecutionHistoryLog = { log ->
-                                        executionHistoryLogList.add(0, log)
-                                        StorageManager.saveExecutionHistoryLogs(
-                                            context = context,
-                                            logs = executionHistoryLogList.toList()
-                                        )
-                                    }
-                                )
-
-                                runList.removeAll { it.runId == run.runId }
-                                runList.add(0, run)
-                            } catch (e: Exception) {
-                                executionStateMap[agentToRun.id] = "FAILED"
-                            } finally {
-                                runningAgentId = null
-                            }
-                        }
-                    },
-                    onRunItemClick = { run ->
-                        selectedRunId = run.runId
-                    },
-                    onOpenModelCatalogClick = { agentToEdit ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentDetailScreen
-                        }
-
-                        val safeAgent = sanitizeAgent(agentToEdit)
-                        val index = agentList.indexOfFirst { it.id == safeAgent.id }
-
-                        if (index != -1) {
-                            agentList[index] = safeAgent
-                        }
-
-                        modelSelectionAgentId = safeAgent.id
-                        selectedAgentId = null
-                        selectedRunId = null
-                        isScenarioScreenOpen = false
-                        isSettingsScreenOpen = false
-                        isExecutionLogScreenOpen = false
-                        isModelCatalogScreenOpen = true
-
-                        discoveredModelList.clear()
-                        discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
-                    },
-                    onBackClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentDetailScreen
-                        }
-                        selectedAgentId = null
-                    }
-                )
-            }
-
-            else -> {
-                if (!isWorkModeOpen) {
-                    ModeSelectionScreen(
-                        onWorkModeClick = {
-                            isWorkModeOpen = true
-                        },
-                        onConversationModeClick = {
-                            isConversationListScreenOpen = true
+                        onBackClick = {
+                            selectedRunId = null
                         }
                     )
-                } else {
-                    AgentListScreen(
-                    agentList = agentList,
-                    runList = runList,
-                    executionStateMap = executionStateMap,
-                    isRunAllRunning = isRunAllRunning || isSearchingModels,
-                    promptText = promptText,
-                    onPromptTextChange = { newPrompt ->
-                        promptText = newPrompt
-                    },
-                    onMenuClick = {
-                        scope.launch { workDrawerState.open() }
-                    },
-                    onAgentClick = { agent ->
-                        if (
-                            agent.id.isNotBlank() &&
-                            agentList.any { it.id == agent.id } &&
-                            !isRunAllRunning &&
-                            runningAgentId == null &&
-                            !isSearchingModels
-                        ) {
-                            selectedAgentId = agent.id
-                        }
-                    },
-                    onAddAgentClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                }
 
-                        val newAgent = createNewAgent(existingAgents = agentList)
-                        agentList.add(newAgent)
-                        executionStateMap[newAgent.id] = "WAITING"
-                        selectedAgentId = newAgent.id
-                    },
-                    onSaveScenarioClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
+                isExecutionLogScreenOpen -> {
+                    ExecutionLogScreen(
+                        logs = executionHistoryLogList,
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
+                        },
+                        onBackClick = {
+                            isExecutionLogScreenOpen = false
+                        },
+                        onClearLogsClick = {
+                            executionHistoryLogList.clear()
+                            StorageManager.clearExecutionHistoryLogs(context)
                         }
+                    )
+                }
 
-                        val safeAgents = normalizeAgents(agentList)
-                        val newScenario = Scenario(
-                            id = generateUniqueScenarioId(scenarioList),
-                            name = "Scenario ${scenarioList.size + 1}",
-                            agents = safeAgents.map { it.copy() },
-                            savedAt = getCurrentTimeText()
+                isModelCatalogScreenOpen -> {
+                    ModelCatalogScreen(
+                        discoveredModels = discoveredModelList,
+                        selectedProviderName = modelSelectionAgent?.providerName ?: savedProvider,
+                        selectedModelName = modelSelectionAgent?.modelName ?: GeminiModelType.DEFAULT,
+                        isSelectionMode = modelSelectionAgent != null,
+                        isSearchingModels = isSearchingModels,
+                        modelSearchMessage = modelSearchMessage,
+                        onSearchApiModelsClick = {
+                            if (isSearchingModels) return@ModelCatalogScreen
+
+                            scope.launch {
+                                isSearchingModels = true
+                                modelSearchMessage = "Google + NVIDIA 모델을 검색하는 중입니다..."
+
+                                try {
+                                    val googleModels = GoogleModelDiscoveryProvider.fetchModels()
+                                    val nvidiaModels = NvidiaModelDiscoveryProvider.fetchModels()
+
+                                    val allModels = googleModels + nvidiaModels
+
+                                    if (allModels.isEmpty()) {
+                                        modelSearchMessage = "모델 검색 실패 또는 결과 없음"
+                                    } else {
+                                        ModelCatalogManager.saveDiscoveredModels(context, allModels)
+
+                                        discoveredModelList.clear()
+                                        discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
+
+                                        val usableCount = allModels.count { it.isGenerateContentSupported }
+                                        val googleCount = googleModels.size
+                                        val nvidiaCount = nvidiaModels.size
+
+                                        modelSearchMessage =
+                                            "검색 완료\n" +
+                                                    "Google: $googleCount\n" +
+                                                    "NVIDIA: $nvidiaCount\n" +
+                                                    "사용 가능: $usableCount"
+                                    }
+                                } catch (exception: Exception) {
+                                    modelSearchMessage =
+                                        "모델 검색 실패: ${exception.message ?: "알 수 없는 오류"}"
+                                } finally {
+                                    isSearchingModels = false
+                                }
+                            }
+                        },
+                        onSelectModelClick = { modelName ->
+                            val targetAgentId = modelSelectionAgentId
+
+                            if (targetAgentId == null) {
+                                modelSearchMessage = "에이전트 선택 상태가 없습니다"
+                                return@ModelCatalogScreen
+                            }
+
+                            val safeModelName = modelName.trim().removePrefix("models/")
+
+                            val index = agentList.indexOfFirst { it.id == targetAgentId }
+                            if (index != -1) {
+                                val targetAgent = agentList[index]
+
+                                val updatedAgent = targetAgent.copy(
+                                    modelName = safeModelName
+                                )
+
+                                agentList[index] = updatedAgent
+                                StorageManager.saveAgents(context, agentList.toList())
+
+                                selectedAgentId = targetAgentId
+                                modelSearchMessage = "모델 적용 완료: ${updatedAgent.providerName} / $safeModelName"
+                            } else {
+                                modelSearchMessage = "에이전트를 찾지 못했습니다"
+                            }
+
+                            modelSelectionAgentId = null
+                            isModelCatalogScreenOpen = false
+                        },
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
+                        },
+                        onBackClick = {
+                            isModelCatalogScreenOpen = false
+                            if (modelSelectionAgentId != null) {
+                                selectedAgentId = modelSelectionAgentId
+                                modelSelectionAgentId = null
+                            }
+                        }
+                    )
+                }
+
+                isSettingsScreenOpen -> {
+                    SettingsScreen(
+                        savedGoogleApiKey = savedGoogleApiKey,
+                        savedProvider = savedProvider,
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
+                        },
+                        onSaveGoogleApiKeyClick = { apiKey ->
+                            ApiKeyManager.saveGoogleApiKey(context, apiKey)
+                            savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
+                        },
+                        onSaveProviderClick = { provider ->
+                            ApiKeyManager.saveSelectedProvider(context, provider)
+                            savedProvider = ApiKeyManager.getSelectedProvider(context)
+                        },
+                        onBackClick = {
+                            isSettingsScreenOpen = false
+                        }
+                    )
+                }
+
+                isScenarioScreenOpen -> {
+                    ScenarioListScreen(
+                        scenarioList = scenarioList,
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
+                        },
+                        onScenarioClick = { scenario ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@ScenarioListScreen
+                            }
+
+                            val safeScenarioAgents = normalizeAgents(scenario.agents)
+                            val finalAgents = if (safeScenarioAgents.isEmpty()) {
+                                createDefaultAgents()
+                            } else {
+                                safeScenarioAgents
+                            }
+
+                            agentList.clear()
+                            agentList.addAll(finalAgents)
+
+                            selectedAgentId = null
+                            selectedRunId = null
+                            modelSelectionAgentId = null
+                            isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
+
+                            syncExecutionStateMap(
+                                agents = agentList,
+                                executionStateMap = executionStateMap
+                            )
+
+                            isScenarioScreenOpen = false
+                        },
+                        onBackClick = {
+                            isScenarioScreenOpen = false
+                        }
+                    )
+                }
+
+                selectedAgent != null -> {
+                    AgentDetailScreen(
+                        agent = selectedAgent,
+                        runList = sanitizeRunsWithAgents(
+                            runs = runList.filter { run ->
+                                run.results.any { it.agentId == selectedAgent.id }
+                            },
+                            validAgents = agentList
+                        ),
+                        isAnyExecutionRunning = isRunAllRunning || runningAgentId != null || isSearchingModels,
+                        isCurrentAgentRunning = runningAgentId == selectedAgent.id,
+                        onMenuClick = {
+                            scope.launch { workDrawerState.open() }
+                        },
+                        onSaveClick = { updatedAgent ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentDetailScreen
+                            }
+
+                            val safeUpdatedAgent = sanitizeAgent(updatedAgent)
+                            val index = agentList.indexOfFirst { it.id == safeUpdatedAgent.id }
+
+                            if (index != -1) {
+                                agentList[index] = safeUpdatedAgent
+                                executionStateMap[safeUpdatedAgent.id] = "WAITING"
+                            }
+                        },
+                        onDeleteClick = { agentToDelete ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentDetailScreen
+                            }
+
+                            val remainingAgents = agentList.filter { it.id != agentToDelete.id }
+
+                            agentList.clear()
+                            agentList.addAll(
+                                if (remainingAgents.isEmpty()) {
+                                    createDefaultAgents()
+                                } else {
+                                    normalizeAgents(remainingAgents)
+                                }
+                            )
+
+                            selectedAgentId = null
+                            selectedRunId = null
+                            modelSelectionAgentId = null
+
+                            syncExecutionStateMap(
+                                agents = agentList,
+                                executionStateMap = executionStateMap
+                            )
+
+                            val safeRuns = sanitizeRunsWithAgents(
+                                runs = runList,
+                                validAgents = agentList
+                            )
+                            runList.clear()
+                            runList.addAll(safeRuns)
+
+                            val safeScenarios = sanitizeScenariosWithAgents(
+                                scenarios = scenarioList,
+                                fallbackAgents = agentList
+                            )
+                            scenarioList.clear()
+                            scenarioList.addAll(safeScenarios)
+                        },
+                        onRunClick = { agentToRun ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentDetailScreen
+                            }
+
+                            scope.launch {
+                                runningAgentId = agentToRun.id
+                                executionStateMap[agentToRun.id] = "RUNNING"
+
+                                try {
+                                    val run = ExecutionEngine.runSingleAgent(
+                                        agent = agentToRun,
+                                        validAgents = agentList.toList(),
+                                        existingRuns = runList.toList(),
+                                        inputPrompt = promptText,
+                                        onStateChange = { agentId, state ->
+                                            executionStateMap[agentId] = state
+                                        },
+                                        onExecutionHistoryLog = { log ->
+                                            executionHistoryLogList.add(0, log)
+                                            StorageManager.saveExecutionHistoryLogs(
+                                                context = context,
+                                                logs = executionHistoryLogList.toList()
+                                            )
+                                        }
+                                    )
+
+                                    runList.removeAll { it.runId == run.runId }
+                                    runList.add(0, run)
+                                } catch (e: Exception) {
+                                    executionStateMap[agentToRun.id] = "FAILED"
+                                } finally {
+                                    runningAgentId = null
+                                }
+                            }
+                        },
+                        onRunItemClick = { run ->
+                            selectedRunId = run.runId
+                        },
+                        onOpenModelCatalogClick = { agentToEdit ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentDetailScreen
+                            }
+
+                            val safeAgent = sanitizeAgent(agentToEdit)
+                            val index = agentList.indexOfFirst { it.id == safeAgent.id }
+
+                            if (index != -1) {
+                                agentList[index] = safeAgent
+                            }
+
+                            modelSelectionAgentId = safeAgent.id
+                            selectedAgentId = null
+                            selectedRunId = null
+                            isScenarioScreenOpen = false
+                            isSettingsScreenOpen = false
+                            isExecutionLogScreenOpen = false
+                            isModelCatalogScreenOpen = true
+
+                            discoveredModelList.clear()
+                            discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
+                        },
+                        onBackClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentDetailScreen
+                            }
+                            selectedAgentId = null
+                        }
+                    )
+                }
+
+                else -> {
+                    if (!isWorkModeOpen) {
+                        ModeSelectionScreen(
+                            onWorkModeClick = {
+                                isWorkModeOpen = true
+                            },
+                            onConversationModeClick = {
+                                isConversationListScreenOpen = true
+                            }
                         )
+                    } else {
+                        AgentListScreen(
+                            agentList = agentList,
+                            runList = runList,
+                            executionStateMap = executionStateMap,
+                            isRunAllRunning = isRunAllRunning || isSearchingModels,
+                            promptText = promptText,
+                            onPromptTextChange = { newPrompt ->
+                                promptText = newPrompt
+                            },
+                            onMenuClick = {
+                                scope.launch { workDrawerState.open() }
+                            },
+                            onAgentClick = { agent ->
+                                if (
+                                    agent.id.isNotBlank() &&
+                                    agentList.any { it.id == agent.id } &&
+                                    !isRunAllRunning &&
+                                    runningAgentId == null &&
+                                    !isSearchingModels
+                                ) {
+                                    selectedAgentId = agent.id
+                                }
+                            },
+                            onAddAgentClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
 
-                        scenarioList.removeAll { it.id == newScenario.id }
-                        scenarioList.add(0, newScenario)
-                    },
-                    onOpenScenarioListClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        isScenarioScreenOpen = true
-                        isSettingsScreenOpen = false
-                        isModelCatalogScreenOpen = false
-                        isExecutionLogScreenOpen = false
-                    },
-                    onApplyGemini31FlashLiteToAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                                val newAgent = createNewAgent(existingAgents = agentList)
+                                agentList.add(newAgent)
+                                executionStateMap[newAgent.id] = "WAITING"
+                                selectedAgentId = newAgent.id
+                            },
+                            onSaveScenarioClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
 
-                        isApplyFallbackModelDialogOpen = true
-                    },
-                    onShowModelRecommendationsClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                                val safeAgents = normalizeAgents(agentList)
+                                val newScenario = Scenario(
+                                    id = generateUniqueScenarioId(scenarioList),
+                                    name = "Scenario ${scenarioList.size + 1}",
+                                    agents = safeAgents.map { it.copy() },
+                                    savedAt = getCurrentTimeText()
+                                )
 
-                        val recommendations = ModelRecommendationManager.buildRecommendations(
-                            agents = agentList.toList(),
-                            logs = executionHistoryLogList.toList(),
-                            testRecords = ModelTestManager.getAllRecords(context)
-                        )
+                                scenarioList.removeAll { it.id == newScenario.id }
+                                scenarioList.add(0, newScenario)
+                            },
+                            onOpenScenarioListClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
+                                isScenarioScreenOpen = true
+                                isSettingsScreenOpen = false
+                                isModelCatalogScreenOpen = false
+                                isExecutionLogScreenOpen = false
+                            },
+                            onApplyGemini31FlashLiteToAllClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
 
-                        pendingRecommendations = recommendations
-                        isRecommendationDialogOpen = true
-                    },
-                    onMoveUpClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentUp(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onMoveDownClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentDown(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onRunItemClick = { run ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        selectedRunId = run.runId
-                    },
-                    onRunAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                                isApplyFallbackModelDialogOpen = true
+                            },
+                            onShowModelRecommendationsClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
 
-                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
-                            context = context,
-                            agents = agentList.toList(),
-                            fallbackProviderName = savedProvider
+                                val recommendations = ModelRecommendationManager.buildRecommendations(
+                                    agents = agentList.toList(),
+                                    logs = executionHistoryLogList.toList(),
+                                    testRecords = ModelTestManager.getAllRecords(context)
+                                )
+
+                                pendingRecommendations = recommendations
+                                isRecommendationDialogOpen = true
+                            },
+                            onMoveUpClick = { agent ->
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
+                                moveAgentUp(
+                                    targetAgent = agent,
+                                    agentList = agentList
+                                )
+                            },
+                            onMoveDownClick = { agent ->
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
+                                moveAgentDown(
+                                    targetAgent = agent,
+                                    agentList = agentList
+                                )
+                            },
+                            onRunItemClick = { run ->
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
+                                selectedRunId = run.runId
+                            },
+                            onRunAllClick = {
+                                if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                    return@AgentListScreen
+                                }
+
+                                pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                                    context = context,
+                                    agents = agentList.toList(),
+                                    fallbackProviderName = savedProvider
+                                )
+                            }
                         )
                     }
-                )
                 }
             }
-        }
         }
     }
 }
@@ -1623,180 +1652,240 @@ private fun ConversationGlobalSettingsScreen(
     onSelectStorageFolderClick: () -> Unit,
     onUseFallbackStorageClick: () -> Unit,
     onImportAppSpecificStorageClick: () -> Unit,
+    onDeleteAppSpecificSession: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF050A0F))
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        TextButton(onClick = onBackClick) {
-            Text(text = "←", color = Color.White)
+        if (selectedPage == "storage") {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                TextButton(onClick = onBackClick) {
+                    Text(text = "←", color = Color.White)
+                }
+
+                Text(
+                    text = "저장소 관리",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                StorageManagementScreen(
+                    modifier = Modifier.fillMaxWidth(),
+                    onSessionDeleted = onDeleteAppSpecificSession
+                )
+            }
+            return@Box
         }
 
-        if (selectedPage == null) {
-            Text(
-                text = "대화모드 설정",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = "전역 설정 메인",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFFB8BCC6)
-            )
-
-            ConversationGlobalSettingsCard(
-                title = "일반 설정",
-                subtitle = "테마, 폰트, 색상 설정",
-                onClick = { onPageSelected("general") }
-            )
-
-            ConversationGlobalSettingsCard(
-                title = "대화 설정",
-                subtitle = "모드, 검색, Worker 기본값",
-                onClick = { onPageSelected("conversation") }
-            )
-
-            ConversationGlobalSettingsCard(
-                title = "출력 블록 설정",
-                subtitle = "블록 표시, 복사, 접기 정책",
-                onClick = { onPageSelected("output") }
-            )
-
-            ConversationGlobalSettingsCard(
-                title = "메모리 / RAG",
-                subtitle = "후속 단계에서 연결 예정",
-                onClick = { onPageSelected("rag") }
-            )
-        } else {
-            Text(
-                text = when (selectedPage) {
-                    "conversation" -> "대화 설정"
-                    "general" -> "일반 설정"
-                    "output" -> "출력 블록 설정"
-                    "rag" -> "메모리 / RAG"
-                    else -> "대화 설정"
-                },
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = "상세 설정 placeholder",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFFB8BCC6)
-            )
-
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF3A3F49)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = when (selectedPage) {
-                            "conversation" -> "대화 설정 상세 페이지"
-                            "general" -> "일반 설정 상세 페이지"
-                            "output" -> "출력 블록 설정 상세 페이지"
-                            "rag" -> "메모리 / RAG 상세 페이지"
-                            else -> "대화 설정 상세 페이지"
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-
-                    Text(
-                        text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
-                        color = Color(0xFFD0D3DA)
-                    )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 24.dp,
+                top = 24.dp,
+                end = 24.dp,
+                bottom = 120.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            item {
+                TextButton(onClick = onBackClick) {
+                    Text(text = "←", color = Color.White)
                 }
             }
 
-            if (selectedPage == "rag") {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF3A3F49)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+            if (selectedPage == null) {
+                item {
+                    Text(
+                        text = "대화모드 설정",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "전역 설정 메인",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFB8BCC6)
+                    )
+                }
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "일반 설정",
+                        subtitle = "테마, 폰트, 색상 설정",
+                        onClick = { onPageSelected("general") }
+                    )
+                }
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "대화 설정",
+                        subtitle = "모드, 검색, Worker 기본값",
+                        onClick = { onPageSelected("conversation") }
+                    )
+                }
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "출력 블록 설정",
+                        subtitle = "블록 표시, 복사, 접기 정책",
+                        onClick = { onPageSelected("output") }
+                    )
+                }
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "메모리 / RAG",
+                        subtitle = "후속 단계에서 연결 예정",
+                        onClick = { onPageSelected("rag") }
+                    )
+                }
+            } else {
+                item {
+                    Text(
+                        text = when (selectedPage) {
+                            "conversation" -> "대화 설정"
+                            "general" -> "일반 설정"
+                            "output" -> "출력 블록 설정"
+                            "rag" -> "메모리 / RAG"
+                            else -> "대화 설정"
+                        },
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "상세 설정 placeholder",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFB8BCC6)
+                    )
+                }
+
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF3A3F49)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "로컬 저장소",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-
-                        Text(
-                            text = "상태: $storageStatusText",
-                            color = Color(0xFFD0D3DA)
-                        )
-
-                        Text(
-                            text = "위치: $storageLocationText",
-                            color = Color(0xFFD0D3DA)
-                        )
-
-                        Text(
-                            text = "기존 앱 저장소 세션: ${appSpecificSessionCount}개",
-                            color = Color(0xFFD0D3DA)
-                        )
-
-                        if (lastMigrationResultText.isNotBlank()) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Text(
-                                text = "마이그레이션 결과: $lastMigrationResultText",
+                                text = when (selectedPage) {
+                                    "conversation" -> "대화 설정 상세 페이지"
+                                    "general" -> "일반 설정 상세 페이지"
+                                    "output" -> "출력 블록 설정 상세 페이지"
+                                    "rag" -> "메모리 / RAG 상세 페이지"
+                                    else -> "대화 설정 상세 페이지"
+                                },
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+
+                            Text(
+                                text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
                                 color = Color(0xFFD0D3DA)
                             )
                         }
+                    }
+                }
 
-                        Button(
-                            onClick = onSelectStorageFolderClick,
+                if (selectedPage == "rag") {
+                    item {
+                        ConversationGlobalSettingsCard(
+                            title = "저장소 관리",
+                            subtitle = "앱 전용 저장소의 세션 파일을 조회하고 삭제합니다.",
+                            onClick = { onPageSelected("storage") }
+                        )
+                    }
+
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF3A3F49)
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(text = "저장 폴더 선택")
-                        }
-
-                        if (canMigrateAppSpecificSessions) {
-                            Button(
-                                onClick = onImportAppSpecificStorageClick,
-                                modifier = Modifier.fillMaxWidth()
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(text = "기존 앱 저장소에서 가져오기")
-                            }
-                        } else {
-                            Button(
-                                onClick = onImportAppSpecificStorageClick,
-                                enabled = false,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(text = "기존 앱 저장소에서 가져오기")
-                            }
+                                Text(
+                                    text = "로컬 저장소",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
 
-                            Text(
-                                text = "SAF 저장소 연결 후 사용할 수 있습니다.",
-                                color = Color(0xFFD0D3DA)
-                            )
-                        }
+                                Text(
+                                    text = "상태: $storageStatusText",
+                                    color = Color(0xFFD0D3DA)
+                                )
 
-                        TextButton(
-                            onClick = onUseFallbackStorageClick,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "기본 앱 저장소 사용")
+                                Text(
+                                    text = "위치: $storageLocationText",
+                                    color = Color(0xFFD0D3DA)
+                                )
+
+                                Text(
+                                    text = "기존 앱 저장소 세션: ${appSpecificSessionCount}개",
+                                    color = Color(0xFFD0D3DA)
+                                )
+
+                                if (lastMigrationResultText.isNotBlank()) {
+                                    Text(
+                                        text = "마이그레이션 결과: $lastMigrationResultText",
+                                        color = Color(0xFFD0D3DA)
+                                    )
+                                }
+
+                                Button(
+                                    onClick = onSelectStorageFolderClick,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "저장 폴더 선택")
+                                }
+
+                                Button(
+                                    onClick = onImportAppSpecificStorageClick,
+                                    enabled = canMigrateAppSpecificSessions,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "기존 앱 저장소에서 가져오기")
+                                }
+
+                                if (!canMigrateAppSpecificSessions) {
+                                    Text(
+                                        text = "SAF 저장소 연결 후 사용할 수 있습니다.",
+                                        color = Color(0xFFD0D3DA)
+                                    )
+                                }
+
+                                TextButton(
+                                    onClick = onUseFallbackStorageClick,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "기본 앱 저장소 사용")
+                                }
+                            }
                         }
                     }
                 }

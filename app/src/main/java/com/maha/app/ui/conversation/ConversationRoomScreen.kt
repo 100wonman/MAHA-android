@@ -49,8 +49,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun ConversationRoomScreen(
@@ -927,7 +929,8 @@ private fun CodeContent(
                 text = annotatedText,
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = FontFamily.Monospace,
-                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.38f,
+                    letterSpacing = 0.18.sp
                 ),
                 softWrap = false
             )
@@ -937,17 +940,30 @@ private fun CodeContent(
 
 @Composable
 private fun highlightCodeText(text: String): AnnotatedString {
-    val baseColor = MaterialTheme.colorScheme.onSurface
-    val keywordColor = Color(0xFF82AAFF)
-    val stringColor = Color(0xFFC3E88D)
-    val numberColor = Color(0xFFF78C6C)
-    val commentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f)
-    val symbolColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+    val baseColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f)
+    val keywordColor = MaterialTheme.colorScheme.primary
+    val declarationColor = Color(0xFFFFD166)
+    val functionColor = Color(0xFF80CBC4)
+    val stringColor = Color(0xFFA5D6A7)
+    val numberColor = Color(0xFFFFB74D)
+    val booleanColor = Color(0xFFCE93D8)
+    val commentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+    val symbolColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+    val annotationColor = Color(0xFFFFAB91)
+    val typeColor = Color(0xFF90CAF9)
+
     val keywords = setOf(
         "fun", "val", "var", "if", "else", "return", "for", "while", "when",
-        "class", "object", "interface", "data", "sealed", "private", "public",
-        "internal", "override", "import", "package", "null", "true", "false",
-        "try", "catch", "finally", "suspend", "launch", "remember"
+        "class", "data", "object", "interface", "sealed", "enum", "private", "public",
+        "internal", "protected", "override", "import", "package", "try", "catch", "finally",
+        "throw", "suspend", "launch", "remember", "by", "in", "is", "as", "break", "continue",
+        "this", "super", "new", "const", "let", "function", "def", "from"
+    )
+    val declarationKeywords = setOf("fun", "class", "data", "object", "interface", "enum", "val", "var")
+    val booleansAndNull = setOf("true", "false", "null", "True", "False", "None")
+    val commonTypes = setOf(
+        "String", "Int", "Long", "Float", "Double", "Boolean", "List", "Map", "Set",
+        "Unit", "File", "Context", "ViewModel", "Composable", "MutableState", "State"
     )
 
     return buildAnnotatedString {
@@ -957,19 +973,39 @@ private fun highlightCodeText(text: String): AnnotatedString {
             when {
                 char == '/' && index + 1 < text.length && text[index + 1] == '/' -> {
                     val end = text.indexOf('\n', index).let { if (it == -1) text.length else it }
-                    withStyle(SpanStyle(color = commentColor)) {
+                    withStyle(SpanStyle(color = commentColor, fontStyle = FontStyle.Italic)) {
                         append(text.substring(index, end))
                     }
                     index = end
                 }
 
-                char == '"' -> {
+                char == '/' && index + 1 < text.length && text[index + 1] == '*' -> {
+                    val end = text.indexOf("*/", index + 2).let { if (it == -1) text.length else it + 2 }
+                    withStyle(SpanStyle(color = commentColor, fontStyle = FontStyle.Italic)) {
+                        append(text.substring(index, end))
+                    }
+                    index = end
+                }
+
+                char == '@' -> {
+                    val start = index
+                    index += 1
+                    while (index < text.length && (text[index].isLetterOrDigit() || text[index] == '_' || text[index] == '.')) {
+                        index += 1
+                    }
+                    withStyle(SpanStyle(color = annotationColor, fontWeight = FontWeight.SemiBold)) {
+                        append(text.substring(start, index))
+                    }
+                }
+
+                char == '"' || char == '\'' -> {
+                    val quote = char
                     val start = index
                     index += 1
                     var escaped = false
                     while (index < text.length) {
                         val current = text[index]
-                        if (current == '"' && !escaped) {
+                        if (current == quote && !escaped) {
                             index += 1
                             break
                         }
@@ -984,10 +1020,10 @@ private fun highlightCodeText(text: String): AnnotatedString {
 
                 char.isDigit() -> {
                     val start = index
-                    while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+                    while (index < text.length && (text[index].isDigit() || text[index] == '.' || text[index] == '_')) {
                         index += 1
                     }
-                    withStyle(SpanStyle(color = numberColor)) {
+                    withStyle(SpanStyle(color = numberColor, fontWeight = FontWeight.Medium)) {
                         append(text.substring(start, index))
                     }
                 }
@@ -998,19 +1034,36 @@ private fun highlightCodeText(text: String): AnnotatedString {
                         index += 1
                     }
                     val word = text.substring(start, index)
-                    if (word in keywords) {
-                        withStyle(SpanStyle(color = keywordColor, fontWeight = FontWeight.SemiBold)) {
-                            append(word)
-                        }
-                    } else {
-                        withStyle(SpanStyle(color = baseColor)) {
-                            append(word)
-                        }
+                    var lookAhead = index
+                    while (lookAhead < text.length && text[lookAhead].isWhitespace()) lookAhead += 1
+                    val looksLikeFunction = lookAhead < text.length && text[lookAhead] == '('
+                    when {
+                        word in declarationKeywords -> withStyle(
+                            SpanStyle(color = declarationColor, fontWeight = FontWeight.Bold)
+                        ) { append(word) }
+
+                        word in keywords -> withStyle(
+                            SpanStyle(color = keywordColor, fontWeight = FontWeight.Bold)
+                        ) { append(word) }
+
+                        word in booleansAndNull -> withStyle(
+                            SpanStyle(color = booleanColor, fontWeight = FontWeight.SemiBold)
+                        ) { append(word) }
+
+                        word in commonTypes || word.firstOrNull()?.isUpperCase() == true -> withStyle(
+                            SpanStyle(color = typeColor, fontWeight = FontWeight.Medium)
+                        ) { append(word) }
+
+                        looksLikeFunction -> withStyle(
+                            SpanStyle(color = functionColor, fontWeight = FontWeight.SemiBold)
+                        ) { append(word) }
+
+                        else -> withStyle(SpanStyle(color = baseColor)) { append(word) }
                     }
                 }
 
-                char in "{}[]().,;:<>+-=*/!&|" -> {
-                    withStyle(SpanStyle(color = symbolColor)) {
+                char in "{}[]().,;:<>+-=*/!&|%" -> {
+                    withStyle(SpanStyle(color = symbolColor, fontWeight = FontWeight.Medium)) {
                         append(char)
                     }
                     index += 1
@@ -1029,11 +1082,12 @@ private fun highlightCodeText(text: String): AnnotatedString {
 
 @Composable
 private fun highlightJsonText(text: String): AnnotatedString {
-    val baseColor = MaterialTheme.colorScheme.onSurface
-    val keyColor = Color(0xFF82AAFF)
-    val stringColor = Color(0xFFC3E88D)
-    val numberColor = Color(0xFFF78C6C)
-    val boolNullColor = Color(0xFFC792EA)
+    val baseColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.94f)
+    val keyColor = MaterialTheme.colorScheme.primary
+    val stringColor = Color(0xFFA5D6A7)
+    val numberColor = Color(0xFFFFB74D)
+    val boolColor = Color(0xFFCE93D8)
+    val nullColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f)
     val symbolColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
 
     return buildAnnotatedString {
@@ -1058,7 +1112,12 @@ private fun highlightJsonText(text: String): AnnotatedString {
                     var lookAhead = index
                     while (lookAhead < text.length && text[lookAhead].isWhitespace()) lookAhead += 1
                     val isKey = lookAhead < text.length && text[lookAhead] == ':'
-                    withStyle(SpanStyle(color = if (isKey) keyColor else stringColor)) {
+                    withStyle(
+                        SpanStyle(
+                            color = if (isKey) keyColor else stringColor,
+                            fontWeight = if (isKey) FontWeight.Bold else FontWeight.Normal
+                        )
+                    ) {
                         append(text.substring(start, index.coerceAtMost(text.length)))
                     }
                 }
@@ -1066,10 +1125,10 @@ private fun highlightJsonText(text: String): AnnotatedString {
                 char.isDigit() || char == '-' -> {
                     val start = index
                     index += 1
-                    while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+                    while (index < text.length && (text[index].isDigit() || text[index] == '.' || text[index] == 'e' || text[index] == 'E' || text[index] == '+' || text[index] == '-')) {
                         index += 1
                     }
-                    withStyle(SpanStyle(color = numberColor)) {
+                    withStyle(SpanStyle(color = numberColor, fontWeight = FontWeight.Medium)) {
                         append(text.substring(start, index))
                     }
                 }
@@ -1080,14 +1139,15 @@ private fun highlightJsonText(text: String): AnnotatedString {
                         text.startsWith("false", index) -> "false"
                         else -> "null"
                     }
-                    withStyle(SpanStyle(color = boolNullColor, fontWeight = FontWeight.SemiBold)) {
+                    val color = if (token == "null") nullColor else boolColor
+                    withStyle(SpanStyle(color = color, fontWeight = FontWeight.SemiBold)) {
                         append(token)
                     }
                     index += token.length
                 }
 
                 char in "{}[],:" -> {
-                    withStyle(SpanStyle(color = symbolColor)) {
+                    withStyle(SpanStyle(color = symbolColor, fontWeight = FontWeight.Medium)) {
                         append(char)
                     }
                     index += 1
