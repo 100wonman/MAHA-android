@@ -40,6 +40,114 @@ class ConversationFileStore(
         }
     }
 
+
+    fun getAppSpecificSessionCount(): Int {
+        val conversationsDir = storageManager.getConversationsDir()
+        if (!conversationsDir.exists()) return 0
+
+        return conversationsDir
+            .listFiles()
+            ?.count { sessionDir ->
+                sessionDir.isDirectory &&
+                        sessionDir.name.startsWith(SESSION_DIR_PREFIX) &&
+                        File(sessionDir, SESSION_FILE_NAME).exists()
+            }
+            ?: 0
+    }
+
+    fun migrateAppSpecificSessionsToSaf(): ConversationMigrationResult {
+        if (!storageManager.isSafReady()) {
+            return ConversationMigrationResult(
+                copiedCount = 0,
+                skippedCount = 0,
+                failedCount = 1
+            )
+        }
+
+        val appSpecificConversationsDir = storageManager.getConversationsDir()
+        if (!appSpecificConversationsDir.exists()) {
+            return ConversationMigrationResult(
+                copiedCount = 0,
+                skippedCount = 0,
+                failedCount = 0
+            )
+        }
+
+        val safConversationsDir = storageManager.getSafConversationsDocument()
+            ?: return ConversationMigrationResult(
+                copiedCount = 0,
+                skippedCount = 0,
+                failedCount = 1
+            )
+
+        var copiedCount = 0
+        var skippedCount = 0
+        var failedCount = 0
+
+        appSpecificConversationsDir
+            .listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith(SESSION_DIR_PREFIX) }
+            ?.forEach { sourceSessionDir ->
+                val sessionFile = File(sourceSessionDir, SESSION_FILE_NAME)
+                if (!sessionFile.exists()) {
+                    failedCount += 1
+                    return@forEach
+                }
+
+                val sessionId = readSessionIdFromFile(sessionFile)
+                    ?: sourceSessionDir.name.removePrefix(SESSION_DIR_PREFIX)
+
+                if (sessionId.isBlank()) {
+                    failedCount += 1
+                    return@forEach
+                }
+
+                val targetDirName = "$SESSION_DIR_PREFIX$sessionId"
+                val existingTargetDir = safConversationsDir.listFiles()
+                    .firstOrNull { it.isDirectory && it.name == targetDirName }
+
+                if (existingTargetDir != null) {
+                    skippedCount += 1
+                    return@forEach
+                }
+
+                val targetSessionDir = safConversationsDir.createDirectory(targetDirName)
+                if (targetSessionDir == null) {
+                    failedCount += 1
+                    return@forEach
+                }
+
+                val sessionCopied = copyFileToSafDirectory(
+                    sourceFile = sessionFile,
+                    targetDirectory = targetSessionDir,
+                    targetFileName = SESSION_FILE_NAME
+                )
+
+                val messagesFile = File(sourceSessionDir, MESSAGES_FILE_NAME)
+                val messagesCopied = if (messagesFile.exists()) {
+                    copyFileToSafDirectory(
+                        sourceFile = messagesFile,
+                        targetDirectory = targetSessionDir,
+                        targetFileName = MESSAGES_FILE_NAME
+                    )
+                } else {
+                    true
+                }
+
+                if (sessionCopied && messagesCopied) {
+                    copiedCount += 1
+                } else {
+                    failedCount += 1
+                }
+            }
+
+        return ConversationMigrationResult(
+            copiedCount = copiedCount,
+            skippedCount = skippedCount,
+            failedCount = failedCount
+        )
+    }
+
     private fun saveSessionToFile(session: ConversationSession) {
         val sessionDir = getFileSessionDir(session.sessionId)
         sessionDir.mkdirs()
@@ -237,6 +345,24 @@ class ConversationFileStore(
         )
     }
 
+    private fun readSessionIdFromFile(sessionFile: File): String? {
+        return runCatching {
+            JSONObject(sessionFile.readText()).optString("sessionId").takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private fun copyFileToSafDirectory(
+        sourceFile: File,
+        targetDirectory: DocumentFile,
+        targetFileName: String
+    ): Boolean {
+        return runCatching {
+            val targetFile = getOrCreateExactFile(targetDirectory, targetFileName) ?: return false
+            writeDocumentText(targetFile, sourceFile.readText())
+            true
+        }.getOrDefault(false)
+    }
+
     private fun getFileSessionDir(sessionId: String): File {
         return File(storageManager.getConversationsDir(), "$SESSION_DIR_PREFIX$sessionId")
     }
@@ -288,3 +414,10 @@ class ConversationFileStore(
         private const val SAF_PLAIN_FILE_MIME_TYPE = "application/octet-stream"
     }
 }
+
+
+data class ConversationMigrationResult(
+    val copiedCount: Int,
+    val skippedCount: Int,
+    val failedCount: Int
+)

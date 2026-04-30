@@ -88,6 +88,7 @@ fun AppRoot() {
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var isConversationGlobalSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var selectedConversationSettingsPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var isAppStorageMigrationDialogOpen by rememberSaveable { mutableStateOf(false) }
     var editingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingText by rememberSaveable { mutableStateOf("") }
     var isWorkModeOpen by rememberSaveable { mutableStateOf(false) }
@@ -670,12 +671,55 @@ fun AppRoot() {
             )
         }
 
+        if (isAppStorageMigrationDialogOpen) {
+            AlertDialog(
+                onDismissRequest = {
+                    isAppStorageMigrationDialogOpen = false
+                },
+                title = {
+                    Text(text = "기존 앱 저장소에서 가져오기")
+                },
+                text = {
+                    Text(
+                        text = "기존 앱 저장소에 저장된 대화 세션을 현재 선택한 MAHA 폴더로 복사합니다. 기존 파일은 삭제하지 않습니다."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val result = conversationViewModel.migrateAppSpecificSessionsToSaf()
+                            Toast.makeText(
+                                context,
+                                "복사 ${result.copiedCount}개 / 건너뜀 ${result.skippedCount}개 / 실패 ${result.failedCount}개",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            isAppStorageMigrationDialogOpen = false
+                        }
+                    ) {
+                        Text(text = "가져오기")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            isAppStorageMigrationDialogOpen = false
+                        }
+                    ) {
+                        Text(text = "취소")
+                    }
+                }
+            )
+        }
+
         when {
             selectedConversationSessionId != null && isConversationGlobalSettingsOpen -> {
                 ConversationGlobalSettingsScreen(
                     selectedPage = selectedConversationSettingsPage,
                     storageStatusText = conversationViewModel.storageStatusText,
                     storageLocationText = conversationViewModel.storageLocationText,
+                    appSpecificSessionCount = conversationViewModel.appSpecificSessionCount,
+                    canMigrateAppSpecificSessions = conversationViewModel.storageStatusText == "SAF 연결됨",
+                    lastMigrationResultText = conversationViewModel.lastMigrationResultText,
                     onPageSelected = { page ->
                         selectedConversationSettingsPage = page
                     },
@@ -685,6 +729,9 @@ fun AppRoot() {
                     onUseFallbackStorageClick = {
                         conversationViewModel.useFallbackStorage()
                         Toast.makeText(context, "기본 앱 저장소를 사용합니다.", Toast.LENGTH_SHORT).show()
+                    },
+                    onImportAppSpecificStorageClick = {
+                        isAppStorageMigrationDialogOpen = true
                     },
                     onBackClick = {
                         isConversationGlobalSettingsOpen = false
@@ -1085,120 +1132,120 @@ fun AppRoot() {
                     )
                 } else {
                     AgentListScreen(
-                    agentList = agentList,
-                    runList = runList,
-                    executionStateMap = executionStateMap,
-                    isRunAllRunning = isRunAllRunning || isSearchingModels,
-                    promptText = promptText,
-                    onPromptTextChange = { newPrompt ->
-                        promptText = newPrompt
-                    },
-                    onMenuClick = {
-                        scope.launch { drawerState.open() }
-                    },
-                    onAgentClick = { agent ->
-                        if (
-                            agent.id.isNotBlank() &&
-                            agentList.any { it.id == agent.id } &&
-                            !isRunAllRunning &&
-                            runningAgentId == null &&
-                            !isSearchingModels
-                        ) {
-                            selectedAgentId = agent.id
-                        }
-                    },
-                    onAddAgentClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                        agentList = agentList,
+                        runList = runList,
+                        executionStateMap = executionStateMap,
+                        isRunAllRunning = isRunAllRunning || isSearchingModels,
+                        promptText = promptText,
+                        onPromptTextChange = { newPrompt ->
+                            promptText = newPrompt
+                        },
+                        onMenuClick = {
+                            scope.launch { drawerState.open() }
+                        },
+                        onAgentClick = { agent ->
+                            if (
+                                agent.id.isNotBlank() &&
+                                agentList.any { it.id == agent.id } &&
+                                !isRunAllRunning &&
+                                runningAgentId == null &&
+                                !isSearchingModels
+                            ) {
+                                selectedAgentId = agent.id
+                            }
+                        },
+                        onAddAgentClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val newAgent = createNewAgent(existingAgents = agentList)
-                        agentList.add(newAgent)
-                        executionStateMap[newAgent.id] = "WAITING"
-                        selectedAgentId = newAgent.id
-                    },
-                    onSaveScenarioClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            val newAgent = createNewAgent(existingAgents = agentList)
+                            agentList.add(newAgent)
+                            executionStateMap[newAgent.id] = "WAITING"
+                            selectedAgentId = newAgent.id
+                        },
+                        onSaveScenarioClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val safeAgents = normalizeAgents(agentList)
-                        val newScenario = Scenario(
-                            id = generateUniqueScenarioId(scenarioList),
-                            name = "Scenario ${scenarioList.size + 1}",
-                            agents = safeAgents.map { it.copy() },
-                            savedAt = getCurrentTimeText()
-                        )
+                            val safeAgents = normalizeAgents(agentList)
+                            val newScenario = Scenario(
+                                id = generateUniqueScenarioId(scenarioList),
+                                name = "Scenario ${scenarioList.size + 1}",
+                                agents = safeAgents.map { it.copy() },
+                                savedAt = getCurrentTimeText()
+                            )
 
-                        scenarioList.removeAll { it.id == newScenario.id }
-                        scenarioList.add(0, newScenario)
-                    },
-                    onOpenScenarioListClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        isScenarioScreenOpen = true
-                        isSettingsScreenOpen = false
-                        isModelCatalogScreenOpen = false
-                        isExecutionLogScreenOpen = false
-                    },
-                    onApplyGemini31FlashLiteToAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            scenarioList.removeAll { it.id == newScenario.id }
+                            scenarioList.add(0, newScenario)
+                        },
+                        onOpenScenarioListClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            isScenarioScreenOpen = true
+                            isSettingsScreenOpen = false
+                            isModelCatalogScreenOpen = false
+                            isExecutionLogScreenOpen = false
+                        },
+                        onApplyGemini31FlashLiteToAllClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        isApplyFallbackModelDialogOpen = true
-                    },
-                    onShowModelRecommendationsClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            isApplyFallbackModelDialogOpen = true
+                        },
+                        onShowModelRecommendationsClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        val recommendations = ModelRecommendationManager.buildRecommendations(
-                            agents = agentList.toList(),
-                            logs = executionHistoryLogList.toList(),
-                            testRecords = ModelTestManager.getAllRecords(context)
-                        )
+                            val recommendations = ModelRecommendationManager.buildRecommendations(
+                                agents = agentList.toList(),
+                                logs = executionHistoryLogList.toList(),
+                                testRecords = ModelTestManager.getAllRecords(context)
+                            )
 
-                        pendingRecommendations = recommendations
-                        isRecommendationDialogOpen = true
-                    },
-                    onMoveUpClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentUp(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onMoveDownClick = { agent ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        moveAgentDown(
-                            targetAgent = agent,
-                            agentList = agentList
-                        )
-                    },
-                    onRunItemClick = { run ->
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
-                        selectedRunId = run.runId
-                    },
-                    onRunAllClick = {
-                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                            return@AgentListScreen
-                        }
+                            pendingRecommendations = recommendations
+                            isRecommendationDialogOpen = true
+                        },
+                        onMoveUpClick = { agent ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            moveAgentUp(
+                                targetAgent = agent,
+                                agentList = agentList
+                            )
+                        },
+                        onMoveDownClick = { agent ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            moveAgentDown(
+                                targetAgent = agent,
+                                agentList = agentList
+                            )
+                        },
+                        onRunItemClick = { run ->
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
+                            selectedRunId = run.runId
+                        },
+                        onRunAllClick = {
+                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                                return@AgentListScreen
+                            }
 
-                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
-                            context = context,
-                            agents = agentList.toList(),
-                            fallbackProviderName = savedProvider
-                        )
-                    }
-                )
+                            pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                                context = context,
+                                agents = agentList.toList(),
+                                fallbackProviderName = savedProvider
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -1534,9 +1581,13 @@ private fun ConversationGlobalSettingsScreen(
     selectedPage: String?,
     storageStatusText: String,
     storageLocationText: String,
+    appSpecificSessionCount: Int,
+    canMigrateAppSpecificSessions: Boolean,
+    lastMigrationResultText: String,
     onPageSelected: (String) -> Unit,
     onSelectStorageFolderClick: () -> Unit,
     onUseFallbackStorageClick: () -> Unit,
+    onImportAppSpecificStorageClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
     Column(
@@ -1665,11 +1716,45 @@ private fun ConversationGlobalSettingsScreen(
                             color = Color(0xFFD0D3DA)
                         )
 
+                        Text(
+                            text = "기존 앱 저장소 세션: ${appSpecificSessionCount}개",
+                            color = Color(0xFFD0D3DA)
+                        )
+
+                        if (lastMigrationResultText.isNotBlank()) {
+                            Text(
+                                text = "마이그레이션 결과: $lastMigrationResultText",
+                                color = Color(0xFFD0D3DA)
+                            )
+                        }
+
                         Button(
                             onClick = onSelectStorageFolderClick,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(text = "저장 폴더 선택")
+                        }
+
+                        if (canMigrateAppSpecificSessions) {
+                            Button(
+                                onClick = onImportAppSpecificStorageClick,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = "기존 앱 저장소에서 가져오기")
+                            }
+                        } else {
+                            Button(
+                                onClick = onImportAppSpecificStorageClick,
+                                enabled = false,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = "기존 앱 저장소에서 가져오기")
+                            }
+
+                            Text(
+                                text = "SAF 저장소 연결 후 사용할 수 있습니다.",
+                                color = Color(0xFFD0D3DA)
+                            )
                         }
 
                         TextButton(

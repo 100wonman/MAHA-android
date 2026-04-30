@@ -40,6 +40,15 @@ class ConversationViewModel(
     var storageLocationText by mutableStateOf(storageManager.getStorageLocationText())
         private set
 
+    var appSpecificSessionCount by mutableStateOf(0)
+        private set
+
+    var lastMigrationResultText by mutableStateOf("")
+        private set
+
+    val canMigrateAppSpecificSessions: Boolean
+        get() = storageManager.isSafReady() && appSpecificSessionCount > 0
+
     init {
         storageManager.ensureDirectories()
         refreshStorageState()
@@ -50,6 +59,10 @@ class ConversationViewModel(
         storageManager.saveSafRootUri(uri)
         storageManager.ensureDirectories()
         refreshStorageState()
+
+        conversationSessions.clear()
+        loadInitialSessions()
+        selectedConversationSessionId = null
     }
 
     fun useFallbackStorage() {
@@ -60,6 +73,21 @@ class ConversationViewModel(
         conversationSessions.clear()
         loadInitialSessions()
         selectedConversationSessionId = null
+    }
+
+    fun migrateAppSpecificSessionsToSaf(): ConversationMigrationResult {
+        val result = conversationFileStore.migrateAppSpecificSessionsToSaf()
+
+        lastMigrationResultText = "복사 ${result.copiedCount}개 / 건너뜀 ${result.skippedCount}개 / 실패 ${result.failedCount}개"
+        refreshStorageState()
+
+        if (storageManager.isSafReady()) {
+            conversationSessions.clear()
+            conversationSessions.addAll(conversationFileStore.loadSessions())
+            selectedConversationSessionId = null
+        }
+
+        return result
     }
 
     fun selectSession(sessionId: String) {
@@ -272,5 +300,6 @@ class ConversationViewModel(
     private fun refreshStorageState() {
         storageStatusText = storageManager.getStorageStatusText()
         storageLocationText = storageManager.getStorageLocationText()
+        appSpecificSessionCount = conversationFileStore.getAppSpecificSessionCount()
     }
 }
