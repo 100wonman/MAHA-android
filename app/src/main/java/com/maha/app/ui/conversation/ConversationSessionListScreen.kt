@@ -106,13 +106,9 @@ fun ConversationSessionListScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onOpenGlobalSettings) {
-                    Text(
-                        text = "☰",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
+                ConversationHamburgerButton(
+                    onClick = onOpenGlobalSettings
+                )
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

@@ -11,7 +11,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,7 +64,8 @@ import java.util.Locale
 fun AppRoot() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val workDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val conversationDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val conversationViewModel: ConversationViewModel = viewModel()
 
     val agentList = remember { mutableStateListOf<Agent>() }
@@ -90,7 +89,6 @@ fun AppRoot() {
     var isConversationListScreenOpen by rememberSaveable { mutableStateOf(false) }
     var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
-    var isConversationGlobalSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var selectedConversationSettingsPage by rememberSaveable { mutableStateOf<String?>(null) }
     var isAppStorageMigrationDialogOpen by rememberSaveable { mutableStateOf(false) }
     var editingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -278,12 +276,12 @@ fun AppRoot() {
         }
 
         when {
-            isConversationGlobalSettingsOpen && selectedConversationSettingsPage != null -> {
+            conversationDrawerState.isOpen && selectedConversationSettingsPage != null -> {
                 selectedConversationSettingsPage = null
             }
 
-            isConversationGlobalSettingsOpen -> {
-                isConversationGlobalSettingsOpen = false
+            conversationDrawerState.isOpen -> {
+                scope.launch { conversationDrawerState.close() }
                 selectedConversationSettingsPage = null
             }
             selectedConversationSessionId != null -> conversationViewModel.clearSelectedSession()
@@ -320,11 +318,11 @@ fun AppRoot() {
     }
 
     ModalNavigationDrawer(
-        drawerState = drawerState,
+        drawerState = workDrawerState,
         gesturesEnabled = isWorkModeOpen &&
                 !isConversationListScreenOpen &&
                 selectedConversationSessionId == null &&
-                !isConversationGlobalSettingsOpen,
+                !conversationDrawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet {
                 Spacer(modifier = Modifier.height(20.dp))
@@ -356,7 +354,7 @@ fun AppRoot() {
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
                             isExecutionLogScreenOpen = false
-                            scope.launch { drawerState.close() }
+                            scope.launch { workDrawerState.close() }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -379,7 +377,7 @@ fun AppRoot() {
                             isSettingsScreenOpen = false
                             isModelCatalogScreenOpen = false
                             isExecutionLogScreenOpen = false
-                            scope.launch { drawerState.close() }
+                            scope.launch { workDrawerState.close() }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -406,7 +404,7 @@ fun AppRoot() {
                             discoveredModelList.clear()
                             discoveredModelList.addAll(ModelCatalogManager.getDiscoveredModels(context))
 
-                            scope.launch { drawerState.close() }
+                            scope.launch { workDrawerState.close() }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -433,7 +431,7 @@ fun AppRoot() {
                             executionHistoryLogList.clear()
                             executionHistoryLogList.addAll(StorageManager.loadExecutionHistoryLogs(context))
 
-                            scope.launch { drawerState.close() }
+                            scope.launch { workDrawerState.close() }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -460,7 +458,7 @@ fun AppRoot() {
                             savedGoogleApiKey = ApiKeyManager.getGoogleApiKey(context)
                             savedProvider = ApiKeyManager.getSelectedProvider(context)
 
-                            scope.launch { drawerState.close() }
+                            scope.launch { workDrawerState.close() }
                         }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -484,7 +482,7 @@ fun AppRoot() {
                                 isModelCatalogScreenOpen = false
                                 isExecutionLogScreenOpen = false
                                 selectedRunId = runList.firstOrNull()?.runId
-                                scope.launch { drawerState.close() }
+                                scope.launch { workDrawerState.close() }
                             }
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -493,6 +491,43 @@ fun AppRoot() {
             }
         }
     ) {
+        ModalNavigationDrawer(
+            drawerState = conversationDrawerState,
+            gesturesEnabled = (isConversationListScreenOpen || selectedConversationSessionId != null) &&
+                    !workDrawerState.isOpen,
+            drawerContent = {
+                ModalDrawerSheet {
+                    ConversationGlobalSettingsScreen(
+                        selectedPage = selectedConversationSettingsPage,
+                        storageStatusText = conversationViewModel.storageStatusText,
+                        storageLocationText = conversationViewModel.storageLocationText,
+                        appSpecificSessionCount = conversationViewModel.appSpecificSessionCount,
+                        canMigrateAppSpecificSessions = conversationViewModel.storageStatusText == "SAF 연결됨",
+                        lastMigrationResultText = conversationViewModel.lastMigrationResultText,
+                        onPageSelected = { page ->
+                            selectedConversationSettingsPage = page
+                        },
+                        onSelectStorageFolderClick = {
+                            storageFolderLauncher.launch(null)
+                        },
+                        onUseFallbackStorageClick = {
+                            conversationViewModel.useFallbackStorage()
+                            Toast.makeText(context, "기본 앱 저장소를 사용합니다.", Toast.LENGTH_SHORT).show()
+                        },
+                        onImportAppSpecificStorageClick = {
+                            isAppStorageMigrationDialogOpen = true
+                        },
+                        onBackClick = {
+                            if (selectedConversationSettingsPage != null) {
+                                selectedConversationSettingsPage = null
+                            } else {
+                                scope.launch { conversationDrawerState.close() }
+                            }
+                        }
+                    )
+                }
+            }
+        ) {
         pendingRunPrecheck?.let { precheck ->
             RunAllPrecheckDialog(
                 precheck = precheck,
@@ -724,71 +759,13 @@ fun AppRoot() {
         }
 
         when {
-            isConversationGlobalSettingsOpen && (selectedConversationSessionId != null || isConversationListScreenOpen) -> {
-                ConversationGlobalSettingsScreen(
-                    selectedPage = selectedConversationSettingsPage,
-                    storageStatusText = conversationViewModel.storageStatusText,
-                    storageLocationText = conversationViewModel.storageLocationText,
-                    appSpecificSessionCount = conversationViewModel.appSpecificSessionCount,
-                    canMigrateAppSpecificSessions = conversationViewModel.storageStatusText == "SAF 연결됨",
-                    lastMigrationResultText = conversationViewModel.lastMigrationResultText,
-                    onPageSelected = { page ->
-                        selectedConversationSettingsPage = page
-                    },
-                    onSelectStorageFolderClick = {
-                        storageFolderLauncher.launch(null)
-                    },
-                    onUseFallbackStorageClick = {
-                        conversationViewModel.useFallbackStorage()
-                        Toast.makeText(context, "기본 앱 저장소를 사용합니다.", Toast.LENGTH_SHORT).show()
-                    },
-                    onImportAppSpecificStorageClick = {
-                        isAppStorageMigrationDialogOpen = true
-                    },
-                    onBackClick = {
-                        if (selectedConversationSettingsPage != null) {
-                            selectedConversationSettingsPage = null
-                        } else {
-                            isConversationGlobalSettingsOpen = false
-                            selectedConversationSettingsPage = null
-                        }
-                    }
-                )
-            }
-
             selectedConversationSessionId != null -> {
                 val session = conversationSessions.find {
                     it.sessionId == selectedConversationSessionId
                 }
 
                 if (session != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                var totalDrag = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = {
-                                        totalDrag = 0f
-                                    },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        totalDrag += dragAmount
-                                        if (totalDrag > 120f) {
-                                            isConversationGlobalSettingsOpen = true
-                                            selectedConversationSettingsPage = null
-                                            totalDrag = 0f
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        totalDrag = 0f
-                                    },
-                                    onDragCancel = {
-                                        totalDrag = 0f
-                                    }
-                                )
-                            }
-                    ) {
-                        ConversationRoomScreen(
+                    ConversationRoomScreen(
                             session = session,
                             inputText = conversationInputText,
                             searchEnabled = conversationSearchEnabled,
@@ -805,8 +782,11 @@ fun AppRoot() {
                                 showConversationSettingsDialog = true
                             },
                             onOpenGlobalSettings = {
-                                isConversationGlobalSettingsOpen = true
                                 selectedConversationSettingsPage = null
+                                scope.launch {
+                                    workDrawerState.close()
+                                    conversationDrawerState.open()
+                                }
                             },
                             onEditMessage = { messageId, currentText ->
                                 editingMessageId = messageId
@@ -820,7 +800,6 @@ fun AppRoot() {
                                 ).show()
                             }
                         )
-                    }
 
                 } else {
                     ConversationMissingSessionFallback(
@@ -833,40 +812,17 @@ fun AppRoot() {
             }
 
             isConversationListScreenOpen -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            var totalDrag = 0f
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    totalDrag = 0f
-                                },
-                                onHorizontalDrag = { _, dragAmount ->
-                                    totalDrag += dragAmount
-                                    if (totalDrag > 120f) {
-                                        isConversationGlobalSettingsOpen = true
-                                        selectedConversationSettingsPage = null
-                                        totalDrag = 0f
-                                    }
-                                },
-                                onDragEnd = {
-                                    totalDrag = 0f
-                                },
-                                onDragCancel = {
-                                    totalDrag = 0f
-                                }
-                            )
-                        }
-                ) {
-                    ConversationSessionListScreen(
+                ConversationSessionListScreen(
                         sessions = conversationSessions,
                         favoriteSessionIds = conversationViewModel.favoriteSessionIds,
                         searchQuery = conversationViewModel.sessionSearchQuery,
                         onSearchQueryChange = conversationViewModel::updateSessionSearchQuery,
                         onOpenGlobalSettings = {
-                            isConversationGlobalSettingsOpen = true
                             selectedConversationSettingsPage = null
+                            scope.launch {
+                                workDrawerState.close()
+                                conversationDrawerState.open()
+                            }
                         },
                         onNewConversationClick = {
                             conversationViewModel.createNewSession()
@@ -878,7 +834,6 @@ fun AppRoot() {
                         onToggleFavorite = conversationViewModel::toggleFavorite,
                         onDeleteSession = conversationViewModel::deleteSession
                     )
-                }
 
             }
 
@@ -886,7 +841,7 @@ fun AppRoot() {
                 RunDetailScreen(
                     run = selectedRun,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onBackClick = {
                         selectedRunId = null
@@ -898,7 +853,7 @@ fun AppRoot() {
                 ExecutionLogScreen(
                     logs = executionHistoryLogList,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onBackClick = {
                         isExecutionLogScreenOpen = false
@@ -988,7 +943,7 @@ fun AppRoot() {
                         isModelCatalogScreenOpen = false
                     },
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onBackClick = {
                         isModelCatalogScreenOpen = false
@@ -1005,7 +960,7 @@ fun AppRoot() {
                     savedGoogleApiKey = savedGoogleApiKey,
                     savedProvider = savedProvider,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onSaveGoogleApiKeyClick = { apiKey ->
                         ApiKeyManager.saveGoogleApiKey(context, apiKey)
@@ -1025,7 +980,7 @@ fun AppRoot() {
                 ScenarioListScreen(
                     scenarioList = scenarioList,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onScenarioClick = { scenario ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
@@ -1074,7 +1029,7 @@ fun AppRoot() {
                     isAnyExecutionRunning = isRunAllRunning || runningAgentId != null || isSearchingModels,
                     isCurrentAgentRunning = runningAgentId == selectedAgent.id,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch { workDrawerState.open() }
                     },
                     onSaveClick = { updatedAgent ->
                         if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
@@ -1211,122 +1166,123 @@ fun AppRoot() {
                     )
                 } else {
                     AgentListScreen(
-                        agentList = agentList,
-                        runList = runList,
-                        executionStateMap = executionStateMap,
-                        isRunAllRunning = isRunAllRunning || isSearchingModels,
-                        promptText = promptText,
-                        onPromptTextChange = { newPrompt ->
-                            promptText = newPrompt
-                        },
-                        onMenuClick = {
-                            scope.launch { drawerState.open() }
-                        },
-                        onAgentClick = { agent ->
-                            if (
-                                agent.id.isNotBlank() &&
-                                agentList.any { it.id == agent.id } &&
-                                !isRunAllRunning &&
-                                runningAgentId == null &&
-                                !isSearchingModels
-                            ) {
-                                selectedAgentId = agent.id
-                            }
-                        },
-                        onAddAgentClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val newAgent = createNewAgent(existingAgents = agentList)
-                            agentList.add(newAgent)
-                            executionStateMap[newAgent.id] = "WAITING"
-                            selectedAgentId = newAgent.id
-                        },
-                        onSaveScenarioClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val safeAgents = normalizeAgents(agentList)
-                            val newScenario = Scenario(
-                                id = generateUniqueScenarioId(scenarioList),
-                                name = "Scenario ${scenarioList.size + 1}",
-                                agents = safeAgents.map { it.copy() },
-                                savedAt = getCurrentTimeText()
-                            )
-
-                            scenarioList.removeAll { it.id == newScenario.id }
-                            scenarioList.add(0, newScenario)
-                        },
-                        onOpenScenarioListClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            isScenarioScreenOpen = true
-                            isSettingsScreenOpen = false
-                            isModelCatalogScreenOpen = false
-                            isExecutionLogScreenOpen = false
-                        },
-                        onApplyGemini31FlashLiteToAllClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            isApplyFallbackModelDialogOpen = true
-                        },
-                        onShowModelRecommendationsClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            val recommendations = ModelRecommendationManager.buildRecommendations(
-                                agents = agentList.toList(),
-                                logs = executionHistoryLogList.toList(),
-                                testRecords = ModelTestManager.getAllRecords(context)
-                            )
-
-                            pendingRecommendations = recommendations
-                            isRecommendationDialogOpen = true
-                        },
-                        onMoveUpClick = { agent ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            moveAgentUp(
-                                targetAgent = agent,
-                                agentList = agentList
-                            )
-                        },
-                        onMoveDownClick = { agent ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            moveAgentDown(
-                                targetAgent = agent,
-                                agentList = agentList
-                            )
-                        },
-                        onRunItemClick = { run ->
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-                            selectedRunId = run.runId
-                        },
-                        onRunAllClick = {
-                            if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
-                                return@AgentListScreen
-                            }
-
-                            pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
-                                context = context,
-                                agents = agentList.toList(),
-                                fallbackProviderName = savedProvider
-                            )
+                    agentList = agentList,
+                    runList = runList,
+                    executionStateMap = executionStateMap,
+                    isRunAllRunning = isRunAllRunning || isSearchingModels,
+                    promptText = promptText,
+                    onPromptTextChange = { newPrompt ->
+                        promptText = newPrompt
+                    },
+                    onMenuClick = {
+                        scope.launch { workDrawerState.open() }
+                    },
+                    onAgentClick = { agent ->
+                        if (
+                            agent.id.isNotBlank() &&
+                            agentList.any { it.id == agent.id } &&
+                            !isRunAllRunning &&
+                            runningAgentId == null &&
+                            !isSearchingModels
+                        ) {
+                            selectedAgentId = agent.id
                         }
-                    )
+                    },
+                    onAddAgentClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val newAgent = createNewAgent(existingAgents = agentList)
+                        agentList.add(newAgent)
+                        executionStateMap[newAgent.id] = "WAITING"
+                        selectedAgentId = newAgent.id
+                    },
+                    onSaveScenarioClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val safeAgents = normalizeAgents(agentList)
+                        val newScenario = Scenario(
+                            id = generateUniqueScenarioId(scenarioList),
+                            name = "Scenario ${scenarioList.size + 1}",
+                            agents = safeAgents.map { it.copy() },
+                            savedAt = getCurrentTimeText()
+                        )
+
+                        scenarioList.removeAll { it.id == newScenario.id }
+                        scenarioList.add(0, newScenario)
+                    },
+                    onOpenScenarioListClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        isScenarioScreenOpen = true
+                        isSettingsScreenOpen = false
+                        isModelCatalogScreenOpen = false
+                        isExecutionLogScreenOpen = false
+                    },
+                    onApplyGemini31FlashLiteToAllClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        isApplyFallbackModelDialogOpen = true
+                    },
+                    onShowModelRecommendationsClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        val recommendations = ModelRecommendationManager.buildRecommendations(
+                            agents = agentList.toList(),
+                            logs = executionHistoryLogList.toList(),
+                            testRecords = ModelTestManager.getAllRecords(context)
+                        )
+
+                        pendingRecommendations = recommendations
+                        isRecommendationDialogOpen = true
+                    },
+                    onMoveUpClick = { agent ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        moveAgentUp(
+                            targetAgent = agent,
+                            agentList = agentList
+                        )
+                    },
+                    onMoveDownClick = { agent ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        moveAgentDown(
+                            targetAgent = agent,
+                            agentList = agentList
+                        )
+                    },
+                    onRunItemClick = { run ->
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+                        selectedRunId = run.runId
+                    },
+                    onRunAllClick = {
+                        if (isRunAllRunning || runningAgentId != null || isSearchingModels) {
+                            return@AgentListScreen
+                        }
+
+                        pendingRunPrecheck = RunPrecheckManager.buildRunAllPrecheck(
+                            context = context,
+                            agents = agentList.toList(),
+                            fallbackProviderName = savedProvider
+                        )
+                    }
+                )
                 }
             }
+        }
         }
     }
 }
