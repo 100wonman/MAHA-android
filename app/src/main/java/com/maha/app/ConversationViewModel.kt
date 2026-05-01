@@ -12,6 +12,7 @@ class ConversationViewModel(
     application: Application
 ) : AndroidViewModel(application) {
     private val storageManager = MahaStorageManager(application.applicationContext)
+    private val ragStorageManager = RagStorageManager(application.applicationContext)
     private val conversationFileStore = ConversationFileStore(
         context = application.applicationContext,
         storageManager = storageManager
@@ -55,6 +56,7 @@ class ConversationViewModel(
 
     init {
         storageManager.ensureDirectories()
+        ragStorageManager.ensureRagDirectories()
         refreshStorageState()
         loadInitialSessions()
     }

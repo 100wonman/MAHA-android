@@ -1,4 +1,172 @@
 ==============================
+[2026-05-01 22:25] RAG 저장소 기본 구조 1차 구현
+==============================
+
+[작업]
+- RagStorageManager 추가
+- MAHA/rag/ 폴더 생성
+- rag/documents/ 폴더 생성
+- rag/chunks/ 폴더 생성
+- rag/indexes/ 폴더 생성
+- index_metadata.json 기본 파일 생성
+
+[구현 모드]
+
+작업명:
+RAG 저장소 기본 구조 1차 구현
+
+목표:
+- MAHA 앱 전용 저장소 안에 RAG 기본 폴더 구조를 생성한다.
+- index_metadata.json 기본 파일을 생성한다.
+- 이번 단계는 저장소 골격만 만든다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ MAHA/rag/ 생성
+✔ MAHA/rag/documents/ 생성
+✔ MAHA/rag/chunks/ 생성
+✔ MAHA/rag/indexes/ 생성
+✔ MAHA/rag/index_metadata.json 기본 파일 생성
+
+이번 단계에서 금지:
+
+❌ chunk 생성
+❌ embedding 생성
+❌ 검색 기능
+❌ RAG UI
+❌ vector DB
+❌ 외부 라이브러리
+❌ SAF 실시간 RAG 연동
+
+--------------------------------------------------
+2. 저장 위치
+--------------------------------------------------
+
+저장 루트:
+
+앱 전용 저장소
+→ getExternalFilesDir(null)/MAHA/rag/
+
+SAF Documents/MAHA는 이번 단계에서 사용하지 않는다.
+SAF는 백업/복원 용도로만 유지한다.
+
+--------------------------------------------------
+3. index_metadata.json 기본 구조
+--------------------------------------------------
+
+초기 파일 예시:
+
+{
+  "indexVersion": 1,
+  "createdAt": "...",
+  "updatedAt": "...",
+  "documentCount": 0,
+  "chunkCount": 0,
+  "status": "EMPTY"
+}
+
+조건:
+- 이미 파일이 있으면 덮어쓰지 않는다.
+- 없을 때만 생성한다.
+
+--------------------------------------------------
+4. 권장 구현 위치
+--------------------------------------------------
+
+신규 파일 권장:
+
+- RagStorageManager.kt
+
+역할:
+- rag 루트 폴더 반환
+- documents/chunks/indexes 폴더 반환
+- ensureRagDirectories()
+- ensureIndexMetadata()
+
+기존 MahaStorageManager에 직접 과도하게 추가하지 말고,
+RAG 전용 Manager로 분리하는 것을 권장한다.
+
+--------------------------------------------------
+5. 호출 위치
+--------------------------------------------------
+
+앱 시작 시 1회 호출 또는 ConversationViewModel 초기화 흐름 중 안전한 위치에서 호출.
+
+주의:
+- UI 렌더링마다 반복 호출 금지
+- recomposition마다 호출 금지
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 세션 저장/복구
+- SAF 백업/복원
+- 세션 관리
+- 대화방 기능
+- OutputBlock 렌더링
+
+--------------------------------------------------
+7. 금지 사항
+--------------------------------------------------
+
+❌ ConversationViewModel 대규모 변경 금지
+❌ ConversationFileStore 변경 금지
+❌ AppRoot 대규모 변경 금지
+❌ 저장소 구조 기존 파일 변경 금지
+❌ RAG 검색 설계 확장 금지
+
+--------------------------------------------------
+완료 기준:
+- 앱 실행 후 MAHA/rag/ 폴더 생성
+- documents/chunks/indexes 폴더 생성
+- index_metadata.json 생성
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공 / 실패
+
+[핵심 변경]
+- RagStorageManager.kt 신규 추가
+- 앱 전용 저장소 MAHA/rag/ 기본 폴더 생성 기능 추가
+- documents/chunks/indexes 폴더 생성 기능 추가
+- index_metadata.json 기본 파일 생성 기능 추가
+- 현재 ConversationViewModel.kt 기준으로 init에서 RAG 저장소 생성만 최소 연결
+
+[RAG 저장소 테스트]
+- rag 폴더 생성: 앱 실행 → Device Explorer에서 MAHA/rag 확인 <-- 생성됨
+- documents 폴더 생성: MAHA/rag/documents 확인 <-- 생성됨
+- chunks 폴더 생성: MAHA/rag/chunks 확인 <-- 생성됨
+- indexes 폴더 생성: MAHA/rag/indexes 확인 <-- 생성됨
+- index_metadata.json 생성: MAHA/rag/index_metadata.json 확인 <-- 생성됨
+
+[기존 기능 영향]
+- 대화 저장/복구: 기존 세션 열기/전송/재시작 확인 <-- 정상
+- SAF 백업/복원: 저장소 관리에서 백업/복원 버튼 동작 확인 <-- 정상
+- 대화방 기능: 메시지 전송/OutputBlock 표시 확인 <-- 정상
+
+[문제]
+- 없음
+
+[변경 파일]
+- RagStorageManager.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+[다음 작업]
+RAG chunk / index_metadata 구조 설계
+
+==============================
 [2026-05-01 21:55]] RAG 로딩 구조 설계 - 축소1
 ==============================
 
