@@ -1,4 +1,273 @@
 ==============================
+[2026-05-01 23:30] RAG keyword 검색 구조 설계
+==============================
+
+[작업]
+- index_metadata 기반 keyword 검색 흐름 설계
+- chunk 파일 지연 로딩 정책 설계
+- RagSearchResult 구조 설계
+- 간단 점수 계산 기준 설계
+- RAG 검색 테스트 UI 1차 구현 범위 확정
+
+[설계 모드]
+
+작업명:
+RAG keyword 검색 구조 설계
+
+목표:
+- embedding/vector 없이 keyword 기반 RAG 검색 구조를 설계한다.
+- index_metadata.json을 먼저 조회하고, 필요한 chunk 파일만 지연 로딩하는 구조를 확정한다.
+- 이번 단계는 설계만 수행한다.
+- 실제 검색 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 전제
+--------------------------------------------------
+
+이미 완료된 구조:
+
+- MAHA/rag/documents/
+- MAHA/rag/chunks/{sourceId}/chunk_001.json
+- MAHA/rag/indexes/
+- MAHA/rag/index_metadata.json
+- RagChunk 모델
+- RagIndexMetadata 모델
+- RagIndexStore
+- ConversationChunkIndexer
+
+이번 단계 목표:
+- keyword 검색 흐름 확정
+- 검색 대상 필드 확정
+- 검색 결과 구조 확정
+- 점수 계산 기준 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+2. 핵심 원칙
+--------------------------------------------------
+
+반드시 지킬 것:
+
+- 전체 chunk 파일을 한 번에 모두 로드하지 않는다.
+- index_metadata.json의 chunks[]를 먼저 검색 후보로 사용한다.
+- 후보 chunk만 파일에서 로드한다.
+- embedding/vector 검색은 구현하지 않는다.
+- SAF 백업 폴더는 실시간 RAG 검색 대상으로 사용하지 않는다.
+- 앱 전용 저장소의 RAG index만 검색한다.
+
+--------------------------------------------------
+3. 검색 대상
+--------------------------------------------------
+
+1차 keyword 검색 대상:
+
+1. index_metadata.json 내부:
+- source title
+- chunk textPreview
+- sourceType
+- sourceId
+
+2. 후보 chunk 파일 내부:
+- chunk.title
+- chunk.text
+- chunk.metadata
+
+검색어 처리:
+- trim
+- 대소문자 무시
+- 공백 기준 토큰 분리
+- 빈 검색어는 검색하지 않음
+
+--------------------------------------------------
+4. 검색 흐름
+--------------------------------------------------
+
+권장 흐름:
+
+1. 사용자가 keyword 입력
+2. index_metadata.json 로드
+3. chunks[]의 textPreview/title 기준 1차 후보 필터링
+4. 후보가 부족하면 chunks[] 전체에서 제한 개수만 chunk 파일 로드
+5. chunk.text에서 keyword match
+6. 점수 계산
+7. 상위 N개 결과 반환
+
+주의:
+- 1차 구현에서는 최대 로드 chunk 수 제한 필요
+- 예: maxLoadedChunks = 50
+- 결과 수 제한 필요
+- 예: topK = 5~10
+
+--------------------------------------------------
+5. 점수 계산 기준
+--------------------------------------------------
+
+간단한 규칙 기반 점수:
+
+- title match: +5
+- textPreview match: +3
+- chunk.text match: +2
+- sourceType match: +1
+- 여러 토큰이 모두 매치: 추가 가산
+- 최신 updatedAt 가산 optional
+
+정교한 랭킹은 후속 단계로 보류.
+
+--------------------------------------------------
+6. 검색 결과 구조
+--------------------------------------------------
+
+RagSearchResult 필드 후보:
+
+- chunkId
+- sourceType
+- sourceId
+- title
+- textPreview
+- matchedTextSnippet
+- score
+- filePath
+- updatedAt
+
+matchedTextSnippet:
+- keyword 주변 텍스트 일부
+- 너무 길면 150~250자 제한
+
+--------------------------------------------------
+7. Store / Engine 책임
+--------------------------------------------------
+
+권장 신규 컴포넌트:
+
+RagKeywordSearchEngine
+
+역할:
+- query 입력
+- index_metadata 로드
+- 후보 chunk 선정
+- chunk 파일 지연 로딩
+- 점수 계산
+- RagSearchResult 반환
+
+RagIndexStore:
+- metadata 읽기/쓰기 유지
+
+RagChunkStore 또는 RagIndexStore 확장:
+- chunk filePath로 RagChunk 로드
+
+1차에서는 RagKeywordSearchEngine + chunk loader 정도만 설계한다.
+
+--------------------------------------------------
+8. UI 위치 설계
+--------------------------------------------------
+
+1차 구현 후보:
+
+대화모드 전역 설정
+→ 메모리/RAG
+→ RAG 검색 테스트
+
+또는 저장소 관리 화면 하위:
+
+- 검색어 입력
+- 검색 버튼
+- 결과 목록
+- 결과 클릭 시 chunk 내용 보기
+
+주의:
+- 대화방 답변 생성과 연결하지 않는다.
+- RAG 검색 테스트 UI로만 시작한다.
+
+--------------------------------------------------
+9. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- RagSearchResult data class 추가
+- RagKeywordSearchEngine 추가
+- index_metadata 기반 keyword 검색 구현
+- 후보 chunk 파일 지연 로딩
+- topK 결과 반환
+- 저장소 관리 또는 메모리/RAG에 “RAG 검색 테스트” UI 추가
+
+이번 설계에서 구현 범위를 확정한다.
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+이번 단계 금지:
+
+❌ 코드 구현
+❌ embedding 생성
+❌ vector DB
+❌ 실제 LLM 연결
+❌ 대화방 답변 생성에 RAG 연결
+❌ 전체 chunk 파일 무제한 로드
+❌ SAF 백업 폴더 검색
+❌ 외부 라이브러리 도입
+
+--------------------------------------------------
+완료 기준:
+- keyword 검색 대상 확정
+- chunk 지연 로딩 정책 확정
+- 검색 점수 기준 확정
+- RagSearchResult 구조 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- keyword 검색은 앱 전용 저장소의 MAHA/rag/index_metadata.json 기준으로 시작
+- 전체 chunk 파일을 한 번에 로드하지 않고 후보 chunk만 지연 로딩
+- SAF Documents/MAHA 백업 폴더는 검색 대상에서 제외
+- embedding/vector 없이 단순 규칙 기반 점수로 topK 결과 반환
+- 1차 구현은 RAG 검색 테스트 UI까지만 연결
+
+[검색 대상]
+- metadata: source title, chunk textPreview, sourceType, sourceId
+- chunk file: chunk.title, chunk.text, chunk.metadata
+- query 처리: trim, 대소문자 무시, 공백 기준 토큰 분리, 빈 검색어는 검색하지 않음
+
+[검색 흐름]
+- 후보 필터링: index_metadata.chunks[]의 textPreview/source 정보로 1차 후보 선정
+- chunk 지연 로딩: 후보 chunk의 filePath를 기준으로 필요한 파일만 로드
+- topK: 기본 10개
+- maxLoadedChunks: 기본 50개
+
+[점수 계산]
+- title: keyword match 시 +5
+- textPreview: keyword match 시 +3
+- chunk.text: keyword match 시 +2
+- 기타 가산: sourceType match +1, 모든 토큰 매치 추가 가산, 최신 updatedAt 가산은 후속
+
+[검색 결과 구조]
+- 필드: chunkId, sourceType, sourceId, title, textPreview, matchedTextSnippet, score, filePath, updatedAt
+- matchedTextSnippet: keyword 주변 150~250자 미리보기
+- filePath: index_metadata.chunks[].filePath 값을 사용해 chunk 파일 지연 로딩
+
+[1차 구현 범위]
+- RagSearchResult data class 추가
+- RagKeywordSearchEngine 추가
+- index_metadata 기반 keyword 검색 구현
+- 후보 chunk 파일 지연 로딩 및 topK 결과 반환
+- 메모리/RAG 또는 저장소 관리 하위에 RAG 검색 테스트 UI 추가
+
+[보류 항목]
+- embedding 생성
+- vector DB / vector index
+- 대화방 답변 생성에 RAG 연결
+- SAF 백업 폴더 검색
+- 고급 랭킹/하이라이트 표시
+
+[다음 작업]
+RagKeywordSearchEngine 1차 구현
+
+==============================
 [2026-05-01 23:20] RAG chunk 파일명 규칙 정리
 ==============================
 
