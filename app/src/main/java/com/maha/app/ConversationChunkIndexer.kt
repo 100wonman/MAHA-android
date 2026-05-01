@@ -131,7 +131,7 @@ class ConversationChunkIndexer(
             val chunkText = buffer.joinToString(separator = "\n\n") { message ->
                 "[${message.role.uppercase(Locale.ROOT)}]\n${message.content}"
             }
-            val chunkId = "conversation_${safeId(sessionId)}_${chunkNumber.toString().padStart(3, '0')}"
+            val chunkId = "${safeId(sessionId)}_${chunkNumber.toString().padStart(3, '0')}"
             result.add(
                 RagChunk(
                     chunkId = chunkId,
@@ -190,7 +190,7 @@ class ConversationChunkIndexer(
 
         var savedCount = 0
         chunks.forEach { chunk ->
-            val chunkFile = File(chunkDir, "${chunk.chunkId}.json")
+            val chunkFile = File(chunkDir, chunkFileNameFromChunkId(chunk.chunkId))
             val saved = runCatching {
                 chunkFile.writeText(chunk.toJsonObject().toString(2))
             }.isSuccess
@@ -200,9 +200,14 @@ class ConversationChunkIndexer(
     }
 
     private fun removeExistingConversationChunks(sessionId: String) {
-        val chunkDir = getConversationChunkDir(sessionId)
-        if (chunkDir.exists()) {
-            chunkDir.deleteRecursively()
+        val newRuleChunkDir = getConversationChunkDir(sessionId)
+        if (newRuleChunkDir.exists()) {
+            newRuleChunkDir.deleteRecursively()
+        }
+
+        val legacyChunkDir = File(ragStorageManager.getChunksDir(), "conversation_${safeId(sessionId)}")
+        if (legacyChunkDir.exists() && legacyChunkDir.absolutePath != newRuleChunkDir.absolutePath) {
+            legacyChunkDir.deleteRecursively()
         }
     }
 
@@ -243,7 +248,7 @@ class ConversationChunkIndexer(
                 chunkId = chunk.chunkId,
                 sourceType = chunk.sourceType,
                 sourceId = chunk.sourceId,
-                filePath = File(getConversationChunkDir(sessionId), "${chunk.chunkId}.json").relativeToMahaRootPath(),
+                filePath = File(getConversationChunkDir(sessionId), chunkFileNameFromChunkId(chunk.chunkId)).relativeToMahaRootPath(),
                 textPreview = chunk.textPreview,
                 embeddingStatus = EmbeddingStatus.NONE,
                 updatedAt = now
@@ -266,7 +271,12 @@ class ConversationChunkIndexer(
     }
 
     private fun getConversationChunkDir(sessionId: String): File {
-        return File(ragStorageManager.getChunksDir(), "conversation_${safeId(sessionId)}")
+        return File(ragStorageManager.getChunksDir(), safeId(sessionId))
+    }
+
+    private fun chunkFileNameFromChunkId(chunkId: String): String {
+        val chunkNumber = chunkId.substringAfterLast("_", missingDelimiterValue = "001")
+        return "chunk_$chunkNumber.json"
     }
 
     private fun RagChunk.toJsonObject(): JSONObject {

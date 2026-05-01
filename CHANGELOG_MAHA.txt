@@ -1,4 +1,170 @@
 ==============================
+[2026-05-01 23:20] RAG chunk 파일명 규칙 정리
+==============================
+
+[작업]
+- RAG chunk 폴더명에서 중복 sourceType prefix 제거
+- chunk 파일명을 chunk_001.json 형식으로 정리
+- chunkId를 {sourceId}_{chunkNumber} 형식으로 정리
+- index_metadata.json filePath 규칙 갱신
+- 기존 chunk 데이터 마이그레이션 없이 신규 인덱싱부터 적용
+
+[구현 모드]
+
+작업명:
+RAG chunk 파일명 규칙 정리
+
+목표:
+- 현재 생성되는 RAG chunk 폴더/파일명에서 중복 prefix를 제거한다.
+- 기능 동작은 유지하면서 파일 구조를 더 읽기 쉽게 정리한다.
+- 기존 chunk 데이터 마이그레이션은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 문제
+--------------------------------------------------
+
+현재 생성 예:
+
+rag/chunks/conversation_conversation_1777637728249/
+└─ conversation_conversation_1777637728249_001.json
+
+문제:
+- sourceType = conversation
+- sourceId = conversation_1777637728249
+
+두 값이 결합되면서 conversation_conversation_... 형태가 됨
+
+--------------------------------------------------
+2. 변경 목표
+--------------------------------------------------
+
+변경 후 예:
+
+rag/chunks/conversation_1777637728249/
+└─ chunk_001.json
+
+정책:
+- 폴더명은 sourceId 사용
+- 파일명은 chunk_{index}.json 사용
+- chunkId는 기존처럼 유일성을 유지하되 과도한 중복 prefix 제거 가능
+
+권장:
+- folder: rag/chunks/{sourceId}/
+- file: chunk_{chunkNumber}.json
+- chunkId: {sourceId}_{chunkNumber}
+
+예:
+- folder: rag/chunks/conversation_1777637728249/
+- file: chunk_001.json
+- chunkId: conversation_1777637728249_001
+
+--------------------------------------------------
+3. 적용 범위
+--------------------------------------------------
+
+수정 대상:
+- ConversationChunkIndexer.kt
+
+필요 시:
+- RagIndexStore.kt의 filePath 관련 처리 확인
+
+수정 내용:
+- chunk 폴더 생성 규칙 수정
+- chunk 파일명 생성 규칙 수정
+- index_metadata.json의 filePath도 새 규칙으로 저장
+
+--------------------------------------------------
+4. 기존 데이터 처리
+--------------------------------------------------
+
+이번 단계에서는 기존 chunk 폴더/파일 마이그레이션 금지.
+
+이유:
+- 현재 chunk 데이터는 테스트용
+- 재인덱싱하면 새 규칙으로 다시 생성 가능
+
+정책:
+- 기존 conversation_conversation_* 폴더는 그대로 남아도 됨
+- 새로 인덱싱하는 세션부터 새 규칙 적용
+
+가능하면:
+- 같은 sessionId 재인덱싱 시 기존 구규칙 폴더와 신규칙 폴더 중 해당 sourceId 관련 폴더를 정리
+- 단, 위험하면 신규칙 폴더만 삭제/재생성
+
+--------------------------------------------------
+5. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 선택 세션 인덱싱 버튼
+- messages.jsonl 읽기
+- chunk 파일 생성
+- index_metadata.json 갱신
+- 재인덱싱 시 중복 chunk metadata 제거
+- 기존 대화 저장/복구
+- SAF 백업/복원
+- 저장소 관리 화면
+
+--------------------------------------------------
+6. 금지 사항
+--------------------------------------------------
+
+❌ embedding 구현 금지
+❌ 검색 기능 구현 금지
+❌ 전체 세션 자동 인덱싱 금지
+❌ 기존 대화 저장소 구조 변경 금지
+❌ SAF 백업/복원 로직 변경 금지
+❌ AppRoot 수정 금지
+❌ ViewModel 대규모 변경 금지
+
+--------------------------------------------------
+완료 기준:
+- 새로 인덱싱 시 rag/chunks/{sourceId}/ 생성
+- chunk_001.json 형태 파일 생성
+- index_metadata.json filePath가 새 규칙 반영
+- chunkId가 유일성 유지
+- 재인덱싱 시 중복 metadata 없음
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- chunk 폴더명을 rag/chunks/{sourceId}/ 형식으로 변경
+- chunk 파일명을 chunk_001.json 형식으로 변경
+- chunkId는 {sourceId}_001 형식으로 유일성 유지
+- index_metadata.json의 filePath도 신규 파일명 규칙으로 저장
+- 같은 세션 재인덱싱 시 중복 파일이 생성되지 않도록 유지
+
+[파일명 규칙 테스트]
+- chunk 폴더명: 성공, rag/chunks/conversation_1777637728249/ 생성 확인
+- chunk 파일명: 성공, chunk_001.json 생성 확인
+- chunkId: 성공, conversation_1777637728249_001 확인
+- index_metadata filePath: 성공, rag/chunks/conversation_1777637728249/chunk_001.json 확인
+- 재인덱싱 중복 여부: 성공, chunk_001(1).json 생성 없음
+
+[기존 기능 영향]
+- 선택 세션 인덱싱: 정상
+- 저장소 관리: 정상
+- 대화 저장/복구: 영향 없음
+- SAF 백업/복원: 영향 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationChunkIndexer.kt
+
+[빌드]
+성공
+
+[다음 작업]
+RAG keyword 검색 구조 설계
+
+==============================
 [2026-05-01 23:12] ConversationChunkIndexer 1차 구현
 ==============================
 
