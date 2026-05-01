@@ -158,6 +158,25 @@ fun AppRoot() {
         }
     }
 
+    fun leaveConversationRoomToSessionList() {
+        val sessionId = conversationViewModel.selectedConversationSessionId
+        if (sessionId == null) {
+            isConversationListScreenOpen = true
+            return
+        }
+
+        val currentSession = conversationSessions.firstOrNull { it.sessionId == sessionId }
+        val isEmptySession = currentSession == null || currentSession.messages.isEmpty()
+
+        if (isEmptySession) {
+            conversationViewModel.deleteSession(sessionId)
+        } else {
+            conversationViewModel.clearSelectedSession()
+        }
+
+        isConversationListScreenOpen = true
+    }
+
     LaunchedEffect(Unit) {
         ApiKeyManager.initialize(context)
         ModelUsageManager.initialize(context)
@@ -292,6 +311,10 @@ fun AppRoot() {
         }
 
         when {
+            conversationDrawerState.isOpen && selectedConversationSettingsPage == "storage" -> {
+                selectedConversationSettingsPage = "rag"
+            }
+
             conversationDrawerState.isOpen && selectedConversationSettingsPage != null -> {
                 selectedConversationSettingsPage = null
             }
@@ -300,7 +323,7 @@ fun AppRoot() {
                 scope.launch { conversationDrawerState.close() }
                 selectedConversationSettingsPage = null
             }
-            selectedConversationSessionId != null -> conversationViewModel.clearSelectedSession()
+            selectedConversationSessionId != null -> leaveConversationRoomToSessionList()
             isConversationListScreenOpen -> isConversationListScreenOpen = false
             isWorkModeOpen && selectedAgentId == null && selectedRunId == null && !isScenarioScreenOpen && !isSettingsScreenOpen && !isModelCatalogScreenOpen && !isExecutionLogScreenOpen -> isWorkModeOpen = false
             pendingRunPrecheck != null -> pendingRunPrecheck = null
@@ -547,10 +570,10 @@ fun AppRoot() {
                             }
                         },
                         onBackClick = {
-                            if (selectedConversationSettingsPage != null) {
-                                selectedConversationSettingsPage = null
-                            } else {
-                                scope.launch { conversationDrawerState.close() }
+                            when (selectedConversationSettingsPage) {
+                                "storage" -> selectedConversationSettingsPage = "rag"
+                                null -> scope.launch { conversationDrawerState.close() }
+                                else -> selectedConversationSettingsPage = null
                             }
                         }
                     )
@@ -805,7 +828,7 @@ fun AppRoot() {
                             onToggleSearch = conversationViewModel::toggleSearchEnabled,
                             onModeChange = conversationViewModel::updateModeLabel,
                             onBack = {
-                                conversationViewModel.clearSelectedSession()
+                                leaveConversationRoomToSessionList()
                             },
                             onOpenSettings = {
                                 showConversationSettingsDialog = true
