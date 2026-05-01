@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,6 +67,12 @@ fun StorageManagementScreen(
             ragIndexStore = ragIndexStore
         )
     }
+    val ragSearchEngine = remember {
+        RagKeywordSearchEngine(
+            ragStorageManager = ragStorageManager,
+            ragIndexStore = ragIndexStore
+        )
+    }
 
     var snapshot by remember { mutableStateOf(loadAppSpecificStorageSnapshot(context)) }
     var fileViewerState by remember { mutableStateOf<StorageFileViewerState?>(null) }
@@ -76,6 +83,9 @@ fun StorageManagementScreen(
     var isSafReady by remember { mutableStateOf(storageManager.isSafReady()) }
     var backupSessions by remember { mutableStateOf<List<SafBackupSessionInfo>>(emptyList()) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var ragSearchQuery by remember { mutableStateOf("") }
+    var ragSearchResults by remember { mutableStateOf<List<RagSearchResult>>(emptyList()) }
+    var ragSearchMessage by remember { mutableStateOf("인덱싱된 chunk가 있으면 keyword 검색을 실행할 수 있습니다.") }
 
     fun refreshSnapshot() {
         snapshot = loadAppSpecificStorageSnapshot(context)
@@ -115,6 +125,23 @@ fun StorageManagementScreen(
         }
     }
 
+    fun runRagKeywordSearch() {
+        val query = ragSearchQuery.trim()
+        if (query.isBlank()) {
+            ragSearchResults = emptyList()
+            ragSearchMessage = "검색어를 입력하세요."
+            return
+        }
+
+        val results = ragSearchEngine.search(query = query, topK = 10, maxLoadedChunks = 50)
+        ragSearchResults = results
+        ragSearchMessage = if (results.isEmpty()) {
+            "검색 결과가 없습니다."
+        } else {
+            "검색 결과 ${results.size}개"
+        }
+    }
+
     LaunchedEffect(Unit) {
         refreshSnapshot()
     }
@@ -137,6 +164,19 @@ fun StorageManagementScreen(
             onOpenRestore = {
                 refreshSnapshot()
                 showRestoreDialog = true
+            }
+        )
+
+        RagSearchTestCard(
+            query = ragSearchQuery,
+            onQueryChange = { ragSearchQuery = it },
+            resultMessage = ragSearchMessage,
+            results = ragSearchResults,
+            onSearch = ::runRagKeywordSearch,
+            onClear = {
+                ragSearchQuery = ""
+                ragSearchResults = emptyList()
+                ragSearchMessage = "인덱싱된 chunk가 있으면 keyword 검색을 실행할 수 있습니다."
             }
         )
 
@@ -357,6 +397,103 @@ fun StorageManagementScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun RagSearchTestCard(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    resultMessage: String,
+    results: List<RagSearchResult>,
+    onSearch: () -> Unit,
+    onClear: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "RAG 검색 테스트",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = "앱 전용 저장소의 index_metadata와 chunk 파일을 keyword로 검색합니다.",
+                color = Color(0xFFB8BCC6),
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text(text = "검색어 입력") }
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onSearch,
+                    enabled = query.trim().isNotEmpty(),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "검색")
+                }
+                TextButton(
+                    onClick = onClear,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "초기화")
+                }
+            }
+            Text(
+                text = resultMessage,
+                color = Color(0xFFD0D3DA),
+                style = MaterialTheme.typography.bodySmall
+            )
+            results.forEach { result ->
+                RagSearchResultCard(result = result)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RagSearchResultCard(result: RagSearchResult) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF050A0F)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = result.title.ifBlank { result.sourceId },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            StorageInfoRow(label = "sourceType", value = result.sourceType)
+            StorageInfoRow(label = "score", value = result.score.toString())
+            StorageInfoRow(label = "filePath", value = result.filePath)
+            Text(
+                text = result.matchedTextSnippet.ifBlank { result.textPreview },
+                color = Color(0xFFD0D3DA),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
