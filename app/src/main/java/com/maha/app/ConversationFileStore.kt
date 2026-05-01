@@ -273,6 +273,118 @@ class ConversationFileStore(
         )
     }
 
+
+    fun loadSafBackupSessions(): List<SafBackupSessionInfo> {
+        if (!storageManager.isSafReady()) return emptyList()
+
+        val safConversationsDir = storageManager.getSafConversationsDocument() ?: return emptyList()
+
+        return safConversationsDir.listFiles()
+            .filter { backupDir ->
+                backupDir.isDirectory && backupDir.name?.startsWith(SESSION_DIR_PREFIX) == true
+            }
+            .mapNotNull { backupDir -> loadSafBackupSessionInfo(backupDir) }
+            .distinctBy { it.sessionId }
+            .sortedByDescending { it.updatedAt }
+    }
+
+    fun restoreSafBackupSession(sessionId: String): ConversationRestoreResult {
+        if (!storageManager.isSafReady()) {
+            return ConversationRestoreResult(restoredCount = 0, skippedCount = 0, failedCount = 1)
+        }
+
+        val sourceBackupDir = findSafBackupSessionDir(sessionId)
+            ?: return ConversationRestoreResult(restoredCount = 0, skippedCount = 0, failedCount = 1)
+
+        if (findAppSpecificSessionDir(sessionId) != null) {
+            return ConversationRestoreResult(restoredCount = 0, skippedCount = 1, failedCount = 0)
+        }
+
+        val targetSessionDir = File(
+            storageManager.getConversationsDir(),
+            buildSessionDirectoryName(sessionId)
+        )
+        targetSessionDir.mkdirs()
+
+        val sourceSessionFile = findExactFile(sourceBackupDir, SESSION_FILE_NAME)
+            ?: return ConversationRestoreResult(restoredCount = 0, skippedCount = 0, failedCount = 1)
+
+        val sessionCopied = copySafFileToFile(
+            sourceFile = sourceSessionFile,
+            targetFile = File(targetSessionDir, SESSION_FILE_NAME)
+        )
+
+        val sourceMessagesFile = findExactFile(sourceBackupDir, MESSAGES_FILE_NAME)
+        val messagesCopied = if (sourceMessagesFile != null) {
+            copySafFileToFile(
+                sourceFile = sourceMessagesFile,
+                targetFile = File(targetSessionDir, MESSAGES_FILE_NAME)
+            )
+        } else {
+            true
+        }
+
+        return if (sessionCopied && messagesCopied) {
+            ConversationRestoreResult(restoredCount = 1, skippedCount = 0, failedCount = 0)
+        } else {
+            targetSessionDir.deleteRecursively()
+            ConversationRestoreResult(restoredCount = 0, skippedCount = 0, failedCount = 1)
+        }
+    }
+
+    private fun loadSafBackupSessionInfo(backupDir: DocumentFile): SafBackupSessionInfo? {
+        val sessionFile = findExactFile(backupDir, SESSION_FILE_NAME) ?: return null
+
+        return runCatching {
+            val json = JSONObject(readDocumentText(sessionFile))
+            val sessionId = json.optString("sessionId")
+            if (sessionId.isBlank()) return null
+
+            val messagesFile = findExactFile(backupDir, MESSAGES_FILE_NAME)
+            val messageCount = if (messagesFile != null) {
+                readDocumentText(messagesFile)
+                    .lineSequence()
+                    .count { it.isNotBlank() }
+            } else {
+                json.optInt("messageCount", 0)
+            }
+
+            SafBackupSessionInfo(
+                sessionId = sessionId,
+                title = json.optString("title", "제목 없음"),
+                folderName = backupDir.name.orEmpty(),
+                updatedAt = json.optString("updatedAt"),
+                messageCount = messageCount
+            )
+        }.getOrNull()
+    }
+
+    private fun findSafBackupSessionDir(sessionId: String): DocumentFile? {
+        val safConversationsDir = storageManager.getSafConversationsDocument() ?: return null
+
+        return safConversationsDir.listFiles()
+            .filter { backupDir ->
+                backupDir.isDirectory && backupDir.name?.startsWith(SESSION_DIR_PREFIX) == true
+            }
+            .firstOrNull { backupDir ->
+                val sessionFile = findExactFile(backupDir, SESSION_FILE_NAME) ?: return@firstOrNull false
+                runCatching {
+                    JSONObject(readDocumentText(sessionFile)).optString("sessionId") == sessionId
+                }.getOrDefault(false)
+            }
+    }
+
+    private fun copySafFileToFile(
+        sourceFile: DocumentFile,
+        targetFile: File
+    ): Boolean {
+        return runCatching {
+            targetFile.parentFile?.mkdirs()
+            targetFile.writeText(readDocumentText(sourceFile))
+            true
+        }.getOrDefault(false)
+    }
+
     private fun saveSessionInternal(
         session: ConversationSession,
         isFavorite: Boolean
@@ -720,6 +832,22 @@ data class ConversationBackupResult(
     val copiedCount: Int,
     val skippedCount: Int,
     val failedCount: Int
+)
+
+
+data class ConversationRestoreResult(
+    val restoredCount: Int,
+    val skippedCount: Int,
+    val failedCount: Int
+)
+
+
+data class SafBackupSessionInfo(
+    val sessionId: String,
+    val title: String,
+    val folderName: String,
+    val updatedAt: String,
+    val messageCount: Int
 )
 
 

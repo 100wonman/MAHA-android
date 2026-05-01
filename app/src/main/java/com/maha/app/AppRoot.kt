@@ -569,6 +569,7 @@ fun AppRoot() {
                                 conversationViewModel.clearSelectedSession()
                             }
                         },
+                        onStorageChanged = conversationViewModel::reloadSessionsFromStorage,
                         onBackClick = {
                             when (selectedConversationSettingsPage) {
                                 "storage" -> selectedConversationSettingsPage = "rag"
@@ -1676,6 +1677,7 @@ private fun ConversationGlobalSettingsScreen(
     onUseFallbackStorageClick: () -> Unit,
     onImportAppSpecificStorageClick: () -> Unit,
     onDeleteAppSpecificSession: (String) -> Unit,
+    onStorageChanged: () -> Unit,
     onBackClick: () -> Unit
 ) {
     Box(
@@ -1704,7 +1706,8 @@ private fun ConversationGlobalSettingsScreen(
 
                 StorageManagementScreen(
                     modifier = Modifier.fillMaxWidth(),
-                    onSessionDeleted = onDeleteAppSpecificSession
+                    onSessionDeleted = onDeleteAppSpecificSession,
+                    onStorageChanged = onStorageChanged
                 )
             }
             return@Box

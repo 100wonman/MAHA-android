@@ -98,6 +98,14 @@ class ConversationViewModel(
         return result
     }
 
+    fun reloadSessionsFromStorage() {
+        refreshStorageState()
+        conversationSessions.clear()
+        favoriteSessionIds.clear()
+        loadInitialSessions()
+        selectedConversationSessionId = null
+    }
+
     fun selectSession(sessionId: String) {
         if (conversationSessions.any { it.sessionId == sessionId }) {
             selectedConversationSessionId = sessionId

@@ -44,7 +44,8 @@ import java.text.DecimalFormat
 @Composable
 fun StorageManagementScreen(
     modifier: Modifier = Modifier,
-    onSessionDeleted: (String) -> Unit
+    onSessionDeleted: (String) -> Unit,
+    onStorageChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -61,11 +62,19 @@ fun StorageManagementScreen(
     var fileViewerState by remember { mutableStateOf<StorageFileViewerState?>(null) }
     var deleteTarget by remember { mutableStateOf<StorageSessionFileItem?>(null) }
     var backupResultMessage by remember { mutableStateOf<String?>(null) }
+    var restoreResultMessage by remember { mutableStateOf<String?>(null) }
     var isSafReady by remember { mutableStateOf(storageManager.isSafReady()) }
+    var backupSessions by remember { mutableStateOf<List<SafBackupSessionInfo>>(emptyList()) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
 
     fun refreshSnapshot() {
         snapshot = loadAppSpecificStorageSnapshot(context)
         isSafReady = storageManager.isSafReady()
+        backupSessions = if (storageManager.isSafReady()) {
+            conversationFileStore.loadSafBackupSessions()
+        } else {
+            emptyList()
+        }
     }
 
     fun showBackupResult(result: ConversationBackupResult) {
@@ -73,6 +82,15 @@ fun StorageManagementScreen(
             append("백업 결과\n")
             append("copied: ${result.copiedCount}\n")
             append("skipped: ${result.skippedCount}\n")
+            append("failed: ${result.failedCount}")
+        }
+    }
+
+    fun showRestoreResult(result: ConversationRestoreResult) {
+        restoreResultMessage = buildString {
+            append("복원 결과\\n")
+            append("restored: ${result.restoredCount}\\n")
+            append("skipped: ${result.skippedCount}\\n")
             append("failed: ${result.failedCount}")
         }
     }
@@ -91,8 +109,14 @@ fun StorageManagementScreen(
         StorageStatusCard(
             snapshot = snapshot,
             isSafReady = isSafReady,
+            backupSessionCount = backupSessions.size,
             onBackupAll = {
                 showBackupResult(conversationFileStore.backupAllSessionsToSaf())
+                refreshSnapshot()
+            },
+            onOpenRestore = {
+                refreshSnapshot()
+                showRestoreDialog = true
             }
         )
 
@@ -135,6 +159,7 @@ fun StorageManagementScreen(
                     },
                     onBackup = {
                         showBackupResult(conversationFileStore.backupSessionToSaf(item.sessionId))
+                        refreshSnapshot()
                     },
                     onDelete = {
                         deleteTarget = item
@@ -206,6 +231,64 @@ fun StorageManagementScreen(
         )
     }
 
+
+    restoreResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { restoreResultMessage = null },
+            title = { Text(text = "복원 결과") },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = { restoreResultMessage = null }) {
+                    Text(text = "확인")
+                }
+            }
+        )
+    }
+
+    if (showRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestoreDialog = false },
+            title = { Text(text = "백업에서 복원") },
+            text = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(420.dp)
+                ) {
+                    if (!isSafReady) {
+                        Text(text = "SAF 백업 폴더가 연결되어 있지 않습니다.")
+                    } else if (backupSessions.isEmpty()) {
+                        Text(text = "복원 가능한 백업 세션이 없습니다.")
+                    } else {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            backupSessions.forEach { backupItem ->
+                                SafBackupSessionCard(
+                                    item = backupItem,
+                                    onRestore = {
+                                        val result = conversationFileStore.restoreSafBackupSession(backupItem.sessionId)
+                                        showRestoreResult(result)
+                                        refreshSnapshot()
+                                        if (result.restoredCount > 0) {
+                                            onStorageChanged()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRestoreDialog = false }) {
+                    Text(text = "닫기")
+                }
+            }
+        )
+    }
+
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -240,7 +323,9 @@ fun StorageManagementScreen(
 private fun StorageStatusCard(
     snapshot: AppSpecificStorageSnapshot,
     isSafReady: Boolean,
-    onBackupAll: () -> Unit
+    backupSessionCount: Int,
+    onBackupAll: () -> Unit,
+    onOpenRestore: () -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
@@ -265,6 +350,7 @@ private fun StorageStatusCard(
                 label = "SAF 백업",
                 value = if (isSafReady) "연결됨" else "미연결"
             )
+            StorageInfoRow(label = "백업 세션", value = "${backupSessionCount}개")
             Button(
                 onClick = onBackupAll,
                 enabled = isSafReady && snapshot.sessions.isNotEmpty(),
@@ -272,9 +358,16 @@ private fun StorageStatusCard(
             ) {
                 Text(text = "전체 세션 백업")
             }
+            Button(
+                onClick = onOpenRestore,
+                enabled = isSafReady,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "백업에서 복원")
+            }
             if (!isSafReady) {
                 Text(
-                    text = "SAF 백업 폴더 연결 후 백업할 수 있습니다.",
+                    text = "SAF 백업 폴더 연결 후 백업/복원을 사용할 수 있습니다.",
                     color = Color(0xFFB8BCC6),
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -343,6 +436,42 @@ private fun StorageSessionCard(
                 ) {
                     Text(text = "삭제")
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun SafBackupSessionCard(
+    item: SafBackupSessionInfo,
+    onRestore: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            StorageInfoRow(label = "sessionId", value = item.sessionId)
+            StorageInfoRow(label = "백업 폴더", value = item.folderName)
+            StorageInfoRow(label = "메시지 수", value = "${item.messageCount}개")
+            StorageInfoRow(label = "마지막 수정", value = item.updatedAt.ifBlank { "알 수 없음" })
+            Button(
+                onClick = onRestore,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "복원")
             }
         }
     }
