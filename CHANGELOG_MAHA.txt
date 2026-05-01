@@ -1,4 +1,258 @@
 ==============================
+[2026-05-01 22:50] RAG chunk 생성 구조 설계
+==============================
+
+[작업]
+- sourceType별 chunk 생성 정책 설계
+- conversation messages.jsonl chunk 기준 설계
+- summary / worker_instruction / document / manual_note chunk 정책 설계
+- chunk 생성 시점 설계
+- index_metadata 반영 정책 설계
+- 1차 구현 범위 확정
+
+[설계 모드]
+
+작업명:
+RAG chunk 생성 구조 설계
+
+목표:
+- MAHA의 대화 기록 / 요약 / Worker 인스트럭션 / 문서를 chunk로 변환하는 구조를 설계한다.
+- 이번 단계는 설계만 수행한다.
+- 실제 chunk 생성 코드는 작성하지 않는다.
+
+--------------------------------------------------
+1. 전제
+--------------------------------------------------
+
+이미 완료된 구조:
+- MAHA/rag/documents/
+- MAHA/rag/chunks/
+- MAHA/rag/indexes/
+- index_metadata.json
+- RagChunk 모델
+- RagIndexMetadata 모델
+- RagIndexStore 읽기/쓰기
+
+이번 단계 목표:
+- 어떤 데이터를 chunk로 만들지
+- 언제 chunk를 만들지
+- 어떤 크기로 나눌지
+- index_metadata에 어떻게 반영할지
+- 1차 구현 범위를 어디까지로 제한할지 확정
+
+--------------------------------------------------
+2. chunk 대상 sourceType
+--------------------------------------------------
+
+설계 대상:
+
+1. conversation
+- messages.jsonl 기반
+- 대화 메시지 묶음
+
+2. conversation_summary
+- summary.md 기반
+- 세션 요약
+
+3. worker_instruction
+- worker_{workerId}.md 기반
+- Worker 시스템 인스트럭션
+
+4. document
+- rag/documents/ 내부 일반 문서
+
+5. manual_note
+- 사용자가 직접 작성한 메모
+
+이번 설계에서는 각 sourceType별 chunk 생성 정책을 짧게 정리한다.
+
+--------------------------------------------------
+3. conversation chunk 정책
+--------------------------------------------------
+
+대화 기록 chunk 기준:
+
+권장:
+- 메시지 3~10개 단위
+- 또는 tokenEstimate 기준 500~800 tokens
+- USER/ASSISTANT 쌍이 끊기지 않게 우선 고려
+
+필드:
+- sourceType = conversation
+- sourceId = sessionId
+- sessionId = sessionId
+- title = session title
+- text = 묶은 메시지 본문
+- textPreview = 앞 120~200자
+- tokenEstimate = 대략 계산
+
+주의:
+- 앱 시작 시 전체 messages.jsonl chunk 생성 금지
+- 사용자가 요청하거나 백그라운드 인덱싱 시 생성
+
+--------------------------------------------------
+4. conversation_summary chunk 정책
+--------------------------------------------------
+
+요약 chunk 기준:
+- summary.md 전체 또는 섹션 단위
+- sourceType = conversation_summary
+- sourceId = sessionId
+- text = summary content
+- textPreview = summary 앞부분
+
+주의:
+- summary.md가 없는 경우 skip
+
+--------------------------------------------------
+5. worker_instruction chunk 정책
+--------------------------------------------------
+
+Worker 인스트럭션:
+- worker_{workerId}.md 파일 기준
+- 긴 경우 섹션 단위 chunk
+- 짧으면 1개 chunk
+
+sourceType:
+- worker_instruction
+
+--------------------------------------------------
+6. document chunk 정책
+--------------------------------------------------
+
+문서 chunk:
+- txt/md 우선
+- pdf/docx 등은 후속 단계
+- 500~800 tokenEstimate 기준
+- overlap은 1차에서 제외하거나 50~100 token만 설계
+
+--------------------------------------------------
+7. manual_note chunk 정책
+--------------------------------------------------
+
+수동 메모:
+- 하나의 note를 1개 chunk로 시작
+- 긴 note는 문단 단위 분리
+
+--------------------------------------------------
+8. 생성 시점 설계
+--------------------------------------------------
+
+1차 권장:
+- 수동 인덱싱 버튼으로 chunk 생성
+- 앱 시작 시 자동 생성 금지
+
+후속:
+- 백그라운드 인덱싱
+- 변경 감지 후 STALE 처리
+- 자동 재인덱싱
+
+--------------------------------------------------
+9. index_metadata 반영 정책
+--------------------------------------------------
+
+chunk 생성 후:
+- chunk 파일 저장
+- RagIndexChunkEntry 추가
+- RagIndexSourceEntry 갱신
+- chunkCount/sourceCount 갱신
+- updatedAt 갱신
+- embeddingStatus = NONE
+
+중복 처리:
+- 같은 sourceId 재인덱싱 시 기존 source chunk를 삭제 후 재생성
+또는
+- STALE 표시 후 새 chunk 생성
+
+1차 권장:
+- 같은 sourceId 재인덱싱 시 해당 sourceType/sourceId의 기존 chunk metadata와 파일 삭제 후 재생성
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계는 너무 크게 잡지 않는다.
+
+권장 1차:
+- ConversationChunkIndexer 설계 기반 구현
+- 선택한 세션 1개만 messages.jsonl → chunk 생성
+- chunk 파일 저장
+- index_metadata 갱신
+- UI는 저장소 관리 또는 메모리/RAG에 “선택 세션 인덱싱” 버튼 정도만 추가
+
+이번 설계에서는 이것을 확정할지 판단한다.
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 단계 금지:
+❌ 코드 구현
+❌ embedding 생성
+❌ vector DB
+❌ 검색 기능
+❌ 전체 세션 자동 인덱싱
+❌ 앱 시작 시 chunk 생성
+❌ 외부 라이브러리 도입
+❌ PDF/DOCX 파싱
+
+--------------------------------------------------
+완료 기준:
+- sourceType별 chunk 정책 확정
+- conversation chunk 기준 확정
+- 생성 시점 확정
+- index_metadata 반영 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- 1차 chunk 생성은 앱 시작 자동 생성이 아니라 수동 인덱싱으로 확정
+- 1차 구현 대상은 선택한 대화 세션 1개의 messages.jsonl → conversation chunk 생성으로 제한
+- embedding/vector/search는 아직 구현하지 않음
+- chunk 생성 후 index_metadata.json에 source/chunk 참조만 반영
+- 같은 source 재인덱싱 시 기존 chunk 파일/metadata를 삭제 후 재생성
+
+[sourceType별 정책]
+- conversation: messages.jsonl의 USER/ASSISTANT 메시지를 묶어 chunk 생성
+- conversation_summary: summary.md가 있을 때 전체 또는 섹션 단위로 chunk 생성
+- worker_instruction: worker_{workerId}.md를 기준으로 짧으면 1개, 길면 섹션 단위 chunk 생성
+- document: rag/documents/의 txt/md 문서를 500~800 tokenEstimate 기준으로 chunk 생성
+- manual_note: note 1개를 기본 1 chunk로 만들고, 길면 문단 단위 분리
+
+[conversation chunk 정책]
+- 묶음 기준: 메시지 3~10개 단위 또는 USER/ASSISTANT 흐름 기준
+- tokenEstimate: 500~800 tokens 목표, 1차는 문자 수 기반 대략 계산
+- USER/ASSISTANT 처리: 가능한 한 USER 질문과 ASSISTANT 답변 쌍이 끊기지 않게 묶음
+- 생성 시점: 사용자가 “선택 세션 인덱싱”을 실행할 때만 생성
+
+[index_metadata 반영]
+- chunk 파일: rag/chunks/conversation_{sessionId}/chunk_{chunkId}.json 저장
+- RagIndexChunkEntry: chunkId, sourceType, sourceId, filePath, textPreview, embeddingStatus, updatedAt 추가
+- RagIndexSourceEntry: sourceType, sourceId, title, chunkCount, indexedAt, status 갱신
+- 재인덱싱 정책: 같은 sourceType/sourceId 기존 chunk 파일과 metadata를 삭제 후 재생성
+
+[1차 구현 범위]
+- ConversationChunkIndexer 추가
+- 선택 세션 1개 messages.jsonl 읽기
+- conversation chunk 파일 생성
+- index_metadata.json sources/chunks 갱신
+- 저장소 관리 또는 메모리/RAG에 “선택 세션 인덱싱” 버튼 추가
+
+[보류 항목]
+- embedding 생성
+- vector DB / vector index
+- RAG 검색 기능
+- 전체 세션 자동 인덱싱
+- PDF/DOCX 문서 파싱
+
+[다음 작업]
+ConversationChunkIndexer 1차 구현
+
+==============================
 [2026-05-01 22:40] RagIndexStore 1차 구현
 ==============================
 
