@@ -384,18 +384,24 @@ class ConversationViewModel(
         }
 
         val fallbackText = if (ragContext.fallback) {
-            val reasonText = ragContext.fallbackReason?.let { reason -> " ($reason)" }.orEmpty()
-            " / fallback=true$reasonText"
+            val reasonText = ragContext.fallbackReason?.let { reason -> " · $reason" }.orEmpty()
+            " · fallback$reasonText"
         } else {
-            " / fallback=false"
+            ""
         }
 
-        return "RAG 검색: ON / 결과 ${ragContext.results.size}개 / 사용 chunk ${ragContext.results.size}개 / maxContextChars ${ragContext.maxContextChars}$fallbackText"
+        return "RAG 검색: ON · 결과 ${ragContext.results.size}개$fallbackText"
     }
 
     private fun buildRagTraceText(ragContext: RagContext): String {
         if (!ragContext.enabled) {
-            return "RAG: OFF"
+            return buildString {
+                appendLine("RAG: OFF")
+                appendLine("resultCount: 0")
+                appendLine("usedChunkCount: 0")
+                appendLine("maxContextChars: ${ragContext.maxContextChars}")
+                appendLine("fallback: false")
+            }.trim()
         }
 
         return buildString {
@@ -415,6 +421,11 @@ class ConversationViewModel(
                 ragContext.results.forEachIndexed { index, result ->
                     appendLine("${index + 1}. ${result.title} / score=${result.score} / ${result.filePath}")
                 }
+            }
+            if (ragContext.contextText.isNotBlank()) {
+                appendLine("[RAG_CONTEXT_BEGIN]")
+                appendLine(ragContext.contextText)
+                appendLine("[RAG_CONTEXT_END]")
             }
         }.trim()
     }

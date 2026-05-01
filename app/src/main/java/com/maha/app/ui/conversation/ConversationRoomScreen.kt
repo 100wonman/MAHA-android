@@ -468,12 +468,15 @@ private fun ConversationRunSummaryPanelReadable(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var isCollapsed by rememberSaveable(run.runId) { mutableStateOf(true) }
-    val traceText = traceBlocks
+    val rawTraceText = traceBlocks
         .mapNotNull { block -> block.content.takeIf { it.isNotBlank() } }
         .joinToString(separator = "\n\n")
+    val ragInfo = parseRagRunInfo(rawTraceText)
+    val executionTraceText = cleanExecutionTraceText(rawTraceText)
 
     val summaryCopyText = buildRunSummaryCopyText(run)
-    val traceCopyText = traceText.ifBlank { "실행과정 없음" }
+    val ragCopyText = buildRagRunCopyText(ragInfo)
+    val traceCopyText = executionTraceText.ifBlank { "실행과정 없음" }
     val workerCopyTexts = run.workerResults.mapIndexed { index, worker ->
         buildWorkerCopyText(index, worker)
     }
@@ -481,10 +484,21 @@ private fun ConversationRunSummaryPanelReadable(
     val copyText = buildString {
         appendLine(summaryCopyText)
 
-        if (traceText.isNotBlank()) {
+        if (ragInfo.present) {
+            appendLine()
+            appendLine(ragCopyText)
+        }
+
+        if (executionTraceText.isNotBlank()) {
             appendLine()
             appendLine("[실행과정]")
-            appendLine(traceText)
+            appendLine(executionTraceText)
+        }
+
+        if (ragInfo.contextText.isNotBlank()) {
+            appendLine()
+            appendLine("[참조 컨텍스트]")
+            appendLine(ragInfo.contextText)
         }
 
         if (workerCopyTexts.isNotEmpty()) {
@@ -574,12 +588,21 @@ private fun ConversationRunSummaryPanelReadable(
                     RunSummarySection(run = run)
                 }
 
-                if (traceText.isNotBlank()) {
+                if (ragInfo.present) {
+                    RunFlatSection(
+                        title = "RAG",
+                        copyText = ragCopyText
+                    ) {
+                        RunRagSection(ragInfo = ragInfo)
+                    }
+                }
+
+                if (executionTraceText.isNotBlank()) {
                     RunFlatSection(
                         title = "실행과정",
                         copyText = traceCopyText
                     ) {
-                        RunTraceSection(traceText = traceText)
+                        RunTraceSection(traceText = executionTraceText)
                     }
                 }
 
@@ -595,10 +618,19 @@ private fun ConversationRunSummaryPanelReadable(
                         )
                     }
                 }
+
+                if (ragInfo.contextText.isNotBlank()) {
+                    RunCollapsibleFlatTextSection(
+                        title = "참조 컨텍스트 보기",
+                        copyText = ragInfo.contextText,
+                        text = ragInfo.contextText
+                    )
+                }
             }
         }
     }
 }
+
 
 
 private fun displayRunForConversation(
@@ -652,6 +684,261 @@ private fun buildWorkerCopyText(
         appendLine("summary: ${worker.outputSummary}")
         appendLine("rawOutput: ${worker.rawOutput}")
     }.trim()
+}
+
+
+private data class RagRunDisplayInfo(
+    val present: Boolean,
+    val enabled: Boolean,
+    val query: String,
+    val resultCount: Int,
+    val usedChunkCount: Int,
+    val maxContextChars: Int,
+    val fallback: Boolean,
+    val fallbackReason: String?,
+    val contextText: String
+)
+
+private fun parseRagRunInfo(traceText: String): RagRunDisplayInfo {
+    val contextText = extractBetweenMarkers(
+        text = traceText,
+        startMarker = "[RAG_CONTEXT_BEGIN]",
+        endMarker = "[RAG_CONTEXT_END]"
+    )
+    val withoutContext = removeBetweenMarkers(
+        text = traceText,
+        startMarker = "[RAG_CONTEXT_BEGIN]",
+        endMarker = "[RAG_CONTEXT_END]"
+    )
+    val lines = withoutContext.lines().map { line -> line.trim() }
+    val ragLine = lines.firstOrNull { line -> line.startsWith("RAG:", ignoreCase = true) }
+    val present = ragLine != null
+    val enabled = ragLine?.substringAfter(":", "")?.trim()?.equals("ON", ignoreCase = true) == true
+
+    return RagRunDisplayInfo(
+        present = present,
+        enabled = enabled,
+        query = findTraceValue(lines, "query"),
+        resultCount = findTraceValue(lines, "resultCount").toIntOrNull() ?: 0,
+        usedChunkCount = findTraceValue(lines, "usedChunkCount").toIntOrNull() ?: 0,
+        maxContextChars = findTraceValue(lines, "maxContextChars").toIntOrNull() ?: 0,
+        fallback = findTraceValue(lines, "fallback").equals("true", ignoreCase = true),
+        fallbackReason = findTraceValue(lines, "fallbackReason").ifBlank { null },
+        contextText = contextText.trim()
+    )
+}
+
+private fun findTraceValue(
+    lines: List<String>,
+    key: String
+): String {
+    return lines.firstOrNull { line -> line.startsWith("$key:", ignoreCase = true) }
+        ?.substringAfter(":")
+        ?.trim()
+        .orEmpty()
+}
+
+private fun cleanExecutionTraceText(traceText: String): String {
+    val withoutContext = removeBetweenMarkers(
+        text = traceText,
+        startMarker = "[RAG_CONTEXT_BEGIN]",
+        endMarker = "[RAG_CONTEXT_END]"
+    )
+
+    return withoutContext.lines()
+        .filterNot { line ->
+            val trimmed = line.trim()
+            trimmed.startsWith("RAG:", ignoreCase = true) ||
+                    trimmed.startsWith("query:", ignoreCase = true) ||
+                    trimmed.startsWith("resultCount:", ignoreCase = true) ||
+                    trimmed.startsWith("usedChunkCount:", ignoreCase = true) ||
+                    trimmed.startsWith("totalTokenEstimate:", ignoreCase = true) ||
+                    trimmed.startsWith("maxResults:", ignoreCase = true) ||
+                    trimmed.startsWith("maxContextChars:", ignoreCase = true) ||
+                    trimmed.startsWith("fallback:", ignoreCase = true) ||
+                    trimmed.startsWith("fallbackReason:", ignoreCase = true) ||
+                    trimmed == "results:" ||
+                    Regex("^\\d+\\. .+").matches(trimmed)
+        }
+        .joinToString("\n")
+        .trim()
+}
+
+private fun extractBetweenMarkers(
+    text: String,
+    startMarker: String,
+    endMarker: String
+): String {
+    val startIndex = text.indexOf(startMarker)
+    if (startIndex == -1) return ""
+    val contentStart = startIndex + startMarker.length
+    val endIndex = text.indexOf(endMarker, contentStart)
+    if (endIndex == -1) return text.substring(contentStart).trim()
+    return text.substring(contentStart, endIndex).trim()
+}
+
+private fun removeBetweenMarkers(
+    text: String,
+    startMarker: String,
+    endMarker: String
+): String {
+    val startIndex = text.indexOf(startMarker)
+    if (startIndex == -1) return text
+    val contentStart = startIndex + startMarker.length
+    val endIndex = text.indexOf(endMarker, contentStart)
+    val removeEnd = if (endIndex == -1) text.length else endIndex + endMarker.length
+    return (text.substring(0, startIndex) + text.substring(removeEnd)).trim()
+}
+
+private fun buildRagRunCopyText(ragInfo: RagRunDisplayInfo): String {
+    return buildString {
+        appendLine("[RAG]")
+        appendLine("status: ${if (ragInfo.enabled) "ON" else "OFF"}")
+        if (ragInfo.query.isNotBlank()) {
+            appendLine("query: ${ragInfo.query}")
+        }
+        appendLine("resultCount: ${ragInfo.resultCount}")
+        appendLine("usedChunkCount: ${ragInfo.usedChunkCount}")
+        appendLine("maxContextChars: ${ragInfo.maxContextChars}")
+        appendLine("fallback: ${ragInfo.fallback}")
+        appendLine("fallbackReason: ${ragInfo.fallbackReason ?: "없음"}")
+    }.trim()
+}
+
+@Composable
+private fun RunRagSection(ragInfo: RagRunDisplayInfo) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "상태: ${if (ragInfo.enabled) "ON" else "OFF"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        if (ragInfo.query.isNotBlank()) {
+            Text(
+                text = "검색어: ${ragInfo.query}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+            )
+        }
+
+        Text(
+            text = "검색 결과: ${ragInfo.resultCount}개 · 사용 chunk: ${ragInfo.usedChunkCount}개",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+        )
+
+        Text(
+            text = "fallback: ${ragInfo.fallback} · fallbackReason: ${ragInfo.fallbackReason ?: "없음"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (ragInfo.fallback) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+            }
+        )
+
+        Text(
+            text = "maxContextChars: ${ragInfo.maxContextChars}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+        )
+    }
+}
+
+@Composable
+private fun RunCollapsibleFlatTextSection(
+    title: String,
+    copyText: String,
+    text: String
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var isCollapsed by rememberSaveable(title, text) { mutableStateOf(true) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(copyText))
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Text(
+                        text = "⧉",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        isCollapsed = !isCollapsed
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Text(
+                        text = if (isCollapsed) "⌄" else "⌃",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+        )
+
+        if (!isCollapsed) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp)
+                    .verticalScroll(rememberScrollState())
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
+                        softWrap = false
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
