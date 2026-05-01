@@ -1,4 +1,262 @@
 ==============================
+[2026-05-02 00:33] RagContextBuilder 및 대화방 RAG 연결 1차 구현
+==============================
+
+[작업]
+- RagContext data class 추가
+- RagContextBuilder 추가
+- searchEnabled=true일 때 RagKeywordSearchEngine 연결
+- 검색 결과 기반 contextText 생성
+- Dummy 응답에 RAG 사용 여부/결과 수 표시
+- 실행정보 블록에 RAG 결과 수/fallback 여부 표시
+
+[구현 모드]
+
+작업명:
+RagContextBuilder 및 대화방 RAG 연결 1차 구현
+
+목표:
+- 대화방 빠른 설정의 검색 ON/OFF를 RAG 사용 여부와 연결한다.
+- searchEnabled=true일 때만 RagKeywordSearchEngine으로 keyword 검색을 수행한다.
+- 검색 결과를 RagContext로 구성한다.
+- 실제 LLM 연결 없이 Dummy 응답과 실행정보 블록에 RAG 사용 여부를 표시한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ RagContext data class 추가
+✔ RagContextBuilder 추가
+✔ searchEnabled=true일 때 keyword RAG 검색 실행
+✔ searchEnabled=false일 때 기존 흐름 유지
+✔ Dummy 응답에 RAG 사용 여부 / 결과 수 표시
+✔ 실행정보 블록에 RAG 결과 수 / fallback 여부 표시
+
+이번 단계에서 금지:
+
+❌ 실제 LLM API 연결
+❌ Worker 실행 로직 대규모 변경
+❌ embedding/vector 검색
+❌ SAF 백업 폴더 검색
+❌ RAG context 전체를 답변 본문에 직접 노출
+❌ AppRoot 대규모 변경
+
+--------------------------------------------------
+2. RagContext 구조
+--------------------------------------------------
+
+신규 data class 권장:
+
+RagContext:
+- query: String
+- enabled: Boolean
+- results: List<RagSearchResult>
+- contextText: String
+- totalTokenEstimate: Int
+- maxResults: Int
+- maxContextChars: Int
+- createdAt: Long
+- fallback: Boolean
+- fallbackReason: String?
+
+기본값:
+- maxResults = 3
+- maxContextChars = 4000
+- maxLoadedChunks = 50
+- minScore = 1
+
+--------------------------------------------------
+3. RagContextBuilder
+--------------------------------------------------
+
+역할:
+- query 입력
+- searchEnabled 확인
+- RagKeywordSearchEngine.search() 호출
+- 결과 필터링
+- contextText 생성
+- fallback 상태 판단
+
+필수 함수 예:
+
+build(
+    query: String,
+    enabled: Boolean,
+    maxResults: Int = 3,
+    maxContextChars: Int = 4000
+): RagContext
+
+동작:
+
+검색 OFF:
+- enabled=false
+- results=[]
+- contextText=""
+- fallback=false
+
+검색 ON + 결과 있음:
+- enabled=true
+- results=검색 결과
+- contextText 생성
+- fallback=false
+
+검색 ON + 결과 없음:
+- enabled=true
+- results=[]
+- contextText=""
+- fallback=true
+- fallbackReason="NO_RESULT"
+
+검색 실패:
+- fallback=true
+- fallbackReason="SEARCH_FAILED"
+
+--------------------------------------------------
+4. contextText 형식
+--------------------------------------------------
+
+형식:
+
+[RAG_CONTEXT_1]
+sourceType: conversation
+title: ...
+score: ...
+text:
+...
+
+[RAG_CONTEXT_2]
+...
+
+주의:
+- contextText는 maxContextChars를 초과하지 않게 자른다.
+- chunk 전체 text를 무제한 삽입하지 않는다.
+- 1차에서는 matchedTextSnippet 또는 검색 결과 snippet 기반 사용 가능.
+- chunk 전체 로드는 RagKeywordSearchEngine의 기존 정책을 따른다.
+
+--------------------------------------------------
+5. 대화방 send 흐름 연결
+--------------------------------------------------
+
+대상:
+- ConversationViewModel 또는 현재 메시지 전송 처리부
+
+정책:
+
+searchEnabled=false:
+- 기존 Dummy 응답 그대로 유지
+
+searchEnabled=true:
+- RagContextBuilder.build(input, true)
+- Dummy 응답에 아래 정보 표시:
+  - RAG 사용됨
+  - 검색 결과 수
+  - fallback 여부
+
+예시:
+“RAG 검색: ON / 결과 2개 / fallback=false”
+
+주의:
+- 답변 본문에 contextText 전체를 노출하지 말 것.
+- 실제 LLM 요청 생성은 아직 하지 말 것.
+
+--------------------------------------------------
+6. 실행정보 블록 표시
+--------------------------------------------------
+
+실행정보 블록에 추가 가능한 정보:
+
+- RAG: ON/OFF
+- RAG 결과 수
+- 사용 chunk 수
+- maxContextChars
+- fallback 여부
+- fallbackReason
+
+주의:
+- 기존 Worker 3개 표시 유지
+- 기존 실행정보 섹션 구조 유지
+- 실행정보 블록 UI 대규모 변경 금지
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 검색 OFF 시 기존 응답 흐름
+- 빠른 설정 검색 토글
+- 메시지 저장/복구
+- SAF 백업/복원
+- RAG 검색 테스트 UI
+- chunk 인덱싱
+- OutputBlock 표시
+- 자동 스크롤
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 모델 호출 금지
+❌ Worker/ExecutionEngine 대규모 수정 금지
+❌ ConversationFileStore 수정 금지
+❌ SAF 로직 수정 금지
+❌ embedding/vector 구현 금지
+❌ 대화방 UI 대규모 변경 금지
+
+--------------------------------------------------
+완료 기준:
+- 검색 OFF 시 기존 Dummy 응답 유지
+- 검색 ON 시 RagKeywordSearchEngine 호출
+- 검색 결과가 있으면 RagContext 생성
+- 검색 결과 없음/실패 시 fallback 처리
+- Dummy 응답에 RAG 사용 여부/결과 수 표시
+- 실행정보 블록에 RAG 관련 정보 표시
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- RagContext data class 추가
+- RagContextBuilder 추가
+- searchEnabled=true일 때 RagKeywordSearchEngine으로 keyword 검색 실행
+- Dummy 응답 본문에 RAG ON/OFF, 결과 수, fallback 여부 표시
+- 실행정보 블록의 실행과정/Worker rawOutput에 RAG 결과 수와 fallback 여부 표시
+
+[RAG 연결 테스트]
+- 검색 OFF 기존 흐름: 빠른 설정 검색 OFF → 메시지 전송 → 기존 더미 응답 + RAG 검색 OFF 표시 확인 <-- 확인됨
+- 검색 ON keyword 검색: 빠른 설정 검색 ON → 인덱싱된 단어 입력 → RAG 검색 ON 결과 수 확인 <-- 확인됨
+- RagContext 생성: 검색 ON 응답에서 결과 수/사용 chunk/maxContextChars 표시 확인 <-- 확인됨
+- 결과 없음 fallback: 없는 단어 입력 → fallback=true 또는 NO_RESULT 표시 확인 <-- 확인됨
+- Dummy 응답 RAG 표시: ASSISTANT 본문에 RAG ON/OFF와 결과 수 표시 확인 <-- 확인됨
+- 실행정보 RAG 표시: 실행정보 펼침 → 실행과정 또는 Worker 정보에 RAG resultCount/fallback 표시 확인 <-- 확인됨
+
+[기존 기능 영향]
+- 메시지 저장/복구: 메시지 전송 → 앱 재시작 → 대화 유지 확인 <-- 정상
+- RAG 검색 테스트 UI: 저장소 관리 → RAG 검색 테스트 기존 동작 확인 <-- 정상
+- chunk 인덱싱: 선택 세션 인덱싱 → chunk 생성 확인 <-- 정상
+- SAF 백업/복원: 기존 백업/복원 버튼 동작 확인 <-- 정상
+- 대화방 기능: 메시지 전송/OutputBlock/자동 스크롤 확인 <-- 정상
+
+[문제]
+- 없음
+
+[변경 파일]
+- RagContext.kt
+- RagContextBuilder.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+[다음 작업]
+대화방 RAG 연결 UX 보정 또는 실제 모델 연결 준비
+
+==============================
 [2026-05-02 00:20] 대화방 RAG 연결 구조 설계
 ==============================
 

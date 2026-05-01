@@ -14,6 +14,11 @@ class ConversationViewModel(
     private val storageManager = MahaStorageManager(application.applicationContext)
     private val ragStorageManager = RagStorageManager(application.applicationContext)
     private val ragIndexStore = RagIndexStore(ragStorageManager)
+    private val ragKeywordSearchEngine = RagKeywordSearchEngine(
+        ragStorageManager = ragStorageManager,
+        ragIndexStore = ragIndexStore
+    )
+    private val ragContextBuilder = RagContextBuilder(ragKeywordSearchEngine)
     private val conversationFileStore = ConversationFileStore(
         context = application.applicationContext,
         storageManager = storageManager
@@ -226,6 +231,12 @@ class ConversationViewModel(
         val nowText = getCurrentTimeText()
         val currentTimeMillis = System.currentTimeMillis()
         val runId = "conversation_run_$currentTimeMillis"
+        val ragContext = ragContextBuilder.build(
+            query = textToSend,
+            enabled = searchEnabled
+        )
+        val ragStatusText = buildRagStatusText(ragContext)
+        val ragTraceText = buildRagTraceText(ragContext)
 
         val userMessage = ConversationMessage(
             messageId = "message_user_$currentTimeMillis",
@@ -254,39 +265,52 @@ class ConversationViewModel(
                     blockId = "block_assistant_$currentTimeMillis",
                     type = ConversationOutputBlockType.TEXT_BLOCK,
                     title = "더미 응답",
-                    content = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.",
+                    content = buildString {
+                        appendLine("더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.")
+                        appendLine()
+                        append(ragStatusText)
+                    },
                     collapsed = false
                 ),
                 ConversationOutputBlock(
                     blockId = "block_trace_$currentTimeMillis",
                     type = ConversationOutputBlockType.TRACE_BLOCK,
                     title = "실행 과정",
-                    content = "입력 수신 → 더미 응답 생성 → 화면 갱신",
+                    content = buildString {
+                        appendLine("입력 수신 → RAG 확인 → 더미 응답 생성 → 화면 갱신")
+                        append(ragTraceText)
+                    },
                     collapsed = true
                 )
             ),
             linkedRunId = runId
         )
 
-        val latestRun = createDummyConversationRun(targetSession.sessionId).copy(
+        val baseRun = createDummyConversationRun(targetSession.sessionId)
+        val latestRun = baseRun.copy(
             runId = runId,
             userInput = textToSend,
             totalLatencySec = 1.1,
             totalRetryCount = 0,
-            workerResults = listOf(
-                ConversationWorkerResult(
-                    workerName = "Dummy Conversation Worker",
-                    providerName = "DUMMY",
-                    modelName = "dummy",
-                    status = "COMPLETED",
-                    latencySec = 1.1,
-                    retryCount = 0,
-                    tokensPerSecond = null,
-                    errorType = "",
-                    outputSummary = "더미 응답 생성 완료",
-                    rawOutput = "Dummy response"
-                )
-            )
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                if (index == 0) {
+                    worker.copy(
+                        outputSummary = buildString {
+                            append(worker.outputSummary)
+                            append(" / ")
+                            append(ragStatusText)
+                        },
+                        rawOutput = buildString {
+                            appendLine(worker.rawOutput)
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(ragTraceText)
+                        }.trim()
+                    )
+                } else {
+                    worker
+                }
+            }
         )
 
         val updatedSession = targetSession.copy(
@@ -352,6 +376,47 @@ class ConversationViewModel(
             session = updatedSession,
             isFavorite = favoriteSessionIds.contains(targetSessionId)
         )
+    }
+
+    private fun buildRagStatusText(ragContext: RagContext): String {
+        if (!ragContext.enabled) {
+            return "RAG 검색: OFF"
+        }
+
+        val fallbackText = if (ragContext.fallback) {
+            val reasonText = ragContext.fallbackReason?.let { reason -> " ($reason)" }.orEmpty()
+            " / fallback=true$reasonText"
+        } else {
+            " / fallback=false"
+        }
+
+        return "RAG 검색: ON / 결과 ${ragContext.results.size}개 / 사용 chunk ${ragContext.results.size}개 / maxContextChars ${ragContext.maxContextChars}$fallbackText"
+    }
+
+    private fun buildRagTraceText(ragContext: RagContext): String {
+        if (!ragContext.enabled) {
+            return "RAG: OFF"
+        }
+
+        return buildString {
+            appendLine("RAG: ON")
+            appendLine("query: ${ragContext.query}")
+            appendLine("resultCount: ${ragContext.results.size}")
+            appendLine("usedChunkCount: ${ragContext.results.size}")
+            appendLine("totalTokenEstimate: ${ragContext.totalTokenEstimate}")
+            appendLine("maxResults: ${ragContext.maxResults}")
+            appendLine("maxContextChars: ${ragContext.maxContextChars}")
+            appendLine("fallback: ${ragContext.fallback}")
+            if (ragContext.fallbackReason != null) {
+                appendLine("fallbackReason: ${ragContext.fallbackReason}")
+            }
+            if (ragContext.results.isNotEmpty()) {
+                appendLine("results:")
+                ragContext.results.forEachIndexed { index, result ->
+                    appendLine("${index + 1}. ${result.title} / score=${result.score} / ${result.filePath}")
+                }
+            }
+        }.trim()
     }
 
     private fun loadInitialSessions() {
