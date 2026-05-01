@@ -67,7 +67,7 @@ fun StorageManagementScreen(
             ragIndexStore = ragIndexStore
         )
     }
-    val ragSearchEngine = remember {
+    val ragKeywordSearchEngine = remember {
         RagKeywordSearchEngine(
             ragStorageManager = ragStorageManager,
             ragIndexStore = ragIndexStore
@@ -85,7 +85,9 @@ fun StorageManagementScreen(
     var showRestoreDialog by remember { mutableStateOf(false) }
     var ragSearchQuery by remember { mutableStateOf("") }
     var ragSearchResults by remember { mutableStateOf<List<RagSearchResult>>(emptyList()) }
-    var ragSearchMessage by remember { mutableStateOf("인덱싱된 chunk가 있으면 keyword 검색을 실행할 수 있습니다.") }
+    var ragSearchMessage by remember { mutableStateOf<String?>(null) }
+    var expandedRagResultIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedRagDetail by remember { mutableStateOf<RagSearchDetailState?>(null) }
 
     fun refreshSnapshot() {
         snapshot = loadAppSpecificStorageSnapshot(context)
@@ -125,23 +127,6 @@ fun StorageManagementScreen(
         }
     }
 
-    fun runRagKeywordSearch() {
-        val query = ragSearchQuery.trim()
-        if (query.isBlank()) {
-            ragSearchResults = emptyList()
-            ragSearchMessage = "검색어를 입력하세요."
-            return
-        }
-
-        val results = ragSearchEngine.search(query = query, topK = 10, maxLoadedChunks = 50)
-        ragSearchResults = results
-        ragSearchMessage = if (results.isEmpty()) {
-            "검색 결과가 없습니다."
-        } else {
-            "검색 결과 ${results.size}개"
-        }
-    }
-
     LaunchedEffect(Unit) {
         refreshSnapshot()
     }
@@ -169,14 +154,42 @@ fun StorageManagementScreen(
 
         RagSearchTestCard(
             query = ragSearchQuery,
-            onQueryChange = { ragSearchQuery = it },
-            resultMessage = ragSearchMessage,
             results = ragSearchResults,
-            onSearch = ::runRagKeywordSearch,
+            message = ragSearchMessage,
+            expandedResultIds = expandedRagResultIds,
+            onQueryChange = { ragSearchQuery = it },
+            onSearch = {
+                val trimmedQuery = ragSearchQuery.trim()
+                if (trimmedQuery.isBlank()) {
+                    ragSearchResults = emptyList()
+                    ragSearchMessage = "검색어를 입력하세요."
+                } else {
+                    val results = ragKeywordSearchEngine.search(trimmedQuery)
+                    ragSearchResults = results
+                    ragSearchMessage = if (results.isEmpty()) "검색 결과가 없습니다." else "검색 결과 ${results.size}개"
+                }
+            },
             onClear = {
                 ragSearchQuery = ""
                 ragSearchResults = emptyList()
-                ragSearchMessage = "인덱싱된 chunk가 있으면 keyword 검색을 실행할 수 있습니다."
+                ragSearchMessage = null
+                expandedRagResultIds = emptySet()
+            },
+            onToggleExpanded = { resultId ->
+                expandedRagResultIds = if (expandedRagResultIds.contains(resultId)) {
+                    expandedRagResultIds - resultId
+                } else {
+                    expandedRagResultIds + resultId
+                }
+            },
+            onCopySnippet = { result ->
+                clipboardManager.setText(AnnotatedString(result.matchedTextSnippet.ifBlank { result.textPreview }))
+            },
+            onOpenDetail = { result ->
+                selectedRagDetail = RagSearchDetailState(
+                    result = result,
+                    chunkText = loadRagChunkTextSafely(ragStorageManager, result.filePath)
+                )
             }
         )
 
@@ -370,6 +383,60 @@ fun StorageManagementScreen(
         )
     }
 
+
+    selectedRagDetail?.let { detail ->
+        val copyText = detail.chunkText.ifBlank { detail.result.matchedTextSnippet.ifBlank { detail.result.textPreview } }
+        AlertDialog(
+            onDismissRequest = { selectedRagDetail = null },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text = detail.result.title.ifBlank { "RAG 검색 결과" })
+                    Text(
+                        text = "${detail.result.sourceType} · score ${detail.result.score}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(460.dp)
+                        .background(Color(0xFF050A0F))
+                        .padding(12.dp)
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = buildString {
+                                append("chunkId: ${detail.result.chunkId}\n")
+                                append("sourceId: ${detail.result.sourceId}\n")
+                                append("filePath: ${detail.result.filePath}\n\n")
+                                append(copyText.ifBlank { "내용이 없습니다." })
+                            },
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            color = Color(0xFFD0D3DA),
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { clipboardManager.setText(AnnotatedString(copyText)) }
+                ) {
+                    Text(text = "전체 복사")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedRagDetail = null }) {
+                    Text(text = "닫기")
+                }
+            }
+        )
+    }
+
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -403,11 +470,15 @@ fun StorageManagementScreen(
 @Composable
 private fun RagSearchTestCard(
     query: String,
-    onQueryChange: (String) -> Unit,
-    resultMessage: String,
     results: List<RagSearchResult>,
+    message: String?,
+    expandedResultIds: Set<String>,
+    onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    onToggleExpanded: (String) -> Unit,
+    onCopySnippet: (RagSearchResult) -> Unit,
+    onOpenDetail: (RagSearchResult) -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
@@ -446,53 +517,97 @@ private fun RagSearchTestCard(
                 ) {
                     Text(text = "검색")
                 }
-                TextButton(
+                Button(
                     onClick = onClear,
+                    enabled = query.isNotBlank() || results.isNotEmpty(),
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(text = "초기화")
                 }
             }
-            Text(
-                text = resultMessage,
-                color = Color(0xFFD0D3DA),
-                style = MaterialTheme.typography.bodySmall
-            )
+            message?.let {
+                Text(
+                    text = it,
+                    color = Color(0xFFD0D3DA),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             results.forEach { result ->
-                RagSearchResultCard(result = result)
+                RagSearchResultCard(
+                    result = result,
+                    expanded = expandedResultIds.contains(result.chunkId),
+                    onToggleExpanded = { onToggleExpanded(result.chunkId) },
+                    onCopySnippet = { onCopySnippet(result) },
+                    onOpenDetail = { onOpenDetail(result) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RagSearchResultCard(result: RagSearchResult) {
+private fun RagSearchResultCard(
+    result: RagSearchResult,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onCopySnippet: () -> Unit,
+    onOpenDetail: () -> Unit
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF050A0F)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = result.title.ifBlank { result.sourceId },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            StorageInfoRow(label = "sourceType", value = result.sourceType)
-            StorageInfoRow(label = "score", value = result.score.toString())
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = result.title.ifBlank { "제목 없음" },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${result.sourceType} · score ${result.score}",
+                        color = Color(0xFFB8BCC6),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                TextButton(onClick = onCopySnippet) {
+                    Text(text = "복사")
+                }
+            }
             StorageInfoRow(label = "filePath", value = result.filePath)
-            Text(
-                text = result.matchedTextSnippet.ifBlank { result.textPreview },
-                color = Color(0xFFD0D3DA),
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
+            SelectionContainer {
+                Text(
+                    text = result.matchedTextSnippet.ifBlank { result.textPreview },
+                    color = Color(0xFFD0D3DA),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = if (expanded) Int.MAX_VALUE else 4,
+                    overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(
+                    onClick = onToggleExpanded,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = if (expanded) "접기" else "펼치기")
+                }
+                TextButton(
+                    onClick = onOpenDetail,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "전체 보기")
+                }
+            }
         }
     }
 }
@@ -773,6 +888,29 @@ private fun formatBytes(bytes: Long): String {
 
     return "${DecimalFormat("#,##0.#").format(value)} ${units[unitIndex]}"
 }
+
+private fun loadRagChunkTextSafely(
+    ragStorageManager: RagStorageManager,
+    filePath: String
+): String {
+    return runCatching {
+        val mahaRootDir = ragStorageManager.getRagRootDir().parentFile
+            ?: return "RAG 루트 폴더를 찾을 수 없습니다."
+        val chunkFile = File(mahaRootDir, filePath)
+        if (!chunkFile.exists()) return "chunk 파일을 찾을 수 없습니다: $filePath"
+        val json = JSONObject(chunkFile.readText())
+        json.optString("text").ifBlank {
+            json.optString("textPreview")
+        }
+    }.getOrElse { error ->
+        "chunk 파일을 읽을 수 없습니다: ${error.message ?: "알 수 없는 오류"}"
+    }
+}
+
+private data class RagSearchDetailState(
+    val result: RagSearchResult,
+    val chunkText: String
+)
 
 private data class AppSpecificStorageSnapshot(
     val rootPath: String,
