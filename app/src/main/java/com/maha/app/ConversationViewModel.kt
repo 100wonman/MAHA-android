@@ -265,11 +265,7 @@ class ConversationViewModel(
                     blockId = "block_assistant_$currentTimeMillis",
                     type = ConversationOutputBlockType.TEXT_BLOCK,
                     title = "더미 응답",
-                    content = buildString {
-                        appendLine("더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.")
-                        appendLine()
-                        append(ragStatusText)
-                    },
+                    content = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.",
                     collapsed = false
                 ),
                 ConversationOutputBlock(
@@ -384,24 +380,18 @@ class ConversationViewModel(
         }
 
         val fallbackText = if (ragContext.fallback) {
-            val reasonText = ragContext.fallbackReason?.let { reason -> " · $reason" }.orEmpty()
-            " · fallback$reasonText"
+            val reasonText = ragContext.fallbackReason?.let { reason -> " ($reason)" }.orEmpty()
+            " / fallback=true$reasonText"
         } else {
-            ""
+            " / fallback=false"
         }
 
-        return "RAG 검색: ON · 결과 ${ragContext.results.size}개$fallbackText"
+        return "RAG 검색: ON / 결과 ${ragContext.results.size}개 / 사용 chunk ${ragContext.results.size}개 / maxContextChars ${ragContext.maxContextChars}$fallbackText"
     }
 
     private fun buildRagTraceText(ragContext: RagContext): String {
         if (!ragContext.enabled) {
-            return buildString {
-                appendLine("RAG: OFF")
-                appendLine("resultCount: 0")
-                appendLine("usedChunkCount: 0")
-                appendLine("maxContextChars: ${ragContext.maxContextChars}")
-                appendLine("fallback: false")
-            }.trim()
+            return "RAG: OFF"
         }
 
         return buildString {
