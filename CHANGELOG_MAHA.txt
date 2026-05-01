@@ -1,4 +1,269 @@
 ==============================
+[2026-05-01 22:40] RagIndexStore 1차 구현
+==============================
+
+[작업]
+- RagChunk / RagIndexMetadata 모델 추가
+- RagIndexSourceEntry / RagIndexChunkEntry 모델 추가
+- EmbeddingStatus enum 추가
+- RagIndexStore 추가
+- index_metadata.json 읽기/쓰기 구현
+- RagStorageManager와 역할 분리
+
+[구현 모드]
+
+작업명:
+RagIndexStore 1차 구현
+
+목표:
+- RAG chunk / index_metadata 설계 결과를 코드 구조로 반영한다.
+- RagChunk / RagIndexMetadata data class를 추가한다.
+- index_metadata.json 읽기/쓰기 기능을 구현한다.
+- 이번 단계에서는 실제 chunk 생성, 검색, embedding은 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ RagChunk data class
+✔ RagIndexMetadata data class
+✔ RagIndexSourceEntry data class
+✔ RagIndexChunkEntry data class
+✔ EmbeddingStatus enum
+✔ RagIndexStore 추가
+✔ index_metadata.json 읽기
+✔ index_metadata.json 쓰기
+✔ index_metadata.json 없으면 기본값 생성
+
+이번 단계에서 금지:
+
+❌ 실제 chunk 생성
+❌ messages.jsonl chunking
+❌ 검색 기능
+❌ embedding 생성
+❌ vector DB
+❌ RAG UI
+❌ 외부 라이브러리 추가
+
+--------------------------------------------------
+2. 파일 위치
+--------------------------------------------------
+
+권장 신규 파일:
+
+- RagModels.kt
+- RagIndexStore.kt
+
+기존 파일 사용:
+
+- RagStorageManager.kt
+
+--------------------------------------------------
+3. RagChunk 구조
+--------------------------------------------------
+
+필드:
+
+- chunkId: String
+- sourceType: String
+- sourceId: String
+- sessionId: String?
+- workerId: String?
+- documentId: String?
+- title: String
+- text: String
+- textPreview: String
+- tokenEstimate: Int
+- createdAt: Long
+- updatedAt: Long
+- embeddingStatus: EmbeddingStatus
+- embeddingId: String?
+- metadata: Map<String, String>
+
+--------------------------------------------------
+4. EmbeddingStatus
+--------------------------------------------------
+
+enum 값:
+
+- NONE
+- PENDING
+- READY
+- FAILED
+- STALE
+
+--------------------------------------------------
+5. RagIndexMetadata 구조
+--------------------------------------------------
+
+필드:
+
+- indexVersion: Int
+- createdAt: Long
+- updatedAt: Long
+- status: String
+- chunkCount: Int
+- sourceCount: Int
+- embeddingModel: String?
+- embeddingEnabled: Boolean
+- sources: List<RagIndexSourceEntry>
+- chunks: List<RagIndexChunkEntry>
+
+--------------------------------------------------
+6. RagIndexSourceEntry
+--------------------------------------------------
+
+필드:
+
+- sourceType: String
+- sourceId: String
+- title: String
+- filePath: String?
+- chunkCount: Int
+- indexedAt: Long
+- status: String
+
+--------------------------------------------------
+7. RagIndexChunkEntry
+--------------------------------------------------
+
+필드:
+
+- chunkId: String
+- sourceType: String
+- sourceId: String
+- filePath: String
+- textPreview: String
+- embeddingStatus: EmbeddingStatus
+- updatedAt: Long
+
+주의:
+- 전체 text는 index_metadata.json에 저장하지 않는다.
+
+--------------------------------------------------
+8. RagIndexStore 기능
+--------------------------------------------------
+
+필수 함수:
+
+- loadIndexMetadata(): RagIndexMetadata
+- saveIndexMetadata(metadata: RagIndexMetadata)
+- ensureIndexMetadata(): RagIndexMetadata
+- createEmptyMetadata(): RagIndexMetadata
+
+동작:
+- index_metadata.json 없으면 기본 metadata 생성 후 저장
+- 기존 파일 있으면 읽어서 반환
+- 읽기 실패 시 기존 파일을 덮어쓰기 전에 안전하게 empty metadata 반환 또는 오류 로그 처리
+- 불필요하게 매번 덮어쓰기 금지
+
+--------------------------------------------------
+9. JSON 처리
+--------------------------------------------------
+
+기존 프로젝트에 이미 사용하는 JSON 라이브러리가 있으면 그것을 사용한다.
+
+주의:
+- 새 외부 라이브러리 추가 금지
+- 기존 방식이 수동 JSON 생성이면 동일 스타일 유지
+- 빌드 안정성을 우선한다
+
+--------------------------------------------------
+10. 호출 위치
+--------------------------------------------------
+
+RagStorageManager가 이미 rag/index_metadata.json 기본 생성 기능을 가지고 있다면:
+
+- RagIndexStore.ensureIndexMetadata()와 중복되지 않게 정리한다.
+- 권장:
+  - RagStorageManager = 폴더 생성 담당
+  - RagIndexStore = index_metadata.json 읽기/쓰기 담당
+
+앱 시작 시:
+- RagStorageManager.ensureRagDirectories()
+- RagIndexStore.ensureIndexMetadata()
+
+주의:
+- recomposition마다 호출 금지
+- UI에서 직접 호출 금지
+
+--------------------------------------------------
+11. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 세션 저장/복구
+- SAF 백업/복원
+- 저장소 관리 화면
+- 대화방 기능
+- OutputBlock 표시
+- 코드 하이라이트
+- 자동 스크롤
+
+--------------------------------------------------
+12. 금지 사항
+--------------------------------------------------
+
+❌ ConversationViewModel 대규모 변경 금지
+❌ ConversationFileStore 변경 금지
+❌ AppRoot 대규모 변경 금지
+❌ RAG 검색/인덱싱 구현 금지
+❌ chunk 파일 생성 금지
+❌ 외부 라이브러리 추가 금지
+
+--------------------------------------------------
+완료 기준:
+- RagModels.kt 추가
+- RagIndexStore.kt 추가
+- index_metadata.json 읽기/쓰기 가능
+- index_metadata.json 없으면 기본값 생성
+- RagStorageManager와 역할 충돌 없음
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공 / 실패
+
+[핵심 변경]
+- RagChunk / RagIndexMetadata / RagIndexSourceEntry / RagIndexChunkEntry 모델 추가
+- EmbeddingStatus enum 추가
+- RagIndexStore 추가로 index_metadata.json 읽기/쓰기 구현
+- index_metadata.json 없으면 기본 metadata 생성
+- ConversationViewModel init에서 RagStorageManager 폴더 생성 후 RagIndexStore.ensureIndexMetadata() 호출
+
+[RAG Index 테스트]
+- RagChunk 모델: 빌드 성공 시 모델 참조 정상 확인 <-- 빌드 성공으로 정상 확인
+- RagIndexMetadata 모델: 빌드 성공 시 metadata 모델 참조 정상 확인 <-- 빌드 성공으로 정상 확인 <-- 크래쉬 없음 / 정상 확인
+- index_metadata.json 읽기: 앱 실행 후 기존 index_metadata.json이 있으면 크래시 없이 로드 확인 <-- 크래쉬 없음 / 정상 확인
+- index_metadata.json 쓰기: index_metadata.json 없으면 앱 실행 후 자동 생성 확인 <-- 삭제 후 재실행 재생성 / 정상 확인
+- 기본 metadata 생성: Device Explorer에서 MAHA/rag/index_metadata.json 내용 확인 <-- 폴더 확인
+
+[기존 기능 영향]
+- 대화 저장/복구: 기존 세션 열기 → 메시지 전송 → 앱 재시작 확인 <-- 정상
+- SAF 백업/복원: 저장소 관리에서 기존 백업/복원 버튼 동작 확인 <-- 정상
+- 저장소 관리: 저장소 관리 화면 진입 및 세션 목록 표시 확인 <-- 정상
+- 대화방: 메시지 전송/OutputBlock 표시/자동 스크롤 확인 <-- 정상
+
+[문제]
+- 없음
+
+[변경 파일]
+- RagModels.kt
+- RagIndexStore.kt
+- RagStorageManager.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+[다음 작업]
+RAG chunk 생성 구조 설계
+
+==============================
 [2026-05-01 22:27] RAG chunk 및 index metadata 구조 설계
 ==============================
 
