@@ -1,4 +1,283 @@
 ==============================
+[2026-05-02 00:20] 대화방 RAG 연결 구조 설계
+==============================
+
+[작업]
+- 대화방 입력과 RAG keyword 검색 연결 흐름 설계
+- RagContext 구조 설계
+- topK / maxContextChars / fallback 정책 설계
+- 빠른 설정 검색 ON/OFF와 RAG 사용 정책 연결
+- 실행정보 블록 RAG 표시 정책 설계
+- 1차 구현 범위 확정
+
+[설계 모드]
+
+작업명:
+대화방 RAG 연결 구조 설계
+
+목표:
+- 현재 구현된 RAG keyword 검색 결과를 대화방 답변 생성 흐름에 어떻게 연결할지 설계한다.
+- 실제 LLM 연결이나 Worker 실행 로직 수정은 하지 않는다.
+- 이번 단계는 “검색 결과를 컨텍스트 후보로 전달하는 구조”까지만 설계한다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+이미 완료된 기능:
+- RAG 저장소 구조
+- RagIndexStore
+- ConversationChunkIndexer
+- RagKeywordSearchEngine
+- RAG 검색 테스트 UI
+- chunk 전체 보기/복사
+
+현재 대화방:
+- DummyConversationWorker 기반 응답
+- 실제 LLM 호출 없음
+- OutputBlock 기반 출력
+- 실행정보 블록 표시
+
+이번 단계 목표:
+- 대화방 입력 → RAG 검색 → 컨텍스트 후보 → 답변 생성 요청
+  흐름을 설계한다.
+
+--------------------------------------------------
+2. 핵심 원칙
+--------------------------------------------------
+
+반드시 지킬 것:
+
+- RAG 검색은 선택 기능이어야 한다.
+- 사용자가 검색 ON/OFF를 제어할 수 있어야 한다.
+- RAG 컨텍스트는 전체 chunk text를 무제한 삽입하지 않는다.
+- topK와 최대 컨텍스트 길이를 제한한다.
+- 검색 실패 시 일반 답변 흐름으로 fallback한다.
+- SAF 백업 폴더는 실시간 RAG 검색 대상이 아니다.
+- 앱 전용 저장소의 RAG index만 사용한다.
+
+--------------------------------------------------
+3. 대화방 입력 흐름 설계
+--------------------------------------------------
+
+기본 흐름:
+
+1. 사용자가 프롬프트 입력
+2. 검색 사용 여부 확인
+3. searchEnabled = false
+   → 기존 답변 생성 흐름
+4. searchEnabled = true
+   → RagKeywordSearchEngine.search(input)
+   → 상위 chunk 결과 추출
+   → RAG 컨텍스트 구성
+   → Worker/LLM 요청에 context로 전달
+
+이번 단계에서는 실제 Worker/LLM 요청 연결은 설계만 한다.
+
+--------------------------------------------------
+4. RAG 컨텍스트 구조 설계
+--------------------------------------------------
+
+RagContext 후보 data class 설계:
+
+필드 후보:
+- query: String
+- enabled: Boolean
+- results: List<RagSearchResult>
+- contextText: String
+- totalTokenEstimate: Int
+- maxResults: Int
+- maxContextChars: Int
+- createdAt: Long
+
+contextText 형식 예:
+
+[RAG_CONTEXT_1]
+sourceType: conversation
+title: ...
+score: ...
+text:
+...
+
+[RAG_CONTEXT_2]
+...
+
+--------------------------------------------------
+5. 제한 정책
+--------------------------------------------------
+
+권장 기본값:
+- maxResults = 3
+- maxContextChars = 4000
+- maxLoadedChunks = 50
+- minScore = 1
+
+정책:
+- 점수가 낮은 결과는 제외 가능
+- contextText가 maxContextChars를 넘으면 잘라낸다
+- chunk 전체 text가 너무 길면 matchedTextSnippet 우선 사용 가능
+- 후속 단계에서 토큰 기반 제한으로 변경 가능
+
+--------------------------------------------------
+6. UI 정책
+--------------------------------------------------
+
+현재 빠른 설정에 있는 검색 ON/OFF를 RAG 검색 여부로 사용할 수 있다.
+
+정책:
+- 검색 OFF: RAG 미사용
+- 검색 ON: RAG keyword 검색 실행
+- Worker placeholder는 유지
+- 검색 결과를 사용했는지 실행정보 블록에 표시 가능
+
+대화방 메시지 내 표시 정책:
+- 기본 답변에는 RAG 컨텍스트를 직접 노출하지 않음
+- 실행정보 블록 또는 접힌 TRACE/MEMORY 블록에 “RAG 사용 여부 / 검색 결과 수” 표시 가능
+- 후속 단계에서 “참조한 컨텍스트 보기” 블록 추가 가능
+
+--------------------------------------------------
+7. 실행정보 블록 연동 설계
+--------------------------------------------------
+
+RAG 사용 시 실행정보에 포함할 수 있는 항목:
+
+- RAG: ON/OFF
+- 검색 결과 수
+- 사용된 chunk 수
+- maxContextChars
+- 검색 실패 여부
+- fallback 여부
+
+주의:
+- 이번 단계는 설계만
+- 실행정보 데이터 구조 변경은 후속 구현에서 최소 변경
+
+--------------------------------------------------
+8. Worker / LLM 연결 설계
+--------------------------------------------------
+
+향후 요청 구조:
+
+ConversationRequest:
+- userInput
+- selectedMode
+- searchEnabled
+- ragContext optional
+- sessionId
+
+RAG 미사용:
+- ragContext = null
+
+RAG 사용:
+- ragContext = RagContext(...)
+
+Worker/LLM prompt 구성 예:
+- system instruction
+- recent conversation messages
+- RAG context
+- user input
+
+주의:
+- 실제 API 호출 구현 금지
+- Dummy worker 수정은 후속 구현에서만 검토
+
+--------------------------------------------------
+9. 실패 / fallback 정책
+--------------------------------------------------
+
+RAG 검색 실패:
+- 일반 답변 흐름 유지
+- 실행정보에 RAG_FAILED 또는 RAG_NO_RESULT 기록
+
+검색 결과 없음:
+- contextText 비움
+- 일반 답변 흐름 유지
+- “RAG 결과 없음”은 디버그/실행정보에만 표시
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- RagContext data class 추가
+- RagContextBuilder 추가
+- 대화방 send 흐름에서 searchEnabled=true일 때 keyword 검색 실행
+- Dummy 응답에 RAG 사용 여부만 표시
+- 실행정보 블록에 RAG 결과 수 표시
+- 실제 LLM 연결은 하지 않음
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 LLM API 연결
+❌ Worker 실행 로직 대규모 변경
+❌ embedding/vector 검색 연결
+❌ 대화방 UI 대규모 변경
+❌ RAG context 전체를 항상 화면에 노출
+❌ SAF 백업 폴더 검색
+
+--------------------------------------------------
+완료 기준:
+- 대화방 입력 → RAG 검색 → context 후보 생성 흐름 확정
+- RagContext 구조 확정
+- 제한 정책 확정
+- UI/실행정보 표시 정책 확정
+- fallback 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- 대화방 RAG 연결은 빠른 설정의 검색 ON/OFF를 기준으로 제어
+- 검색 ON일 때만 RagKeywordSearchEngine으로 앱 전용 저장소 RAG index 검색
+- 검색 결과는 RagContext로 묶어 답변 생성 후보 컨텍스트로 전달
+- 검색 실패/결과 없음은 일반 답변 흐름으로 fallback
+- 1차 구현은 Dummy 응답과 실행정보 표시까지만 연결
+
+[대화방 연결 흐름]
+- 검색 OFF: 기존 대화방 답변 생성 흐름 그대로 사용, ragContext = null
+- 검색 ON: 사용자 입력으로 keyword 검색 → topK 결과 추출 → RagContext 생성 → 답변 생성 요청에 포함
+- fallback: 검색 실패 또는 결과 없음이면 일반 답변 생성 유지, 실행정보에 RAG 실패/결과 없음만 기록
+- Worker/LLM 전달: 향후 ConversationRequest에 userInput, selectedMode, searchEnabled, sessionId, ragContext? 포함
+
+[RagContext 구조]
+- 필드: query, enabled, results, contextText, totalTokenEstimate, maxResults, maxContextChars, createdAt
+- contextText 형식: [RAG_CONTEXT_1] sourceType/title/score/text 형식으로 결과별 구분
+- 제한 정책: maxResults = 3, maxContextChars = 4000, maxLoadedChunks = 50, minScore = 1
+
+[UI/실행정보 정책]
+- 빠른 설정 검색 ON/OFF: 검색 OFF는 RAG 미사용, 검색 ON은 keyword RAG 검색 실행
+- 답변 화면 노출: 기본 답변에는 RAG context 전체를 직접 노출하지 않음
+- 실행정보 표시: RAG ON/OFF, 검색 결과 수, 사용 chunk 수, maxContextChars, fallback 여부 표시 가능
+
+[1차 구현 범위]
+- RagContext data class 추가
+- RagContextBuilder 추가
+- searchEnabled=true일 때 대화방 send 흐름에서 keyword 검색 실행
+- Dummy 응답에 RAG 사용 여부/결과 수 표시
+- 실행정보 블록에 RAG 결과 수/fallback 여부 표시
+
+[보류 항목]
+- 실제 LLM API 연결
+- Worker 실행 로직 정식 통합
+- embedding/vector 검색
+- 참조한 컨텍스트 보기 블록
+- SAF 백업 폴더 검색
+
+[문제]
+- 없음
+
+[다음 작업]
+RagContextBuilder 및 대화방 RAG 연결 1차 구현
+
+==============================
 [2026-05-02 00:20] RAG 검색 결과 UX 보정
 ==============================
 
