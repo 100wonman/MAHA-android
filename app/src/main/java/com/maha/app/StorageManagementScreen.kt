@@ -57,12 +57,22 @@ fun StorageManagementScreen(
             storageManager = storageManager
         )
     }
+    val ragStorageManager = remember { RagStorageManager(context.applicationContext) }
+    val ragIndexStore = remember { RagIndexStore(ragStorageManager) }
+    val conversationChunkIndexer = remember {
+        ConversationChunkIndexer(
+            context = context.applicationContext,
+            ragStorageManager = ragStorageManager,
+            ragIndexStore = ragIndexStore
+        )
+    }
 
     var snapshot by remember { mutableStateOf(loadAppSpecificStorageSnapshot(context)) }
     var fileViewerState by remember { mutableStateOf<StorageFileViewerState?>(null) }
     var deleteTarget by remember { mutableStateOf<StorageSessionFileItem?>(null) }
     var backupResultMessage by remember { mutableStateOf<String?>(null) }
     var restoreResultMessage by remember { mutableStateOf<String?>(null) }
+    var chunkIndexResultMessage by remember { mutableStateOf<String?>(null) }
     var isSafReady by remember { mutableStateOf(storageManager.isSafReady()) }
     var backupSessions by remember { mutableStateOf<List<SafBackupSessionInfo>>(emptyList()) }
     var showRestoreDialog by remember { mutableStateOf(false) }
@@ -88,10 +98,20 @@ fun StorageManagementScreen(
 
     fun showRestoreResult(result: ConversationRestoreResult) {
         restoreResultMessage = buildString {
-            append("복원 결과\\n")
-            append("restored: ${result.restoredCount}\\n")
-            append("skipped: ${result.skippedCount}\\n")
+            append("복원 결과\n")
+            append("restored: ${result.restoredCount}\n")
+            append("skipped: ${result.skippedCount}\n")
             append("failed: ${result.failedCount}")
+        }
+    }
+
+    fun showChunkIndexResult(result: ConversationChunkIndexResult) {
+        chunkIndexResultMessage = buildString {
+            append("인덱싱 결과\n")
+            append("chunks: ${result.createdChunkCount}\n")
+            append("messages: ${result.processedMessageCount}\n")
+            append("failed: ${result.failedCount}\n")
+            append(result.message)
         }
     }
 
@@ -160,6 +180,14 @@ fun StorageManagementScreen(
                     onBackup = {
                         showBackupResult(conversationFileStore.backupSessionToSaf(item.sessionId))
                         refreshSnapshot()
+                    },
+                    onIndexSession = {
+                        showChunkIndexResult(
+                            conversationChunkIndexer.indexConversationSession(
+                                sessionId = item.sessionId,
+                                title = item.title
+                            )
+                        )
                     },
                     onDelete = {
                         deleteTarget = item
@@ -239,6 +267,19 @@ fun StorageManagementScreen(
             text = { Text(text = message) },
             confirmButton = {
                 TextButton(onClick = { restoreResultMessage = null }) {
+                    Text(text = "확인")
+                }
+            }
+        )
+    }
+
+    chunkIndexResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { chunkIndexResultMessage = null },
+            title = { Text(text = "인덱싱 결과") },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = { chunkIndexResultMessage = null }) {
                     Text(text = "확인")
                 }
             }
@@ -383,6 +424,7 @@ private fun StorageSessionCard(
     onOpenSessionJson: () -> Unit,
     onOpenMessages: () -> Unit,
     onBackup: () -> Unit,
+    onIndexSession: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -428,6 +470,14 @@ private fun StorageSessionCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(text = "선택 세션 백업")
+                }
+
+                Button(
+                    onClick = onIndexSession,
+                    enabled = item.messageCount > 0,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "선택 세션 인덱싱")
                 }
 
                 TextButton(

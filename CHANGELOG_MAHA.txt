@@ -1,4 +1,263 @@
 ==============================
+[2026-05-01 23:12] ConversationChunkIndexer 1차 구현
+==============================
+
+[작업]
+- ConversationChunkIndexer 추가
+- 선택 세션 messages.jsonl 기반 conversation chunk 생성
+- rag/chunks/conversation_{sessionId}/chunk 파일 저장
+- 같은 source 재인덱싱 시 기존 chunk 제거 후 재생성
+- index_metadata.json sources/chunks 갱신
+- 저장소 관리 화면에 선택 세션 인덱싱 버튼 추가
+
+[구현 모드]
+
+작업명:
+ConversationChunkIndexer 1차 구현
+
+목표:
+- 선택한 대화 세션 1개의 messages.jsonl을 읽어 conversation chunk 파일을 생성한다.
+- 생성된 chunk 정보를 index_metadata.json에 반영한다.
+- 이번 단계는 수동 인덱싱만 구현한다.
+- embedding / vector / 검색 기능은 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ConversationChunkIndexer 추가
+✔ 선택 세션 1개 messages.jsonl 읽기
+✔ USER/ASSISTANT 메시지 흐름 기준 chunk 생성
+✔ rag/chunks/conversation_{sessionId}/chunk_{chunkId}.json 저장
+✔ 기존 같은 sessionId chunk 삭제 후 재생성
+✔ index_metadata.json sources/chunks 갱신
+✔ “선택 세션 인덱싱” 실행 연결
+
+이번 단계에서 금지:
+
+❌ embedding 생성
+❌ vector DB / vector index
+❌ RAG 검색
+❌ 전체 세션 자동 인덱싱
+❌ 앱 시작 시 자동 인덱싱
+❌ PDF/DOCX 파싱
+❌ 외부 라이브러리 추가
+
+--------------------------------------------------
+2. chunk 생성 대상
+--------------------------------------------------
+
+대상:
+- 앱 전용 저장소의 conversations/session_{sessionId}/messages.jsonl
+
+주의:
+- SAF 백업 폴더가 아니라 앱 전용 저장소 기준
+- 세션 목록 전체가 아니라 사용자가 선택한 세션 1개만 처리
+
+--------------------------------------------------
+3. chunk 생성 정책
+--------------------------------------------------
+
+1차 기준:
+
+- messages.jsonl을 순서대로 읽음
+- USER/ASSISTANT 흐름을 보존
+- 기본 묶음:
+  - 메시지 3~10개 단위
+  - 또는 대략 500~800 tokenEstimate
+- 1차 tokenEstimate:
+  - text.length / 4 정도의 단순 추정 사용 가능
+
+chunk text 예시:
+
+[USER]
+질문 내용
+
+[ASSISTANT]
+답변 내용
+
+[USER]
+다음 질문
+
+--------------------------------------------------
+4. chunk 파일 구조
+--------------------------------------------------
+
+저장 위치:
+
+rag/chunks/conversation_{sessionId}/chunk_{chunkId}.json
+
+chunkId 예:
+conversation_{sessionId}_001
+conversation_{sessionId}_002
+
+RagChunk 필드 사용:
+- chunkId
+- sourceType = "conversation"
+- sourceId = sessionId
+- sessionId = sessionId
+- title = session.title
+- text
+- textPreview
+- tokenEstimate
+- createdAt
+- updatedAt
+- embeddingStatus = NONE
+- metadata
+
+metadata 예:
+- messageStartIndex
+- messageEndIndex
+- messageCount
+
+--------------------------------------------------
+5. 재인덱싱 정책
+--------------------------------------------------
+
+같은 sessionId를 다시 인덱싱할 경우:
+
+1. rag/chunks/conversation_{sessionId}/ 내부 기존 chunk 파일 삭제
+2. index_metadata.json에서 sourceType=conversation, sourceId=sessionId인 chunks 제거
+3. 해당 source entry 제거 또는 갱신
+4. 새 chunk 생성
+5. index_metadata.json 갱신
+
+--------------------------------------------------
+6. index_metadata 반영
+--------------------------------------------------
+
+chunk 생성 후:
+
+- RagIndexChunkEntry 추가
+  - chunkId
+  - sourceType
+  - sourceId
+  - filePath
+  - textPreview
+  - embeddingStatus = NONE
+  - updatedAt
+
+- RagIndexSourceEntry 추가/갱신
+  - sourceType = conversation
+  - sourceId = sessionId
+  - title = session.title
+  - filePath = messages.jsonl 경로
+  - chunkCount
+  - indexedAt
+  - status = "INDEXED"
+
+- metadata 전체:
+  - chunkCount 갱신
+  - sourceCount 갱신
+  - updatedAt 갱신
+
+--------------------------------------------------
+7. UI 연결 위치
+--------------------------------------------------
+
+권장 위치:
+
+대화모드 전역 설정
+→ 메모리/RAG
+→ 저장소 관리
+→ 세션 카드 또는 세션 상세 영역
+
+추가 버튼:
+- “선택 세션 인덱싱”
+
+또는 저장소 관리 세션 목록의 각 세션 카드에:
+- [인덱싱] 버튼
+
+1차에서는 세션 카드별 버튼이 가장 단순하다.
+
+--------------------------------------------------
+8. 결과 표시
+--------------------------------------------------
+
+인덱싱 완료 후 결과 표시:
+
+- 생성 chunk 수
+- 처리 메시지 수
+- 실패 여부
+
+예:
+“인덱싱 완료: 3 chunks / 18 messages”
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 저장/복구
+- SAF 백업/복원
+- 저장소 관리 화면
+- 세션 삭제
+- 대화방 기능
+- OutputBlock 렌더링
+- 자동 스크롤
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+❌ ConversationViewModel 대규모 변경 금지
+❌ ConversationFileStore 대규모 변경 금지
+❌ AppRoot 대규모 변경 금지
+❌ 저장소 구조 변경 금지
+❌ embedding/search 구현 금지
+❌ 전체 세션 일괄 인덱싱 금지
+
+--------------------------------------------------
+완료 기준:
+- 선택 세션 인덱싱 버튼 표시
+- messages.jsonl을 읽어 chunk 파일 생성
+- rag/chunks/conversation_{sessionId}/에 chunk 파일 저장
+- index_metadata.json sources/chunks 갱신
+- 재인덱싱 시 기존 chunk 제거 후 재생성
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationChunkIndexer 신규 추가
+- 앱 전용 저장소의 선택 세션 messages.jsonl을 읽어 conversation chunk 생성
+- rag/chunks/conversation_{sessionId}/chunk_{chunkId}.json 저장
+- 같은 sessionId 재인덱싱 시 기존 chunk 삭제 후 재생성 구조 적용
+- StorageManagementScreen 세션 카드에 “선택 세션 인덱싱” 버튼 추가
+
+[Chunk 인덱싱 테스트]
+- 선택 세션 인덱싱 버튼: 저장소 관리 → 세션 카드 → [선택 세션 인덱싱] 버튼 표시 확인
+- chunk 파일 생성: 버튼 클릭 → rag/chunks/conversation_{sessionId}/ 아래 chunk 파일 생성 확인
+- index_metadata 갱신: rag/index_metadata.json 생성 및 sources/chunks 갱신 확인
+- 재인덱싱 기존 chunk 제거: 같은 세션 재실행 → 중복 파일 없이 재생성 확인 필요
+- 결과 메시지 표시: chunks 1 / messages 8 / failed 0 확인
+
+[기존 기능 영향]
+- 대화 저장/복구: 정상
+- SAF 백업/복원: 영향 없음
+- 저장소 관리: 정상
+- 대화방: 정상
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationChunkIndexer.kt
+- StorageManagementScreen.kt
+
+[빌드]
+성공
+
+[다음 작업]
+RAG keyword 검색 구조 설계
+
+==============================
 [2026-05-01 22:50] RAG chunk 생성 구조 설계
 ==============================
 
