@@ -476,10 +476,12 @@ private fun ConversationRunSummaryPanelReadable(
         .mapNotNull { block -> block.content.takeIf { it.isNotBlank() } }
         .joinToString(separator = "\n\n")
     val ragInfo = parseRagRunInfo(rawTraceText)
+    val webSearchSourcesInfo = parseWebSearchSourcesInfo(rawTraceText)
     val executionTraceText = cleanExecutionTraceText(rawTraceText)
 
     val summaryCopyText = buildRunSummaryCopyText(run)
     val ragCopyText = buildRagRunCopyText(ragInfo)
+    val webSearchSourcesCopyText = buildWebSearchSourcesCopyText(webSearchSourcesInfo)
     val traceCopyText = executionTraceText.ifBlank { "실행과정 없음" }
     val workerCopyTexts = run.workerResults.mapIndexed { index, worker ->
         buildWorkerCopyText(index, worker)
@@ -491,6 +493,11 @@ private fun ConversationRunSummaryPanelReadable(
         if (ragInfo.present) {
             appendLine()
             appendLine(ragCopyText)
+        }
+
+        if (webSearchSourcesInfo.shouldDisplay) {
+            appendLine()
+            appendLine(webSearchSourcesCopyText)
         }
 
         if (executionTraceText.isNotBlank()) {
@@ -601,6 +608,14 @@ private fun ConversationRunSummaryPanelReadable(
                     }
                 }
 
+                if (webSearchSourcesInfo.shouldDisplay) {
+                    RunCollapsibleFlatTextSection(
+                        title = "Web Search 참조 출처 보기",
+                        copyText = webSearchSourcesCopyText,
+                        text = webSearchSourcesCopyText
+                    )
+                }
+
                 if (executionTraceText.isNotBlank()) {
                     RunFlatSection(
                         title = "실행과정",
@@ -703,6 +718,26 @@ private data class RagRunDisplayInfo(
     val contextText: String
 )
 
+private data class WebSearchSourceDisplayInfo(
+    val index: Int,
+    val title: String,
+    val url: String,
+    val snippet: String
+)
+
+private data class WebSearchSourcesDisplayInfo(
+    val present: Boolean,
+    val requested: Boolean,
+    val groundingExecuted: Boolean,
+    val groundingUsed: Boolean,
+    val citationCount: Int,
+    val searchQueryCount: Int,
+    val sources: List<WebSearchSourceDisplayInfo>
+) {
+    val shouldDisplay: Boolean
+        get() = present && requested && (sources.isNotEmpty() || groundingExecuted)
+}
+
 private fun parseRagRunInfo(traceText: String): RagRunDisplayInfo {
     val contextText = extractBetweenMarkers(
         text = traceText,
@@ -742,6 +777,126 @@ private fun findTraceValue(
         .orEmpty()
 }
 
+private fun parseWebSearchSourcesInfo(traceText: String): WebSearchSourcesDisplayInfo {
+    val sectionText = extractTraceSection(traceText, "[WEB_SEARCH_GROUNDING]")
+    if (sectionText.isBlank()) {
+        return WebSearchSourcesDisplayInfo(
+            present = false,
+            requested = false,
+            groundingExecuted = false,
+            groundingUsed = false,
+            citationCount = 0,
+            searchQueryCount = 0,
+            sources = emptyList()
+        )
+    }
+
+    val lines = sectionText.lines().map { line -> line.trim() }
+    val sources = mutableListOf<WebSearchSourceDisplayInfo>()
+    var index = 0
+
+    while (index < lines.size) {
+        val line = lines[index]
+        val match = Regex("""^(\d+)\.\s+title=(.*)$""").find(line)
+        if (match != null) {
+            val sourceIndex = match.groupValues[1].toIntOrNull() ?: (sources.size + 1)
+            val title = normalizeSourceField(match.groupValues[2], "제목 없음")
+            var url = "URL 없음"
+            var snippet = ""
+            var cursor = index + 1
+
+            while (cursor < lines.size) {
+                val nextLine = lines[cursor]
+                if (Regex("""^\d+\.\s+title=.*$""").matches(nextLine)) {
+                    break
+                }
+                if (nextLine.startsWith("url=", ignoreCase = true)) {
+                    url = normalizeSourceField(nextLine.substringAfter("="), "URL 없음")
+                } else if (nextLine.startsWith("snippet=", ignoreCase = true)) {
+                    snippet = normalizeSourceField(nextLine.substringAfter("="), "")
+                }
+                cursor += 1
+            }
+
+            sources.add(
+                WebSearchSourceDisplayInfo(
+                    index = sourceIndex,
+                    title = title,
+                    url = url,
+                    snippet = snippet
+                )
+            )
+            index = cursor
+        } else {
+            index += 1
+        }
+    }
+
+    return WebSearchSourcesDisplayInfo(
+        present = true,
+        requested = findTraceValue(lines, "requested").equals("true", ignoreCase = true),
+        groundingExecuted = findTraceValue(lines, "groundingExecuted").equals("true", ignoreCase = true),
+        groundingUsed = findTraceValue(lines, "groundingUsed").equals("true", ignoreCase = true),
+        citationCount = findTraceValue(lines, "citationCount").toIntOrNull() ?: sources.size,
+        searchQueryCount = findTraceValue(lines, "searchQueryCount").toIntOrNull() ?: 0,
+        sources = sources.take(10)
+    )
+}
+
+private fun extractTraceSection(
+    text: String,
+    marker: String
+): String {
+    val startIndex = text.indexOf(marker)
+    if (startIndex == -1) return ""
+    val contentStart = startIndex + marker.length
+    val nextSectionIndex = Regex("""(?m)^\[[A-Z_]+]""")
+        .find(text, contentStart)
+        ?.range
+        ?.first
+        ?: text.length
+    val ragIndex = text.indexOf("\nRAG:", contentStart).let { if (it == -1) text.length else it }
+    val endIndex = minOf(nextSectionIndex, ragIndex)
+    return text.substring(contentStart, endIndex).trim()
+}
+
+private fun normalizeSourceField(
+    value: String,
+    fallback: String
+): String {
+    val normalized = value.trim()
+    return when {
+        normalized.isBlank() -> fallback
+        normalized.equals("UNKNOWN", ignoreCase = true) -> fallback
+        else -> normalized
+    }
+}
+
+private fun buildWebSearchSourcesCopyText(info: WebSearchSourcesDisplayInfo): String {
+    if (!info.shouldDisplay) return "[Web Search Sources]\n참조 출처 없음"
+
+    return buildString {
+        appendLine("[Web Search Sources]")
+        appendLine("citationCount: ${info.citationCount}")
+        appendLine("searchQueryCount: ${info.searchQueryCount}")
+        appendLine("groundingUsed: ${info.groundingUsed}")
+
+        if (info.sources.isEmpty()) {
+            appendLine()
+            appendLine("참조 출처 없음")
+        } else {
+            info.sources.forEachIndexed { displayIndex, source ->
+                appendLine()
+                appendLine("${displayIndex + 1}. ${source.title.take(160)}")
+                appendLine(source.url.take(240))
+                if (source.snippet.isNotBlank()) {
+                    appendLine(source.snippet.take(500))
+                }
+            }
+        }
+    }.trim()
+}
+
 private fun cleanExecutionTraceText(traceText: String): String {
     val withoutContext = removeBetweenMarkers(
         text = traceText,
@@ -761,7 +916,10 @@ private fun cleanExecutionTraceText(traceText: String): String {
                     trimmed.startsWith("maxContextChars:", ignoreCase = true) ||
                     trimmed.startsWith("fallback:", ignoreCase = true) ||
                     trimmed.startsWith("fallbackReason:", ignoreCase = true) ||
-                    trimmed == "results:" ||
+                    trimmed.equals("results:", ignoreCase = true) ||
+                    trimmed.equals("sources:", ignoreCase = true) ||
+                    trimmed.startsWith("url=", ignoreCase = true) ||
+                    trimmed.startsWith("snippet=", ignoreCase = true) ||
                     Regex("^\\d+\\. .+").matches(trimmed)
         }
         .joinToString("\n")

@@ -1,4 +1,276 @@
 ==============================
+[2026-05-02 22:25] Grounding citation UX 구현
+==============================
+
+[작업]
+- 실행정보 블록에 Web Search 참조 출처 보기 섹션 추가
+- citation title/url/snippet 표시 UX 추가
+- source 목록 접기/펼치기 추가
+- source 목록 복사 기능 추가
+- RAG 참조 컨텍스트 보기와 Web Search 참조 출처 보기 분리
+- 답변 본문에는 citations 직접 삽입하지 않음
+- 기존 Gemini native grounding 호출 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 실행정보 블록 내부에 “Web Search 참조 출처 보기” 접힘 섹션 추가
+- WEB_SEARCH_GROUNDING trace의 sources를 title/url/snippet 중심으로 분리 표시
+- source 목록 복사 기능 추가
+- citation 없는 grounding 응답은 “참조 출처 없음”으로 안전 처리
+- ASSISTANT 본문에는 citation/url을 삽입하지 않음
+
+[Citation UX 테스트]
+- citation 있는 응답: 섹션 표시
+- citation 없는 응답: 크래시 없음
+- 접기/펼치기: 가능
+- 복사: 가능
+- 본문 출처 미삽입: 유지
+
+[RAG/Web Search 분리 테스트]
+- RAG 참조 컨텍스트: 유지
+- Web Search 참조 출처: 별도 표시
+- 동시 ON: 별도 섹션 표시
+- Web Search OFF: 출처 섹션 미표시
+
+[기존 기능 영향]
+- Gemini native grounding: 변경 없음
+- Gemini 기존 호출: 변경 없음
+- OpenAI-compatible 호출: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- RAG: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Grounding citation UX 구현
+
+목표:
+- Gemini native Web Search grounding 결과의 citations/source 정보를 실행정보 블록에서 확인하기 쉽게 표시한다.
+- raw grounding metadata를 그대로 노출하지 않고, title/url/snippet 중심의 “참조 출처 보기” 접힘 섹션으로 분리한다.
+- 답변 본문에는 최종 답변만 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 실행정보 블록 내부에 “Web Search 참조 출처 보기” 섹션 추가
+✔ citation title/url/snippet 표시
+✔ citationCount/searchQueryCount 표시 유지
+✔ source 목록 접기/펼치기
+✔ source 목록 복사 기능
+✔ citations 없을 때는 섹션 숨김 또는 “출처 없음” 표시
+✔ ASSISTANT 본문에는 citations 직접 삽입 금지
+
+이번 단계에서 금지:
+
+❌ Gemini native 호출 로직 변경
+❌ Google Search grounding request body 변경
+❌ citation 파싱 알고리즘 대규모 변경
+❌ 답변 본문에 raw URL 목록 강제 삽입
+❌ streaming 구현
+❌ tool execution 구현
+❌ RAG 로직 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 현재 상태
+--------------------------------------------------
+
+현재:
+- GeminiNativeProviderAdapter가 citations/searchQueries를 GeminiNativeResult에 담음
+- ConversationEngine이 citationCount/searchQueryCount/source 요약을 실행정보 TRACE에 기록
+- WEB_SEARCH_GROUNDING 섹션에 groundingExecuted/groundingUsed/citationCount/searchQueryCount 표시됨
+
+문제:
+- 사용자가 참조 출처를 확인하기에는 trace 형태가 불편함
+- RAG의 “참조 컨텍스트 보기”와 유사한 UX가 필요함
+
+--------------------------------------------------
+3. 표시 위치
+--------------------------------------------------
+
+권장 위치:
+
+ASSISTANT 메시지 실행정보 블록 내부 하단
+
+섹션 이름:
+- “Web Search 참조 출처 보기”
+
+조건:
+- Web Search requested=true
+- citations가 1개 이상 있으면 표시
+- citations가 없고 groundingExecuted=true면 “참조 출처 없음” 정도로 표시 가능
+
+주의:
+- RAG “참조 컨텍스트 보기”와 별도 섹션
+- RAG 섹션과 Web Search 섹션 혼합 금지
+
+--------------------------------------------------
+4. Citation 표시 형식
+--------------------------------------------------
+
+각 source 표시:
+
+[1] title
+url
+snippet 일부
+
+필드:
+- title 없으면 “제목 없음”
+- url 없으면 “URL 없음”
+- snippet 없으면 생략
+
+표시 제한:
+- 기본 접힘 상태
+- 펼침 시 최대 5~10개 표시
+- 너무 긴 url/snippet은 줄임
+- 필요 시 SelectionContainer 적용
+
+--------------------------------------------------
+5. 복사 UX
+--------------------------------------------------
+
+섹션 우측에 복사 아이콘 추가.
+
+복사 내용 예:
+
+[Web Search Sources]
+1. title
+url
+snippet
+
+2. title
+url
+snippet
+
+주의:
+- raw metadata 전체 복사 금지
+- title/url/snippet 중심으로만 복사
+
+--------------------------------------------------
+6. 데이터 전달 정책
+--------------------------------------------------
+
+현재 citations가 trace/rawOutput에 문자열 요약으로만 들어간다면,
+ConversationEngine에서 실행정보에 marker 형태로 넣어 ConversationRoomScreen이 파싱할 수 있게 한다.
+
+권장 marker:
+
+[WEB_SEARCH_SOURCES]
+sourceCount=...
+1. title=...
+url=...
+snippet=...
+
+또는 기존 실행정보 구조에 webSearchSources 필드를 추가할 수 있으면 더 좋음.
+
+주의:
+- 대규모 데이터 구조 변경은 피한다
+- 기존 RAG context marker 처리 방식을 참고한다
+
+--------------------------------------------------
+7. ConversationRoomScreen 처리
+--------------------------------------------------
+
+실행정보 블록 렌더링에서:
+
+- WEB_SEARCH_SOURCES marker 감지
+- “Web Search 참조 출처 보기” 섹션 생성
+- 접힘/펼침 상태 관리
+- 복사 버튼 제공
+
+기존 유지:
+- RAG 섹션
+- 참조 컨텍스트 보기
+- TOOL_SUPPORT_SUMMARY
+- PROVIDER_RESPONSE_SUMMARY
+- THINKING_SUMMARY
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Web Search native grounding 호출
+- Web Search OFF 기존 Gemini 호출
+- OpenAI-compatible 호출
+- RAG 검색/인덱싱
+- RAG 참조 컨텍스트 보기
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+9. 테스트 기준
+--------------------------------------------------
+
+A. Web Search ON + citation 있는 응답
+- 실행정보에 “Web Search 참조 출처 보기” 표시
+- 펼치면 title/url/snippet 표시
+- 복사 가능
+
+B. Web Search ON + citation 없는 응답
+- 앱 크래시 없음
+- 섹션 숨김 또는 출처 없음 표시
+
+C. Web Search OFF
+- Web Search 출처 섹션 표시 안 됨
+
+D. RAG ON + Web Search ON
+- RAG 참조 컨텍스트 보기와 Web Search 참조 출처 보기가 별도 표시
+
+E. 저장/복구
+- 앱 재시작 후 해당 메시지 실행정보에서 출처 섹션 유지 가능하면 확인
+- 최소한 크래시 없어야 함
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+❌ native API 호출 로직 변경 금지
+❌ citation parser 대규모 변경 금지
+❌ 답변 본문에 출처 강제 삽입 금지
+❌ raw grounding metadata 전체 표시 금지
+❌ RAG/Web Search 통합 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- Web Search 참조 출처 접힘 섹션 표시
+- citation title/url/snippet 확인 가능
+- source 목록 복사 가능
+- RAG 참조 컨텍스트와 분리 유지
+- 답변 본문에는 final answer만 표시
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Web Search fallback 옵션 설계 또는 모델 목록 UX 고도화
+
+==============================
 [2026-05-02 21:17] ConversationEngine Gemini native grounding 분기 연결
 ==============================
 
