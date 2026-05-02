@@ -1,4 +1,258 @@
 ==============================
+[2026-05-02 20:55] GeminiNativeProviderAdapter skeleton 구현
+==============================
+
+[작업]
+- GeminiNativeModels.kt 추가
+- GeminiNativeRequest data class 추가
+- GeminiNativeResult data class 추가
+- GroundingCitation data class 추가
+- GeminiNativeProviderAdapter.kt 추가
+- execute(...) NOT_IMPLEMENTED skeleton 추가
+- 실제 generateContent / Google Search grounding 호출은 제외
+- 기존 GoogleGeminiProviderAdapter / Web Search placeholder 동작 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- GeminiNativeModels.kt 신규 추가
+- GeminiNativeRequest data class 추가
+- GroundingCitation data class 추가
+- GeminiNativeResult data class 추가
+- GeminiNativeProviderAdapter execute(...) skeleton 추가
+
+[Gemini Native Skeleton 테스트]
+- GeminiNativeRequest: Android Studio에서 GeminiNativeModels.kt 열기 → requestId/modelName/prompt/systemInstruction/enableGoogleSearch 필드 확인
+- GeminiNativeResult: Android Studio에서 GeminiNativeModels.kt 열기 → success/rawText/groundingUsed/citations/searchQueries/errorType 필드 확인
+- GroundingCitation: Android Studio에서 GeminiNativeModels.kt 열기 → title/url/snippet/sourceIndex 필드 확인
+- Adapter execute skeleton: GeminiNativeProviderAdapter.kt 열기 → execute(request, apiKey) 함수 확인
+- NOT_IMPLEMENTED result: apiKey가 비어 있지 않은 경우 GeminiNativeResult.notImplemented() 반환 코드 확인
+
+[기존 기능 영향]
+- Gemini 기존 호출: 기존 GoogleGeminiProviderAdapter 수정 없음
+- OpenAI-compatible 호출: 기존 OpenAiCompatibleProviderAdapter 수정 없음
+- Web Search placeholder: 기존 WEB_SEARCH_GROUNDING 동작 수정 없음
+- ToolSupportPolicy: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- GeminiNativeModels.kt
+- GeminiNativeProviderAdapter.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+GeminiNativeProviderAdapter skeleton 구현
+
+목표:
+- Gemini native generateContent / Google Search grounding 후속 구현을 위한 skeleton 파일을 추가한다.
+- 실제 HTTP 호출, Google Search grounding 요청, citation 파싱은 구현하지 않는다.
+- 기존 GoogleGeminiProviderAdapter / OpenAiCompatibleProviderAdapter 호출 경로는 변경하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ GeminiNativeModels.kt 추가
+✔ GeminiNativeRequest data class 추가
+✔ GeminiNativeResult data class 추가
+✔ GroundingCitation data class 추가
+✔ GeminiNativeProviderAdapter.kt 추가
+✔ execute(...) skeleton 추가
+✔ 현재 execute(...)는 NOT_IMPLEMENTED 결과만 반환
+✔ nativeGroundingAvailable=false 기존 정책 유지
+
+이번 단계에서 금지:
+
+❌ 실제 generateContent HTTP 호출
+❌ Google Search grounding request body 구현
+❌ grounding metadata/citation 파싱
+❌ nativeGroundingAvailable=true 전환
+❌ ConversationEngine 실제 native adapter 호출 연결
+❌ 기존 GoogleGeminiProviderAdapter 대체
+❌ Web Search 토글 동작 변경
+❌ RAG 로직 변경
+
+--------------------------------------------------
+2. GeminiNativeRequest 구조
+--------------------------------------------------
+
+신규 data class:
+
+GeminiNativeRequest:
+- requestId: String
+- modelName: String
+- prompt: String
+- systemInstruction: String?
+- enableGoogleSearch: Boolean
+- temperature: Double?
+- maxOutputTokens: Int?
+- createdAt: Long
+
+후속 확장 후보는 주석으로만 남길 수 있음:
+- recentMessages
+- ragContext
+- safetySettings
+- thinkingConfig
+- responseMimeType
+- structuredOutputSchema
+
+주의:
+- 현재 단계에서는 실제 request body 변환 함수 구현 금지
+
+--------------------------------------------------
+3. GroundingCitation 구조
+--------------------------------------------------
+
+신규 data class:
+
+GroundingCitation:
+- title: String?
+- url: String?
+- snippet: String?
+- sourceIndex: Int?
+
+주의:
+- 실제 URL/citation 파싱은 후속 단계
+- 이번 skeleton에서는 빈 리스트만 반환 가능
+
+--------------------------------------------------
+4. GeminiNativeResult 구조
+--------------------------------------------------
+
+신규 data class:
+
+GeminiNativeResult:
+- success: Boolean
+- rawText: String
+- groundingUsed: Boolean
+- citations: List<GroundingCitation>
+- searchQueries: List<String>
+- thinkingSummary: String?
+- latencySec: Double
+- errorType: String?
+- errorMessage: String?
+- rawMetadataSummary: String?
+
+NOT_IMPLEMENTED 기본 반환:
+- success=false
+- rawText=""
+- groundingUsed=false
+- citations=[]
+- searchQueries=[]
+- thinkingSummary=null
+- latencySec=0.0
+- errorType="NATIVE_GEMINI_NOT_IMPLEMENTED"
+- errorMessage="Gemini native grounding 호출은 아직 구현되지 않았습니다."
+- rawMetadataSummary="nativeGroundingAvailable=false"
+
+--------------------------------------------------
+5. GeminiNativeProviderAdapter 구조
+--------------------------------------------------
+
+신규 파일:
+
+- GeminiNativeProviderAdapter.kt
+
+권장 함수:
+
+execute(
+    request: GeminiNativeRequest,
+    apiKey: String
+): GeminiNativeResult
+
+현재 동작:
+- 실제 HTTP 호출 금지
+- 항상 NOT_IMPLEMENTED result 반환
+- API Key를 로그/출력에 노출하지 말 것
+
+주의:
+- apiKey 파라미터는 후속 실제 호출을 위한 자리만 확보
+- apiKey blank 검증은 해도 되지만 실제 호출은 하지 않음
+- blank면 errorType="API_KEY_MISSING" 반환 가능
+- 단, ConversationEngine에 아직 연결하지 않는다면 테스트용 함수 수준으로만 유지
+
+--------------------------------------------------
+6. ConversationEngine 연결 정책
+--------------------------------------------------
+
+이번 단계에서는 원칙적으로 ConversationEngine 실제 호출 분기 연결 금지.
+
+허용:
+- import나 타입 참조 없음
+- 또는 compile 확인용으로만 독립 파일 유지
+
+금지:
+- webSearchEnabled=true일 때 GeminiNativeProviderAdapter.execute(...) 호출
+- nativeGroundingAvailable=true 전환
+- WEB_SEARCH_GROUNDING 실행정보 동작 변경
+
+기존 유지:
+- Web Search ON → WEB_SEARCH_GROUNDING requested=true / groundingExecuted=false
+- reason=NATIVE_GEMINI_GROUNDING_NOT_IMPLEMENTED
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google Gemini 기존 호출
+- OpenAI-compatible 호출
+- Web Search UI skeleton
+- WEB_SEARCH_GROUNDING placeholder
+- ToolSupportPolicy
+- tool_calls 미지원 처리
+- RAG 검색/인덱싱
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 네트워크 호출 금지
+❌ generateContent endpoint 호출 금지
+❌ Google Search grounding tool body 구현 금지
+❌ citation 파싱 구현 금지
+❌ ConversationEngine native 분기 연결 금지
+❌ 기존 GoogleGeminiProviderAdapter 수정 금지
+❌ RAG/Web Search 토글 통합 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- GeminiNativeModels.kt 추가
+- GeminiNativeProviderAdapter.kt 추가
+- skeleton data class 빌드 성공
+- execute(...)가 NOT_IMPLEMENTED result 반환
+- 기존 Gemini/OpenAI-compatible/Web Search placeholder 동작 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Gemini native generateContent 실제 호출 설계 또는 grounding citation UX 설계
+
+==============================
 [2026-05-02 20:47] GeminiNativeProviderAdapter skeleton 설계
 ==============================
 
