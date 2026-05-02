@@ -379,17 +379,12 @@ class ConversationViewModel(
 
 
     private fun resolveSelectedProviderName(): String {
-        val defaultModel = resolveDefaultConversationModelProfile()
-        val providerForModel = defaultModel?.let { model ->
-            providerSettingsStore.loadProviderProfiles()
-                .firstOrNull { it.providerId == model.providerId && it.isEnabled }
-        }
+        val defaultModel = resolveDefaultConversationModelProfile() ?: return "MODEL_MISSING"
 
-        if (providerForModel != null) {
-            return providerForModel.providerId
-        }
+        val providerForModel = providerSettingsStore.loadProviderProfiles()
+            .firstOrNull { it.providerId == defaultModel.providerId && it.isEnabled }
 
-        return "DUMMY"
+        return providerForModel?.providerId ?: "MODEL_MISSING"
     }
 
     private fun resolveSelectedModelName(): String {
@@ -398,22 +393,13 @@ class ConversationViewModel(
             return defaultModel.rawModelName
         }
 
-        val context = getApplication<Application>().applicationContext
-        val fallbackModel = runCatching {
-            ApiKeyManager.getFallbackModel(context)
-        }.getOrNull()
-
-        return fallbackModel?.takeIf { it.isNotBlank() } ?: "conversation-engine-dummy"
+        return "MODEL_MISSING"
     }
 
     private fun resolveDefaultConversationModelProfile(): ConversationModelProfile? {
         return runCatching {
-            val enabledModels = providerSettingsStore.loadModelProfiles()
-                .filter { it.enabled }
-
-            enabledModels.firstOrNull { it.isDefaultForConversation }
-                ?: enabledModels.firstOrNull { it.isFavorite }
-                ?: enabledModels.firstOrNull()
+            providerSettingsStore.loadModelProfiles()
+                .firstOrNull { model -> model.enabled && model.isDefaultForConversation }
         }.getOrNull()
     }
 

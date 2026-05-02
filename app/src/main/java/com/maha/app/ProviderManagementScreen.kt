@@ -406,11 +406,15 @@ private fun ProviderProfileCard(
                 }
             }
 
-            if (provider.providerType == ProviderType.GOOGLE && !hasApiKey) {
+            if (provider.providerType == ProviderType.GOOGLE) {
                 Text(
-                    text = "모델 목록 조회는 API Key 저장 후 사용할 수 있습니다.",
+                    text = if (hasApiKey) {
+                        "이 API Key는 대화모드 Gemini 호출에 사용됩니다."
+                    } else {
+                        "모델 목록 조회와 Gemini 호출은 API Key 저장 후 사용할 수 있습니다."
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFFFD08A)
+                    color = if (hasApiKey) Color(0xFF9FE3B1) else Color(0xFFFFD08A)
                 )
             }
         }

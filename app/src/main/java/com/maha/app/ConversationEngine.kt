@@ -13,6 +13,16 @@ class ConversationEngine(
             val providerName = resolveProviderName(request.selectedProvider)
             val modelName = resolveModelName(request.selectedModel)
 
+            if (isModelMissing(providerName, modelName)) {
+                return createModelMissingResponse(
+                    request = request,
+                    providerName = providerName,
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length
+                )
+            }
+
             if (isGoogleProvider(providerName)) {
                 val apiKey = apiKeyProvider(providerName)
                 if (apiKey.isNullOrBlank()) {
@@ -96,7 +106,9 @@ class ConversationEngine(
             promptLength = promptLength,
             responseLength = rawText.length,
             actualApiCall = true,
-            errorType = null
+            errorType = null,
+            status = "COMPLETED",
+            latencySec = latencySec
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -178,7 +190,7 @@ class ConversationEngine(
         responseSummary: String? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
-        val safeErrorMessage = errorMessage.ifBlank { "Provider 호출에 실패했습니다." }
+        val safeErrorMessage = buildUserFacingErrorMessage(errorType, errorMessage)
         val traceText = buildTraceText(
             ragContext = request.ragContext,
             providerName = providerName,
@@ -187,7 +199,9 @@ class ConversationEngine(
             responseLength = 0,
             actualApiCall = true,
             errorType = errorType,
-            providerResponseSummary = responseSummary
+            providerResponseSummary = responseSummary,
+            status = "FAILED",
+            latencySec = latencySec
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -214,6 +228,7 @@ class ConversationEngine(
                             appendLine("providerName: $providerName")
                             appendLine("modelName: $modelName")
                             appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: true")
                             appendLine("errorType: $errorType")
@@ -290,7 +305,9 @@ class ConversationEngine(
             promptLength = promptLength,
             responseLength = rawText.length,
             actualApiCall = false,
-            errorType = null
+            errorType = null,
+            status = "COMPLETED",
+            latencySec = latencySec
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -369,7 +386,7 @@ class ConversationEngine(
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
-        val errorText = "API Key가 설정되지 않았습니다. 설정에서 API Key를 입력하세요."
+        val errorText = buildUserFacingErrorMessage("API_KEY_MISSING", "")
         val traceText = buildTraceText(
             ragContext = request.ragContext,
             providerName = providerName,
@@ -377,7 +394,9 @@ class ConversationEngine(
             promptLength = promptLength,
             responseLength = 0,
             actualApiCall = false,
-            errorType = "API_KEY_MISSING"
+            errorType = "API_KEY_MISSING",
+            status = "FAILED",
+            latencySec = latencySec
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -404,6 +423,8 @@ class ConversationEngine(
                             appendLine("providerName: $providerName")
                             appendLine("modelName: $modelName")
                             appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: false")
                             appendLine("errorType: API_KEY_MISSING")
                             appendLine()
@@ -451,6 +472,106 @@ class ConversationEngine(
             modelName = modelName,
             latencySec = latencySec,
             errorType = "API_KEY_MISSING",
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createModelMissingResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        startedAt: Long,
+        promptLength: Int
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
+        val errorText = buildUserFacingErrorMessage("MODEL_MISSING", "")
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = 0,
+            actualApiCall = false,
+            errorType = "MODEL_MISSING",
+            status = "FAILED",
+            latencySec = latencySec
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = "MODEL_MISSING",
+                        outputSummary = "기본 대화 모델 미지정",
+                        rawOutput = buildString {
+                            appendLine(errorText)
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("status: FAILED")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("latencySec: $latencySec")
+                            appendLine("actualApiCall: false")
+                            appendLine("errorType: MODEL_MISSING")
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = "MODEL_MISSING",
+                        outputSummary = "기본 모델 없음으로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "기본 모델 필요",
+                    content = errorText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = errorText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
+            errorType = "MODEL_MISSING",
             runInfo = runInfo,
             createdAt = now
         )
@@ -520,18 +641,23 @@ class ConversationEngine(
         responseLength: Int,
         actualApiCall: Boolean,
         errorType: String?,
-        providerResponseSummary: String? = null
+        providerResponseSummary: String? = null,
+        status: String = if (errorType == null) "COMPLETED" else "FAILED",
+        latencySec: Double? = null
     ): String {
         return buildString {
             appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → 응답 생성 → 화면 갱신")
+            appendLine()
+            appendLine("[PROVIDER_CALL]")
             appendLine("providerName: $providerName")
+            appendLine("providerId: $providerName")
             appendLine("modelName: $modelName")
+            appendLine("actualApiCall: $actualApiCall")
+            appendLine("status: $status")
             appendLine("promptLength: $promptLength")
             appendLine("responseLength: $responseLength")
-            appendLine("actualApiCall: $actualApiCall")
-            if (errorType != null) {
-                appendLine("errorType: $errorType")
-            }
+            appendLine("latencySec: ${latencySec ?: "unknown"}")
+            appendLine("errorType: ${errorType ?: "NONE"}")
             if (!providerResponseSummary.isNullOrBlank()) {
                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                 appendLine(providerResponseSummary.take(1200))
@@ -569,6 +695,29 @@ class ConversationEngine(
                 appendLine("[RAG_CONTEXT_END]")
             }
         }.trim()
+    }
+
+    private fun buildUserFacingErrorMessage(
+        errorType: String,
+        fallbackMessage: String
+    ): String {
+        return when (errorType) {
+            "API_KEY_MISSING" -> "Google API Key가 설정되지 않았습니다. Provider 관리에서 API Key를 입력하세요."
+            "MODEL_MISSING" -> "대화모드 기본 모델이 설정되지 않았습니다. Model 관리에서 기본 모델을 지정하세요."
+            "INVALID_REQUEST" -> "Gemini 요청 형식 또는 모델명이 올바르지 않습니다. 모델명을 확인하세요."
+            "INVALID_RESPONSE" -> "Gemini 응답에서 표시 가능한 텍스트를 찾지 못했습니다."
+            "TOOL_CALL_NOT_SUPPORTED" -> "이 응답은 도구 호출이 필요하지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
+            "RATE_LIMIT" -> "요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."
+            "SERVER_ERROR" -> "Gemini 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
+            "TIMEOUT" -> "요청 시간이 초과되었습니다. 잠시 후 다시 시도하세요."
+            else -> fallbackMessage.takeIf { it.isNotBlank() } ?: "알 수 없는 오류가 발생했습니다. 실행정보를 확인하세요."
+        }
+    }
+
+    private fun isModelMissing(providerName: String, modelName: String): Boolean {
+        return providerName.equals("MODEL_MISSING", ignoreCase = true) ||
+                modelName.equals("MODEL_MISSING", ignoreCase = true) ||
+                modelName.isBlank()
     }
 
     private fun resolveProviderName(selectedProvider: String?): String {

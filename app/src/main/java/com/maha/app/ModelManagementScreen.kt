@@ -135,6 +135,30 @@ fun ModelManagementScreen(
             }
         }
 
+        if (models.none { it.enabled && it.isDefaultForConversation }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2F1B)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "기본 대화 모델이 지정되지 않았습니다.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFD28A)
+                    )
+                    Text(
+                        text = "Gemini 실제 호출을 사용하려면 모델 카드에서 기본 지정을 눌러주세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFEBD7B3)
+                    )
+                }
+            }
+        }
+
         if (models.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
@@ -256,9 +280,10 @@ private fun ModelProfileCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (model.isDefaultForConversation) "대화모드 기본 모델" else "대화모드 모델",
+                        text = if (model.isDefaultForConversation) "✓ 기본 대화 모델" else "대화모드 모델",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFD0D3DA)
+                        fontWeight = if (model.isDefaultForConversation) FontWeight.Bold else FontWeight.Normal,
+                        color = if (model.isDefaultForConversation) Color(0xFF9FE3B1) else Color(0xFFD0D3DA)
                     )
                     if (isLocalModel) {
                         Text(
@@ -271,6 +296,14 @@ private fun ModelProfileCard(
                 Switch(
                     checked = model.enabled,
                     onCheckedChange = onEnabledChange
+                )
+            }
+
+            if (model.isDefaultForConversation) {
+                Text(
+                    text = "기본 모델 · Gemini 호출에 사용됨",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF9FE3B1)
                 )
             }
 
