@@ -1,4 +1,320 @@
 ==============================
+[2026-05-02 20:34] Gemini native API / webSearch grounding 구조 설계
+==============================
+
+[작업]
+- Gemini native Provider Adapter 분리 정책 설계
+- OpenAI-compatible Gemini 호출과 native Gemini 호출 관계 정리
+- webSearch grounding 사용 조건 설계
+- RAG 검색과 webSearch grounding 분리 정책 설계
+- grounding citations / metadata 표시 정책 설계
+- Web Search 오류 처리 정책 설계
+- ModelCapability V2 webSearch 연결 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- Gemini native API는 기존 OpenAI-compatible Gemini 호출과 분리한다
+- webSearch grounding은 GOOGLE Provider + native adapter + 사용자 Web Search ON 조건에서만 사용한다
+- RAG 검색과 Google Search grounding은 UI/실행정보/정책에서 완전히 분리한다
+- webSearch capability 체크만으로 자동 호출하지 않는다
+- 이번 단계는 설계만 수행하고 실제 native 호출/webSearch 구현은 하지 않는다
+
+[Adapter 정책]
+- OpenAI-compatible Gemini: 기존 GoogleGeminiProviderAdapter 유지, chat/completions 전용
+- Gemini native: GeminiNativeProviderAdapter 신규 후보, generateContent + Google Search grounding 전용
+- 분기 조건: providerType=GOOGLE, Web Search 사용자 토글 ON, model webSearch capability가 USER_ENABLED 또는 SUPPORTED, selected call mode가 native grounding일 때만 native adapter 사용
+
+[webSearch 사용 조건]
+- Provider: GOOGLE만 허용, OPENAI_COMPATIBLE/LOCAL/CUSTOM은 WEB_SEARCH_NOT_SUPPORTED 처리
+- Model capability: tools.webSearch가 USER_ENABLED 또는 SUPPORTED일 때만 후보, UNKNOWN은 사용자 확인/설정 필요
+- 사용자 토글: 대화방 RAG 토글과 별개인 Web Search 토글 필요
+- fallback: 1차 구현은 webSearch 실패 시 일반 답변 fallback 없이 ERROR_BLOCK 처리
+
+[RAG와 webSearch 구분]
+- RAG: 앱 내부 rag/index_metadata.json 기반 로컬 검색, 외부 인터넷 아님
+- webSearch: Gemini native API의 Google Search grounding 기반 외부 최신 정보 검색
+- UI 표시: RAG ON/OFF와 Web Search ON/OFF를 별도 표시, 실행정보도 RAG 섹션과 Web Search Grounding 섹션으로 분리
+
+[응답/출처 표시]
+- 본문: 최종 답변 text만 표시, raw grounding metadata는 본문에 노출하지 않음
+- 실행정보: groundingUsed, citationCount, searchQueryCount, providerNativeGrounding 여부 표시
+- 참조 출처: 후속 UX에서 “참조 출처 보기” 기본 접힘 섹션으로 title/url 요약 표시
+
+[오류 처리]
+- WEB_SEARCH_NOT_SUPPORTED: GOOGLE native grounding 조건이 아니거나 adapter 미구현이면 표시
+- GROUNDING_FAILED: native API 호출 또는 grounding metadata 처리 실패 시 표시
+- MODEL_UNSUPPORTED_TOOL: 모델이 Google Search grounding tool을 거부하거나 지원하지 않을 때 표시
+- fallback: 1차는 fallback 없음, 후속에서 “검색 실패 시 일반 답변으로 계속” 옵션 검토
+
+[1차 구현 범위]
+- WebSearchUsagePolicy 또는 WebSearchGroundingPolicy data class 추가
+- ToolSupportPolicy에 native grounding 가능성 상태 또는 webSearchGrounding 상태 추가
+- ConversationEngine 실행정보에 Web Search Grounding placeholder 섹션 추가
+- 대화방 Web Search 토글 설계 확정 후 UI 추가 여부 결정
+- GeminiNativeProviderAdapter는 skeleton까지만 후보, 실제 HTTP 호출은 다음 단계로 분리
+
+[보류 항목]
+- Gemini native generateContent 실제 호출
+- Google Search grounding tool 실제 요청 body 구성
+- grounding metadata/citation 파싱 전체 구현
+- Web Search 토글 UI 실제 구현
+- 일반 답변 fallback 옵션 구현
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Gemini native API / webSearch grounding 구조 설계
+
+목표:
+- 현재 OpenAI-compatible Gemini 호출과 별도로 Gemini native API 기반 webSearch grounding 구조를 설계한다.
+- Google Search grounding을 실제 구현하기 전에 Provider / Model / Capability / UI / 실행정보 정책을 확정한다.
+- 이번 단계는 설계만 수행한다. 실제 webSearch grounding 호출은 구현하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료:
+- GoogleGeminiProviderAdapter: OpenAI-compatible chat/completions 호출
+- OpenAiCompatibleProviderAdapter: OPENAI_COMPATIBLE / LOCAL / CUSTOM 호출
+- ToolSupportPolicy: tool 실행 미지원 정책
+- tool_calls/function_call 감지 및 TOOL_CALL_NOT_SUPPORTED 처리
+- ModelCapability V2
+- Provider / Model 관리
+- RAG keyword 검색
+
+현재 한계:
+- Google Search grounding 실제 호출 없음
+- Gemini native API 호출 구조 없음
+- OpenAI-compatible endpoint에서는 webSearch/tool 지원 정책이 불명확하거나 제한적
+- “구글서치 툴 사용” 입력은 일반 프롬프트 또는 미지원 처리만 가능
+
+--------------------------------------------------
+2. 핵심 결정 대상
+--------------------------------------------------
+
+확정할 것:
+
+1. Gemini native API Adapter 분리 여부
+2. OpenAI-compatible Gemini 호출과 native Gemini 호출의 관계
+3. webSearch grounding 사용 조건
+4. ModelCapability V2와 webSearch 상태 연결
+5. 대화방 UI에서 webSearch ON/OFF 노출 여부
+6. RAG 검색과 webSearch grounding 분리 정책
+7. 응답 citations / grounding metadata 표시 정책
+8. 1차 구현 범위
+
+--------------------------------------------------
+3. Adapter 구조 정책
+--------------------------------------------------
+
+권장 신규 컴포넌트:
+
+- GeminiNativeProviderAdapter
+
+역할:
+- Gemini native endpoint 호출
+- Google Search grounding tool 설정
+- 응답 text 추출
+- grounding metadata / citations 추출
+- thinking summary가 있다면 별도 추출 후보
+- ConversationResponse로 변환
+
+기존 유지:
+- GoogleGeminiProviderAdapter
+  - OpenAI-compatible chat/completions 전용
+- GeminiNativeProviderAdapter
+  - native generateContent 전용
+
+주의:
+- 당장 기존 GoogleGeminiProviderAdapter를 대체하지 않는다
+- native webSearch 사용 시에만 별도 Adapter로 분기한다
+
+--------------------------------------------------
+4. 호출 경로 정책
+--------------------------------------------------
+
+대화 요청 시:
+
+조건 A:
+- providerType=GOOGLE
+- model.capabilitiesV2.tools.webSearch == USER_ENABLED 또는 SUPPORTED
+- 사용자가 webSearch 사용 ON
+- selected call mode = native grounding
+
+이면:
+- GeminiNativeProviderAdapter 사용
+
+그 외:
+- 기존 GoogleGeminiProviderAdapter 또는 OpenAiCompatibleProviderAdapter 유지
+
+주의:
+- webSearch capability 체크만으로 자동 사용하지 않는다
+- 대화방 빠른 설정에 “Web Search” 별도 토글을 후속 추가하는 방향
+- 현재 RAG 검색 토글과 혼동 금지
+
+--------------------------------------------------
+5. UI 정책
+--------------------------------------------------
+
+대화방 빠른 설정:
+
+현재:
+- 검색 ON/OFF는 RAG keyword 검색 의미
+
+후속:
+- RAG 검색
+- Web Search
+- Tool Calling
+을 분리
+
+1차 설계:
+- Web Search 토글은 후속 구현
+- 우선 Model 관리에서 webSearch capability를 USER_ENABLED로 설정할 수 있게 유지
+- 실제 native grounding 구현 전까지는 “Web Search는 아직 미구현” 안내 유지
+
+Provider / Model 관리:
+- Google 모델에서 webSearch capability가 UNKNOWN이면 사용자가 USER_ENABLED로 바꿀 수 있음
+- 실제 호출 성공 보장은 하지 않음
+- native grounding 미지원 모델이면 오류 처리
+
+--------------------------------------------------
+6. RAG와 webSearch 구분
+--------------------------------------------------
+
+RAG:
+- 앱 내부 rag/index_metadata.json 기반 로컬 검색
+- 대화 기록 / chunk / summary 기반
+- 외부 인터넷 아님
+
+webSearch grounding:
+- Google Search를 통한 외부 최신 정보 grounding
+- citations / grounding metadata 가능
+- Gemini native API 필요
+
+UI/실행정보에는 반드시 구분:
+
+- RAG: ON/OFF, resultCount, chunkCount
+- Web Search: ON/OFF, groundingUsed, citationCount
+
+--------------------------------------------------
+7. 응답 표시 정책
+--------------------------------------------------
+
+본문:
+- 최종 답변 text만 표시
+- citations는 본문에 무조건 섞지 않음
+
+실행정보:
+- Web Search grounding 섹션 추가 후보
+- groundingUsed
+- citationCount
+- searchQueryCount
+- source titles / urls 요약
+- provider native grounding 여부
+
+후속 UX:
+- “참조 출처 보기” 접힘 섹션
+- citation copy
+- source link 표시
+
+주의:
+- source URL은 사용자에게 표시 가능하나 과도한 raw metadata 노출 금지
+- raw grounding metadata 전체 본문 노출 금지
+
+--------------------------------------------------
+8. 오류 처리 정책
+--------------------------------------------------
+
+오류 유형 후보:
+
+- WEB_SEARCH_NOT_SUPPORTED
+- NATIVE_GEMINI_REQUIRED
+- GROUNDING_FAILED
+- MODEL_UNSUPPORTED_TOOL
+- API_KEY_MISSING
+- INVALID_REQUEST
+- UNKNOWN
+
+정책:
+- 사용자가 Web Search를 켰지만 native adapter가 없으면 WEB_SEARCH_NOT_SUPPORTED
+- Google Provider가 아니면 WEB_SEARCH_NOT_SUPPORTED
+- 모델이 grounding을 거부하거나 API가 오류를 반환하면 GROUNDING_FAILED 또는 MODEL_UNSUPPORTED_TOOL
+- fallback 여부는 설정 필요
+
+권장 1차:
+- webSearch 실패 시 ERROR_BLOCK
+- 후속에서 일반 답변 fallback 옵션 추가
+
+--------------------------------------------------
+9. 모델 capability 정책
+--------------------------------------------------
+
+ModelCapability V2:
+- tools.webSearch
+  - UNKNOWN 기본
+  - USER_ENABLED 가능
+  - SUPPORTED는 metadata/override로 확정될 때만
+- reasoning.thinkingSummary
+  - 별도 native 응답에서 안전하게 확인될 때만 표시
+
+하드코딩 금지:
+- 특정 모델명 기반 webSearch=true 금지
+- native API 응답/공식 metadata/사용자 설정/override 기반으로만 처리
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계는 아직 구현보다 “UI/상태 준비”를 추천한다.
+
+권장 1차 구현:
+- WebSearchUsagePolicy data class 또는 helper 설계/추가
+- ToolSupportPolicy에 native grounding 가능성 상태 추가
+- 실행정보 구조에 Web Search 섹션 placeholder 추가
+- 대화방 빠른 설정에 Web Search 토글 추가 여부 설계 후 구현
+- 실제 native Gemini 호출은 다음 단계로 분리
+
+또는 더 직접적인 후속:
+- GeminiNativeProviderAdapter skeleton만 추가
+- 실제 HTTP 호출은 보류
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 Google Search grounding 호출
+❌ Gemini native API 실제 호출
+❌ 기존 GoogleGeminiProviderAdapter 대체
+❌ RAG 토글을 webSearch 토글로 재사용
+❌ 모델명 기반 webSearch 하드코딩
+❌ streaming 구현
+❌ tool execution 구현
+
+--------------------------------------------------
+완료 기준:
+- Gemini native Adapter 분리 정책 확정
+- webSearch 사용 조건 확정
+- RAG와 webSearch 분리 정책 확정
+- UI/실행정보 표시 정책 확정
+- 오류 처리 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+WebSearchUsagePolicy 및 Web Search UI skeleton 구현
+
+==============================
 [2026-05-02 20:31] ToolSupportPolicy 및 tool_calls 표시 보강 구현
 ==============================
 
