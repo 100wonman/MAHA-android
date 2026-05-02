@@ -319,6 +319,10 @@ fun AppRoot() {
                 selectedConversationSettingsPage = "modelApi"
             }
 
+            conversationDrawerState.isOpen && selectedConversationSettingsPage == "modelManagement" -> {
+                selectedConversationSettingsPage = "modelApi"
+            }
+
             conversationDrawerState.isOpen && selectedConversationSettingsPage != null -> {
                 selectedConversationSettingsPage = null
             }
@@ -577,6 +581,7 @@ fun AppRoot() {
                             when (selectedConversationSettingsPage) {
                                 "storage" -> selectedConversationSettingsPage = "rag"
                                 "providerManagement" -> selectedConversationSettingsPage = "modelApi"
+                                "modelManagement" -> selectedConversationSettingsPage = "modelApi"
                                 null -> scope.launch { conversationDrawerState.close() }
                                 else -> selectedConversationSettingsPage = null
                             }
@@ -1741,6 +1746,33 @@ private fun ConversationGlobalSettingsScreen(
             return@Box
         }
 
+
+        if (selectedPage == "modelManagement") {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                TextButton(onClick = onBackClick) {
+                    Text(text = "←", color = Color.White)
+                }
+
+                Text(
+                    text = "Model 관리",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                ModelManagementScreen(
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            return@Box
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -1825,6 +1857,7 @@ private fun ConversationGlobalSettingsScreen(
                             "rag" -> "메모리 / RAG"
                             "modelApi" -> "모델 / API 설정"
                             "providerManagement" -> "Provider 관리"
+                            "modelManagement" -> "Model 관리"
                             else -> "대화 설정"
                         },
                         style = MaterialTheme.typography.headlineMedium,
@@ -1860,6 +1893,7 @@ private fun ConversationGlobalSettingsScreen(
                                     "rag" -> "메모리 / RAG 상세 페이지"
                                     "modelApi" -> "모델 / API 설정 상세 페이지"
                                     "providerManagement" -> "Provider 관리"
+                                    "modelManagement" -> "Model 관리"
                                     else -> "대화 설정 상세 페이지"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
@@ -1885,28 +1919,11 @@ private fun ConversationGlobalSettingsScreen(
                     }
 
                     item {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF3A3F49)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "모델 관리",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "모델 목록과 capability 설정은 후속 단계에서 연결합니다.",
-                                    color = Color(0xFFD0D3DA)
-                                )
-                            }
-                        }
+                        ConversationGlobalSettingsCard(
+                            title = "Model 관리",
+                            subtitle = "대화모드 모델 추가, 수정, 삭제, 즐겨찾기, 기본 모델 설정",
+                            onClick = { onPageSelected("modelManagement") }
+                        )
                     }
                 }
 
