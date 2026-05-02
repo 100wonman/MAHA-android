@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProviderManagementScreen(
@@ -52,11 +54,92 @@ fun ProviderManagementScreen(
     var isAddDialogOpen by remember { mutableStateOf(false) }
     var providerToDelete by remember { mutableStateOf<ProviderProfile?>(null) }
 
+    val coroutineScope = rememberCoroutineScope()
+    val googleModelListFetcher = remember { GoogleModelListFetcher() }
+    var modelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
+    var googleModels by remember { mutableStateOf<List<GoogleModelListItem>>(emptyList()) }
+    var googleModelListError by remember { mutableStateOf<String?>(null) }
+    var googleModelListMessage by remember { mutableStateOf<String?>(null) }
+    var isGoogleModelListLoading by remember { mutableStateOf(false) }
+
     fun reloadProviders() {
         providers = store.loadProviderProfiles().sortedBy { it.displayName.lowercase() }
         providerApiKeyStates = providers.associate { provider ->
             provider.providerId to store.hasProviderApiKey(provider.providerId)
         }
+    }
+
+    fun openGoogleModelList(provider: ProviderProfile) {
+        modelListProvider = provider
+        googleModels = emptyList()
+        googleModelListError = null
+        googleModelListMessage = null
+        isGoogleModelListLoading = true
+
+        coroutineScope.launch {
+            val apiKey = store.loadProviderApiKey(provider.providerId)
+            if (apiKey.isNullOrBlank()) {
+                isGoogleModelListLoading = false
+                googleModelListError = "API Key가 설정되지 않았습니다. Provider 수정 화면에서 API Key를 저장하세요."
+                return@launch
+            }
+
+            val result = googleModelListFetcher.fetchModels(
+                apiKey = apiKey,
+                endpoint = provider.modelListEndpoint
+            )
+            isGoogleModelListLoading = false
+            if (result.success) {
+                googleModels = result.models
+                googleModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
+            } else {
+                googleModelListError = result.errorMessage ?: "모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun addGoogleModelProfile(provider: ProviderProfile, item: GoogleModelListItem) {
+        val rawModelName = item.rawModelName.trim()
+        if (rawModelName.isBlank()) {
+            googleModelListMessage = "rawModelName이 비어 있어 추가할 수 없습니다."
+            return
+        }
+
+        val current = store.loadModelProfiles()
+        val alreadyExists = current.any { model ->
+            model.providerId == provider.providerId && model.rawModelName == rawModelName
+        }
+        if (alreadyExists) {
+            googleModelListMessage = "이미 추가된 모델입니다: $rawModelName"
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val safeIdPart = rawModelName
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(48)
+            .ifBlank { "google_model" }
+
+        val profile = ConversationModelProfile(
+            modelId = "model_${provider.providerId}_${safeIdPart}_$now",
+            providerId = provider.providerId,
+            displayName = item.displayName.ifBlank { rawModelName },
+            rawModelName = rawModelName,
+            contextWindow = item.inputTokenLimit,
+            inputModalities = listOf("text"),
+            outputModalities = listOf("text"),
+            capabilities = ConversationModelCapability(
+                text = true,
+                code = true,
+                jsonMode = true
+            ),
+            isFavorite = false,
+            isDefaultForConversation = false,
+            lastUsedAt = null,
+            enabled = true
+        )
+        store.addModelProfile(profile)
+        googleModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
     }
 
     LaunchedEffect(Unit) {
@@ -120,6 +203,7 @@ fun ProviderManagementScreen(
                     hasApiKey = providerApiKeyStates[provider.providerId] == true,
                     onEditClick = { editingProvider = provider },
                     onDeleteClick = { providerToDelete = provider },
+                    onLoadGoogleModels = { openGoogleModelList(provider) },
                     onEnabledChange = { enabled ->
                         val now = System.currentTimeMillis()
                         store.updateProviderProfile(
@@ -203,6 +287,26 @@ fun ProviderManagementScreen(
             }
         )
     }
+
+
+    modelListProvider?.let { provider ->
+        GoogleModelListDialog(
+            provider = provider,
+            isLoading = isGoogleModelListLoading,
+            models = googleModels,
+            errorMessage = googleModelListError,
+            resultMessage = googleModelListMessage,
+            existingModels = store.loadModelProfiles(),
+            onDismiss = {
+                modelListProvider = null
+                googleModels = emptyList()
+                googleModelListError = null
+                googleModelListMessage = null
+                isGoogleModelListLoading = false
+            },
+            onAddModel = { item -> addGoogleModelProfile(provider, item) }
+        )
+    }
 }
 
 @Composable
@@ -211,6 +315,7 @@ private fun ProviderProfileCard(
     hasApiKey: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
+    onLoadGoogleModels: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
     Card(
@@ -279,6 +384,14 @@ private fun ProviderProfileCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
+                if (provider.providerType == ProviderType.GOOGLE) {
+                    TextButton(
+                        onClick = onLoadGoogleModels,
+                        enabled = hasApiKey
+                    ) {
+                        Text(text = "모델 목록 불러오기")
+                    }
+                }
                 TextButton(onClick = onEditClick) {
                     Text(text = "수정")
                 }
@@ -286,8 +399,143 @@ private fun ProviderProfileCard(
                     Text(text = "삭제")
                 }
             }
+
+            if (provider.providerType == ProviderType.GOOGLE && !hasApiKey) {
+                Text(
+                    text = "모델 목록 조회는 API Key 저장 후 사용할 수 있습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFFFD08A)
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun GoogleModelListDialog(
+    provider: ProviderProfile,
+    isLoading: Boolean,
+    models: List<GoogleModelListItem>,
+    errorMessage: String?,
+    resultMessage: String?,
+    existingModels: List<ConversationModelProfile>,
+    onDismiss: () -> Unit,
+    onAddModel: (GoogleModelListItem) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Google 모델 목록") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = provider.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (isLoading) {
+                    Text(text = "모델 목록을 불러오는 중입니다...")
+                }
+
+                errorMessage?.let { message ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFFFC4C4)
+                        )
+                    }
+                }
+
+                resultMessage?.let { message ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF203020)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFBFECC4)
+                        )
+                    }
+                }
+
+                if (!isLoading && errorMessage == null && models.isEmpty()) {
+                    Text(text = "표시할 모델이 없습니다.")
+                }
+
+                models.forEach { item ->
+                    val alreadyAdded = existingModels.any { model ->
+                        model.providerId == provider.providerId && model.rawModelName == item.rawModelName
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = item.displayName.ifBlank { item.rawModelName },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "rawModelName: ${item.rawModelName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            if (item.description.isNotBlank()) {
+                                Text(
+                                    text = item.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFD0D3DA),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Text(
+                                text = "inputTokenLimit: ${item.inputTokenLimit ?: "unknown"} / outputTokenLimit: ${item.outputTokenLimit ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            Text(
+                                text = "methods: ${item.supportedGenerationMethods.joinToString().ifBlank { "unknown" }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Button(
+                                onClick = { onAddModel(item) },
+                                enabled = !alreadyAdded,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = if (alreadyAdded) "이미 추가됨" else "추가")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
 }
 
 @Composable
