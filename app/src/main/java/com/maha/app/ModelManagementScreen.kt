@@ -51,6 +51,11 @@ fun ModelManagementScreen(
     var editingModel by remember { mutableStateOf<ConversationModelProfile?>(null) }
     var modelToDelete by remember { mutableStateOf<ConversationModelProfile?>(null) }
 
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedProviderTypeFilter by remember { mutableStateOf(MODEL_PROVIDER_FILTER_ALL) }
+    var favoriteOnly by remember { mutableStateOf(false) }
+    var enabledOnly by remember { mutableStateOf(false) }
+
     fun reload() {
         providers = store.loadProviderProfiles().sortedBy { it.displayName.lowercase() }
         models = store.loadModelProfiles()
@@ -92,6 +97,45 @@ fun ModelManagementScreen(
         store.ensureSettingsFiles()
         reload()
     }
+
+    val providerById = providers.associateBy { it.providerId }
+    val providerMissingCount = models.count { providerById[it.providerId] == null }
+    val defaultModel = models.firstOrNull { it.isDefaultForConversation }
+    val defaultModelName = defaultModel?.let { model ->
+        model.displayName.ifBlank { model.rawModelName }.ifBlank { "이름 없음" }
+    }
+    val normalizedSearchQuery = searchQuery.trim().lowercase()
+    val filteredModels = models
+        .filter { model ->
+            val provider = providerById[model.providerId]
+            val providerFilterMatches = when (selectedProviderTypeFilter) {
+                MODEL_PROVIDER_FILTER_ALL -> true
+                MODEL_PROVIDER_FILTER_MISSING -> provider == null
+                else -> provider?.providerType?.name == selectedProviderTypeFilter
+            }
+            val favoriteMatches = !favoriteOnly || model.isFavorite
+            val enabledMatches = !enabledOnly || model.enabled
+            val searchMatches = normalizedSearchQuery.isBlank() || listOf(
+                model.displayName,
+                model.rawModelName,
+                model.providerId,
+                provider?.displayName.orEmpty(),
+                provider?.providerType?.name.orEmpty()
+            ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+
+            providerFilterMatches && favoriteMatches && enabledMatches && searchMatches
+        }
+        .sortedWith(
+            compareByDescending<ConversationModelProfile> { it.isDefaultForConversation }
+                .thenByDescending { it.isFavorite }
+                .thenByDescending { it.enabled }
+                .thenBy { model -> providerById[model.providerId]?.displayName?.lowercase() ?: "zz_provider_missing" }
+                .thenBy { it.displayName.lowercase() }
+        )
+    val isFilterApplied = searchQuery.isNotBlank() ||
+            selectedProviderTypeFilter != MODEL_PROVIDER_FILTER_ALL ||
+            favoriteOnly ||
+            enabledOnly
 
     Column(
         modifier = modifier
@@ -159,6 +203,22 @@ fun ModelManagementScreen(
             }
         }
 
+        ModelListFilterPanel(
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            selectedProviderTypeFilter = selectedProviderTypeFilter,
+            onProviderTypeFilterChange = { selectedProviderTypeFilter = it },
+            favoriteOnly = favoriteOnly,
+            onFavoriteOnlyChange = { favoriteOnly = it },
+            enabledOnly = enabledOnly,
+            onEnabledOnlyChange = { enabledOnly = it },
+            totalCount = models.size,
+            visibleCount = filteredModels.size,
+            defaultModelName = defaultModelName,
+            providerMissingCount = providerMissingCount,
+            isFilterApplied = isFilterApplied
+        )
+
         if (models.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
@@ -170,9 +230,31 @@ fun ModelManagementScreen(
                     color = Color(0xFFD0D3DA)
                 )
             }
+        } else if (filteredModels.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "필터 조건에 맞는 모델이 없습니다.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "검색어 또는 필터를 해제해 다시 확인하세요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFD0D3DA)
+                    )
+                }
+            }
         } else {
-            models.forEach { model ->
-                val provider = providers.firstOrNull { it.providerId == model.providerId }
+            filteredModels.forEach { model ->
+                val provider = providerById[model.providerId]
                 ModelProfileCard(
                     model = model,
                     providerName = provider?.displayName ?: "Provider 없음 (${model.providerId})",
@@ -240,6 +322,146 @@ fun ModelManagementScreen(
                 }
             }
         )
+    }
+}
+
+
+private const val MODEL_PROVIDER_FILTER_ALL = "ALL"
+private const val MODEL_PROVIDER_FILTER_MISSING = "PROVIDER_MISSING"
+
+@Composable
+private fun ModelListFilterPanel(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    selectedProviderTypeFilter: String,
+    onProviderTypeFilterChange: (String) -> Unit,
+    favoriteOnly: Boolean,
+    onFavoriteOnlyChange: (Boolean) -> Unit,
+    enabledOnly: Boolean,
+    onEnabledOnlyChange: (Boolean) -> Unit,
+    totalCount: Int,
+    visibleCount: Int,
+    defaultModelName: String?,
+    providerMissingCount: Int,
+    isFilterApplied: Boolean
+) {
+    val providerFilterItems = buildList {
+        add(MODEL_PROVIDER_FILTER_ALL to "전체")
+        ProviderType.values().forEach { providerType ->
+            add(providerType.name to providerType.name)
+        }
+        add(MODEL_PROVIDER_FILTER_MISSING to "Provider 없음")
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "모델 목록 필터",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = buildString {
+                    append("전체 모델 ${totalCount}개 · 표시 ${visibleCount}개")
+                    append("\n기본 모델: ${defaultModelName ?: "없음"}")
+                    append("\nProvider 없음 모델 ${providerMissingCount}개")
+                    if (isFilterApplied) append(" · 필터 적용 중")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                label = { Text(text = "모델 검색") },
+                placeholder = { Text(text = "모델명, rawModelName, Provider명, providerId") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "ProviderType 필터",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFD0D3DA)
+            )
+            providerFilterItems.chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowItems.forEach { (filterValue, label) ->
+                        ModelFilterButton(
+                            text = label,
+                            selected = selectedProviderTypeFilter == filterValue,
+                            onClick = { onProviderTypeFilterChange(filterValue) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+            ModelFilterToggleRow(
+                label = "즐겨찾기만 보기",
+                checked = favoriteOnly,
+                onCheckedChange = onFavoriteOnlyChange
+            )
+            ModelFilterToggleRow(
+                label = "활성 모델만 보기",
+                checked = enabledOnly,
+                onCheckedChange = onEnabledOnlyChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelFilterButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.background(
+            if (selected) Color(0xFF1E3F66) else Color(0xFF303640)
+        )
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Color(0xFFB7D7FF) else Color(0xFFD0D3DA),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ModelFilterToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFD0D3DA)
+        )
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -527,7 +749,7 @@ private fun ModelProfileEditDialog(
                 Divider()
                 Text(text = "Capabilities", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    text = "Capability 체크는 모델 기능 표시 및 향후 호출 정책 참고값입니다. 실제 도구 실행 가능 여부는 Provider와 Adapter 지원 상태에 따라 달라집니다. 현재 대화모드는 tool/webSearch/codeExecution을 실제 실행하지 않으며, tool_call 응답은 미지원 안내로 처리됩니다.",
+                    text = "입력 → 출력 형식으로 모델 기능을 표시합니다. 체크한 기능은 호출 시 참고 정보이며, 실제 지원 여부는 Provider/모델 정책에 따라 달라질 수 있습니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFB8BCC6)
                 )
