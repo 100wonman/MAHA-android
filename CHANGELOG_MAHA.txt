@@ -1,4 +1,289 @@
 ==============================
+[2026-05-02 20:39] WebSearchUsagePolicy 및 Web Search UI skeleton 구현
+==============================
+
+[작업]
+- WebSearchUsagePolicy / WebSearchGroundingPolicy 추가
+- ConversationRequest 또는 ViewModel 상태에 webSearchEnabled 추가
+- 대화방 빠른 설정에 Web Search 토글 skeleton 추가
+- RAG 검색 토글과 Web Search 토글 분리
+- ConversationEngine 실행정보에 WEB_SEARCH_GROUNDING 섹션 추가
+- Web Search ON 시 requested=true / groundingExecuted=false 상태 기록
+- 실제 Gemini native API / Google Search grounding 호출은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- AppRoot.kt에서 ConversationViewModel.webSearchEnabled 값을 ConversationRoomScreen에 전달
+- AppRoot.kt에서 toggleWebSearchEnabled를 ConversationRoomScreen에 전달
+- ConversationRoomScreen.kt 빠른 설정에 Web Search 토글 추가
+- 기존 RAG 검색 토글과 Web Search 토글을 별도 Row/별도 상태로 분리
+- 메시지 전송 시 ConversationRequest.webSearchEnabled → WEB_SEARCH_GROUNDING requested=true/false 경로 유지
+
+[Web Search UI 테스트]
+- 빠른 설정 토글: 대화방 진입 → 입력창 위 “빠른 설정” 클릭 → Web Search 항목 표시 확인
+- 기본 OFF: 앱 실행 → 대화방 진입 → 빠른 설정 열기 → Web Search OFF 확인
+- ON/OFF 전환: Web Search 스위치 클릭 → 상단 요약 “Web ON/OFF” 변경 확인
+- RAG 토글과 분리: RAG 검색 스위치와 Web Search 스위치를 각각 눌러 서로 독립 동작 확인
+- 안내 문구: Web Search 아래 “실제 검색 호출은 후속 지원” 문구 확인
+
+[Web Search 실행정보 테스트]
+- requested: Web Search OFF 전송 → 실행정보 [WEB_SEARCH_GROUNDING] requested=false / ON 전송 → requested=true 확인
+- groundingExecuted: Web Search ON 전송 → groundingExecuted=false 확인
+- reason: Web Search ON 전송 → reason=NATIVE_GEMINI_GROUNDING_NOT_IMPLEMENTED 확인
+- citationCount: 실행정보 [WEB_SEARCH_GROUNDING] citationCount=0 확인
+- RAG 섹션 분리: RAG ON/OFF 전송 → [RAG]와 [WEB_SEARCH_GROUNDING]이 별도 섹션인지 확인
+
+[기존 기능 영향]
+- Gemini 호출: 기존 GoogleGeminiProviderAdapter 호출 경로 변경 없음
+- OpenAI-compatible 호출: 기존 OpenAiCompatibleProviderAdapter 호출 경로 변경 없음
+- ToolSupportPolicy: 기존 TOOL_SUPPORT_SUMMARY 유지
+- RAG: 기존 searchEnabled 전달/동작 유지, Web Search와 상태 분리
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 전체 Android 프로젝트가 첨부되지 않아 이 세션에서 Gradle/Android Studio 빌드는 실행하지 못함
+- 정적 확인: ConversationRoomScreen 호출부는 AppRoot.kt에 존재하여 MainActivity.kt 추가 첨부는 현재 불필요
+
+[변경 파일]
+- AppRoot.kt
+- ConversationRoomScreen.kt
+- ConversationEngine.kt
+- ConversationRequestResponse.kt
+- ConversationViewModel.kt
+- WebSearchUsagePolicy.kt
+- ConversationWebSearchQuickSetting.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+WebSearchUsagePolicy 및 Web Search UI skeleton 구현
+
+목표:
+- RAG 검색과 별개로 Web Search grounding 사용 여부를 관리할 수 있는 기본 구조를 추가한다.
+- 대화방 실행정보에 Web Search Grounding placeholder 섹션을 표시한다.
+- 대화방 빠른 설정에 Web Search 토글 skeleton을 추가한다.
+- 실제 Gemini native API / Google Search grounding 호출은 아직 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ WebSearchUsagePolicy 또는 WebSearchGroundingPolicy 추가
+✔ ProviderType별 Web Search 사용 가능성 판단 구조 추가
+✔ ConversationEngine 실행정보에 Web Search Grounding placeholder 추가
+✔ 대화방 빠른 설정에 Web Search 토글 skeleton 추가
+✔ Web Search ON 상태에서 native 호출 미구현 안내 처리
+✔ RAG 검색 토글과 Web Search 토글 분리
+✔ 기존 RAG 섹션 유지
+
+이번 단계에서 금지:
+
+❌ Gemini native generateContent 실제 호출
+❌ Google Search grounding 실제 요청 구현
+❌ grounding metadata/citation 파싱 구현
+❌ 외부 검색 API 호출
+❌ RAG 검색 알고리즘 변경
+❌ 기존 GoogleGeminiProviderAdapter 대체
+❌ streaming 구현
+❌ tool execution 구현
+
+--------------------------------------------------
+2. WebSearchUsagePolicy 구조
+--------------------------------------------------
+
+신규 파일 후보:
+
+- WebSearchUsagePolicy.kt
+
+권장 data class:
+
+WebSearchUsagePolicy:
+- enabledByUser: Boolean
+- providerType: ProviderType?
+- modelWebSearchStatus: CapabilityStatus?
+- nativeGroundingAvailable: Boolean
+- canAttemptGrounding: Boolean
+- reason: String?
+- fallbackAllowed: Boolean
+
+상태 판단:
+
+canAttemptGrounding = true 조건:
+- enabledByUser == true
+- providerType == GOOGLE
+- modelWebSearchStatus == USER_ENABLED 또는 SUPPORTED
+- nativeGroundingAvailable == true
+
+이번 단계:
+- nativeGroundingAvailable = false 고정
+- 따라서 canAttemptGrounding = false
+- reason = "NATIVE_GEMINI_GROUNDING_NOT_IMPLEMENTED"
+
+--------------------------------------------------
+3. ConversationEngine 연결
+--------------------------------------------------
+
+ConversationEngine 실행 시 Web Search 정책을 계산한다.
+
+입력 후보:
+- request.webSearchEnabled 또는 별도 settings 값
+- providerType
+- model.capabilitiesV2.tools.webSearch
+
+현재 ConversationRequest에 webSearchEnabled 필드가 없다면:
+- 1차에서 필드 추가 가능
+- 기본값 false
+
+정책:
+- webSearchEnabled=false:
+  - 기존 호출 흐름 유지
+- webSearchEnabled=true:
+  - 이번 단계에서는 실제 native 호출하지 않음
+  - 실행정보 Web Search Grounding 섹션에 미구현 상태 표시
+  - 호출 자체는 기존 일반 Provider 호출로 진행할지, ERROR_BLOCK 처리할지 결정 필요
+
+권장 1차:
+- Web Search ON이어도 일반 Provider 호출은 유지
+- 실행정보에 "webSearchRequested=true, groundingExecuted=false, reason=NATIVE_GEMINI_GROUNDING_NOT_IMPLEMENTED" 표시
+- 실제 native 호출 구현 단계에서 ERROR/fallback 정책 확정
+
+--------------------------------------------------
+4. 실행정보 Web Search Grounding 섹션
+--------------------------------------------------
+
+실행정보에 별도 섹션 추가:
+
+[WEB_SEARCH_GROUNDING]
+- requested: true / false
+- providerType
+- modelWebSearchStatus
+- nativeGroundingAvailable: false
+- groundingExecuted: false
+- citationCount: 0
+- searchQueryCount: 0
+- fallbackAllowed
+- reason
+
+주의:
+- 기존 RAG 섹션과 분리
+- 기존 TOOL_SUPPORT_SUMMARY 유지
+- 기존 PROVIDER_RESPONSE_SUMMARY 유지
+
+--------------------------------------------------
+5. 대화방 빠른 설정 UI
+--------------------------------------------------
+
+현재 빠른 설정에 RAG 검색 토글이 있음.
+
+추가:
+- Web Search 토글
+- 라벨: “Web Search”
+- 설명: “외부 웹 검색 grounding용입니다. 현재는 UI skeleton이며 실제 Google Search grounding은 후속 단계에서 지원합니다.”
+
+정책:
+- 기본 OFF
+- 켜도 실제 검색 호출은 하지 않음
+- 켠 상태에서 메시지 전송 시 실행정보에 requested=true 표시
+
+주의:
+- RAG 검색 토글과 별도 상태로 관리
+- RAG 검색 ON/OFF 동작 영향 금지
+
+--------------------------------------------------
+6. 저장/상태 정책
+--------------------------------------------------
+
+1차:
+- webSearchEnabled는 화면 local/session state로 유지 가능
+- 앱 재시작 후 유지 여부는 후속 단계로 분리 가능
+
+권장:
+- ConversationViewModel의 빠른 설정 상태에 webSearchEnabled 추가
+- 기본값 false
+- 메시지 전송 request에 포함
+
+주의:
+- 저장소 구조 대규모 변경 금지
+
+--------------------------------------------------
+7. 오류/안내 정책
+--------------------------------------------------
+
+이번 단계에서는 실제 호출하지 않으므로 ERROR_BLOCK을 기본 발생시키지 않는다.
+
+단:
+- 사용자가 Web Search ON으로 보냈을 때 실행정보에 명확히 표시:
+  - requested=true
+  - groundingExecuted=false
+  - reason=NATIVE_GEMINI_GROUNDING_NOT_IMPLEMENTED
+
+후속 실제 구현에서:
+- WEB_SEARCH_NOT_SUPPORTED
+- GROUNDING_FAILED
+- MODEL_UNSUPPORTED_TOOL
+처리
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Gemini OpenAI-compatible 호출
+- OpenAI-compatible Adapter 호출
+- ToolSupportPolicy
+- tool_calls 미지원 처리
+- RAG 검색 ON/OFF
+- RAG 실행정보 섹션
+- Provider 관리
+- Model 관리
+- 저장/복구
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ native Gemini API 호출 금지
+❌ Google Search grounding request body 구현 금지
+❌ citation 파싱 구현 금지
+❌ 외부 검색 API 호출 금지
+❌ webSearch를 RAG 토글에 합치기 금지
+❌ 기존 RAG 로직 변경 금지
+❌ GoogleGeminiProviderAdapter 대체 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- WebSearchUsagePolicy 추가
+- ConversationRequest 또는 ViewModel 상태에 webSearchEnabled 추가
+- 대화방 빠른 설정에 Web Search 토글 표시
+- Web Search ON/OFF가 RAG 토글과 분리됨
+- 실행정보에 WEB_SEARCH_GROUNDING 섹션 표시
+- Web Search ON 시 requested=true / groundingExecuted=false 표시
+- 기존 Gemini/RAG/Provider/Model 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+GeminiNativeProviderAdapter skeleton 설계 또는 Google Search grounding 실제 호출 설계
+
+==============================
 [2026-05-02 20:34] Gemini native API / webSearch grounding 구조 설계
 ==============================
 

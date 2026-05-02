@@ -11,7 +11,9 @@ data class ConversationRequest(
     val systemInstruction: String?,
     val selectedProvider: String?,
     val selectedModel: String?,
-    val createdAt: Long
+    val createdAt: Long,
+    val webSearchEnabled: Boolean = false,
+    val selectedModelWebSearchStatus: CapabilityStatus? = null
 )
 
 data class ConversationResponse(

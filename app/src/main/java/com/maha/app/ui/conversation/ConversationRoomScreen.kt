@@ -59,11 +59,13 @@ fun ConversationRoomScreen(
     session: ConversationSession,
     inputText: String,
     searchEnabled: Boolean,
+    webSearchEnabled: Boolean,
     modeLabel: String,
     isRunning: Boolean,
     onInputTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onToggleSearch: () -> Unit,
+    onToggleWebSearch: () -> Unit,
     onModeChange: (String) -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -89,11 +91,13 @@ fun ConversationRoomScreen(
             ConversationInputPanel(
                 inputText = inputText,
                 searchEnabled = searchEnabled,
+                webSearchEnabled = webSearchEnabled,
                 modeLabel = modeLabel,
                 isRunning = isRunning,
                 onInputTextChange = onInputTextChange,
                 onSend = onSend,
                 onToggleSearch = onToggleSearch,
+                onToggleWebSearch = onToggleWebSearch,
                 onModeChange = onModeChange,
                 onOpenSettings = onOpenSettings,
                 modifier = Modifier
@@ -1584,11 +1588,13 @@ private fun parseTableRows(text: String): List<List<String>> {
 private fun ConversationInputPanel(
     inputText: String,
     searchEnabled: Boolean,
+    webSearchEnabled: Boolean,
     modeLabel: String,
     isRunning: Boolean,
     onInputTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onToggleSearch: () -> Unit,
+    onToggleWebSearch: () -> Unit,
     onModeChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -1631,7 +1637,7 @@ private fun ConversationInputPanel(
                     )
 
                     Text(
-                        text = "모드 $modeLabel · 검색 ${if (searchEnabled) "ON" else "OFF"} · Worker 추후",
+                        text = "모드 $modeLabel · RAG ${if (searchEnabled) "ON" else "OFF"} · Web ${if (webSearchEnabled) "ON" else "OFF"}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 1
@@ -1707,13 +1713,13 @@ private fun ConversationInputPanel(
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                text = "검색 사용",
+                                text = "RAG 검색 사용",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
                             )
 
                             Text(
-                                text = if (searchEnabled) "대화 전송 시 검색 보조 ON" else "대화 전송 시 검색 보조 OFF",
+                                text = if (searchEnabled) "앱 내부 RAG 검색 ON" else "앱 내부 RAG 검색 OFF",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
                             )
@@ -1723,6 +1729,41 @@ private fun ConversationInputPanel(
                             checked = searchEnabled,
                             onCheckedChange = {
                                 onToggleSearch()
+                            }
+                        )
+                    }
+
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "Web Search",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                            )
+
+                            Text(
+                                text = if (webSearchEnabled) {
+                                    "외부 웹 검색 grounding 요청 ON · 실제 검색 호출은 후속 지원"
+                                } else {
+                                    "외부 웹 검색 grounding 요청 OFF"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                            )
+                        }
+
+                        Switch(
+                            checked = webSearchEnabled,
+                            onCheckedChange = {
+                                onToggleWebSearch()
                             }
                         )
                     }

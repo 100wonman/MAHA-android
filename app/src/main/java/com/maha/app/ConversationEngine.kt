@@ -226,7 +226,8 @@ class ConversationEngine(
             status = "COMPLETED",
             latencySec = latencySec,
             toolSupportPolicy = toolSupportPolicy,
-            thinkingSplit = thinkingSplit
+            thinkingSplit = thinkingSplit,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -268,6 +269,8 @@ class ConversationEngine(
                                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                                 appendLine(providerResponseSummary.take(1200))
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -334,7 +337,8 @@ class ConversationEngine(
             status = "FAILED",
             latencySec = latencySec,
             toolSupportPolicy = toolSupportPolicy,
-            thinkingSplit = thinkingSplit
+            thinkingSplit = thinkingSplit,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -377,6 +381,8 @@ class ConversationEngine(
                                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                                 appendLine(providerResponseSummary.take(1200))
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -451,7 +457,8 @@ class ConversationEngine(
             providerResponseSummary = responseSummary,
             status = "FAILED",
             latencySec = latencySec,
-            toolSupportPolicy = toolSupportPolicy
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -491,6 +498,8 @@ class ConversationEngine(
                                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                                 appendLine(responseSummary.take(1200))
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -563,7 +572,8 @@ class ConversationEngine(
             errorType = null,
             status = "COMPLETED",
             latencySec = latencySec,
-            toolSupportPolicy = toolSupportPolicy
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -596,6 +606,8 @@ class ConversationEngine(
                                 appendLine()
                                 appendLine(toolSupportPolicy.toTraceSummary())
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -659,7 +671,8 @@ class ConversationEngine(
             errorType = errorType,
             status = "FAILED",
             latencySec = latencySec,
-            toolSupportPolicy = toolSupportPolicy
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -695,6 +708,8 @@ class ConversationEngine(
                                 appendLine()
                                 appendLine(toolSupportPolicy.toTraceSummary())
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -765,7 +780,8 @@ class ConversationEngine(
             errorType = "API_KEY_MISSING",
             status = "FAILED",
             latencySec = latencySec,
-            toolSupportPolicy = toolSupportPolicy
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -800,6 +816,8 @@ class ConversationEngine(
                                 appendLine()
                                 appendLine(toolSupportPolicy.toTraceSummary())
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -871,7 +889,8 @@ class ConversationEngine(
             errorType = "MODEL_MISSING",
             status = "FAILED",
             latencySec = latencySec,
-            toolSupportPolicy = toolSupportPolicy
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -907,6 +926,8 @@ class ConversationEngine(
                                 appendLine()
                                 appendLine(toolSupportPolicy.toTraceSummary())
                             }
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -1024,7 +1045,8 @@ class ConversationEngine(
         status: String = if (errorType == null) "COMPLETED" else "FAILED",
         latencySec: Double? = null,
         toolSupportPolicy: ToolSupportPolicy? = null,
-        thinkingSplit: ThinkingSplitResult? = null
+        thinkingSplit: ThinkingSplitResult? = null,
+        request: ConversationRequest? = null
     ): String {
         return buildString {
             appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → 응답 생성 → 화면 갱신")
@@ -1050,6 +1072,8 @@ class ConversationEngine(
                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                 appendLine(providerResponseSummary.take(1200))
             }
+            appendLine()
+            append(buildWebSearchGroundingTraceText(request, toolSupportPolicy?.providerType))
             appendLine()
             append(buildRagTraceText(ragContext))
         }.trim()
@@ -1111,6 +1135,27 @@ class ConversationEngine(
         if (thinkingSplit.thinkingSummaryDetected) {
             appendLine("thinkingSummaryPreview=${thinkingSplit.thinkingSummaryPreview}")
         }
+    }
+
+    private fun StringBuilder.appendWebSearchGroundingTrace(
+        request: ConversationRequest,
+        providerType: ProviderType?
+    ) {
+        append(buildWebSearchGroundingTraceText(request, providerType))
+    }
+
+    private fun buildWebSearchGroundingTraceText(
+        request: ConversationRequest?,
+        providerType: ProviderType?
+    ): String {
+        val policy = WebSearchUsageResolver.resolve(
+            enabledByUser = request?.webSearchEnabled ?: false,
+            providerType = providerType,
+            modelWebSearchStatus = request?.selectedModelWebSearchStatus,
+            nativeGroundingAvailable = false,
+            fallbackAllowed = true
+        )
+        return policy.toTraceSummary()
     }
 
     private fun buildRagTraceText(ragContext: RagContext?): String {

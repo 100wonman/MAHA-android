@@ -50,6 +50,9 @@ class ConversationViewModel(
     var searchEnabled by mutableStateOf(false)
         private set
 
+    var webSearchEnabled by mutableStateOf(false)
+        private set
+
     var quickSettingsExpanded by mutableStateOf(false)
         private set
 
@@ -220,6 +223,14 @@ class ConversationViewModel(
         searchEnabled = !searchEnabled
     }
 
+    fun updateWebSearchEnabled(value: Boolean) {
+        webSearchEnabled = value
+    }
+
+    fun toggleWebSearchEnabled() {
+        webSearchEnabled = !webSearchEnabled
+    }
+
     fun updateQuickSettingsExpanded(value: Boolean) {
         quickSettingsExpanded = value
     }
@@ -240,6 +251,7 @@ class ConversationViewModel(
         if (targetIndex == -1) return
 
         val targetSession = conversationSessions[targetIndex]
+        val defaultConversationModel = resolveDefaultConversationModelProfile()
         val nowText = getCurrentTimeText()
         val currentTimeMillis = System.currentTimeMillis()
         val runId = "conversation_run_$currentTimeMillis"
@@ -278,9 +290,19 @@ class ConversationViewModel(
             ragContext = ragContext,
             recentMessages = targetSession.messages.takeLast(10),
             systemInstruction = null,
-            selectedProvider = resolveSelectedProviderName(),
-            selectedModel = resolveSelectedModelName(),
-            createdAt = currentTimeMillis
+            selectedProvider = defaultConversationModel?.providerId?.trim(),
+            selectedModel = defaultConversationModel?.rawModelName?.trim(),
+            createdAt = currentTimeMillis,
+            webSearchEnabled = webSearchEnabled,
+            selectedModelWebSearchStatus = defaultConversationModel
+                ?.capabilitiesV2
+                ?.tools
+                ?.webSearch
+                ?: defaultConversationModel
+                    ?.capabilities
+                    ?.toModelCapabilityV2()
+                    ?.tools
+                    ?.webSearch
         )
 
         val userOnlySession = targetSession.copy(
