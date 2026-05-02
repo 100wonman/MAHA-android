@@ -24,6 +24,9 @@ class ConversationViewModel(
     private val conversationEngine = ConversationEngine(
         apiKeyProvider = { providerName ->
             resolveProviderApiKey(providerName)
+        },
+        providerProfileProvider = { providerId ->
+            resolveProviderProfile(providerId)
         }
     )
     private val conversationFileStore = ConversationFileStore(
@@ -379,21 +382,13 @@ class ConversationViewModel(
 
 
     private fun resolveSelectedProviderName(): String {
-        val defaultModel = resolveDefaultConversationModelProfile() ?: return "MODEL_MISSING"
-
-        val providerForModel = providerSettingsStore.loadProviderProfiles()
-            .firstOrNull { it.providerId == defaultModel.providerId && it.isEnabled }
-
-        return providerForModel?.providerId ?: "MODEL_MISSING"
+        val defaultModel = resolveDefaultConversationModelProfile() ?: return ""
+        return defaultModel.providerId.trim()
     }
 
     private fun resolveSelectedModelName(): String {
-        val defaultModel = resolveDefaultConversationModelProfile()
-        if (defaultModel != null && defaultModel.rawModelName.isNotBlank()) {
-            return defaultModel.rawModelName
-        }
-
-        return "MODEL_MISSING"
+        val defaultModel = resolveDefaultConversationModelProfile() ?: return ""
+        return defaultModel.rawModelName.trim()
     }
 
     private fun resolveDefaultConversationModelProfile(): ConversationModelProfile? {
@@ -405,6 +400,15 @@ class ConversationViewModel(
 
     private fun resolveProviderApiKey(providerId: String): String? {
         return providerSettingsStore.loadProviderApiKey(providerId)
+    }
+
+    private fun resolveProviderProfile(providerId: String): ProviderProfile? {
+        return runCatching {
+            providerSettingsStore.loadProviderProfiles()
+                .firstOrNull { provider ->
+                    provider.providerId == providerId && provider.isEnabled
+                }
+        }.getOrNull()
     }
 
     private fun loadInitialSessions() {

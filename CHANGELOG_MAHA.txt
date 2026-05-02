@@ -1,4 +1,76 @@
 ==============================
+[2026-05-02 18:00] OpenAI-compatible Adapter 1차 구현
+==============================
+
+[작업]
+- OpenAiCompatibleProviderAdapter 추가
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM Provider 호출 분기 추가
+- baseUrl + /chat/completions endpoint 처리
+- API Key required/optional 정책 적용
+- OpenAI-compatible 응답 content 파싱
+- tool_calls/function_call 미지원 처리
+- BASE_URL_MISSING / API_KEY_MISSING / HTTP 오류 mapping 추가
+- 기존 GoogleGeminiProviderAdapter 경로 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationViewModel이 기본 대화 모델의 providerId/rawModelName을 그대로 ConversationEngine에 전달하도록 보정
+- ConversationEngine에서 MODEL_MISSING은 모델 자체가 없거나 rawModelName이 비어 있을 때만 발생하도록 수정
+- Provider 없음 / baseUrl 없음 / API Key 없음이 각각 PROVIDER_MISSING / BASE_URL_MISSING / API_KEY_MISSING으로 분리되도록 보정
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM Adapter 도달 경로 유지
+- Model 관리의 “기본 모델 · Gemini 호출에 사용됨” 문구를 “기본 모델 · 대화 호출에 사용됨”으로 수정
+
+[모델 선택 경로 테스트]
+- 기본 모델 없음: Model 관리에서 기본 모델이 없는 상태 → 메시지 전송 → MODEL_MISSING 확인
+- OPENAI_COMPATIBLE 기본 모델: OpenAI-compatible 모델을 기본 지정 → 메시지 전송 → MODEL_MISSING이 아닌 API_KEY_MISSING/BASE_URL_MISSING/호출 오류로 분기 확인
+- LOCAL 기본 모델: LOCAL 모델을 기본 지정 + baseUrl 입력 → 메시지 전송 → MODEL_MISSING 없이 Adapter 호출 시도 확인
+- CUSTOM 기본 모델: CUSTOM 모델을 기본 지정 + baseUrl 입력 → 메시지 전송 → MODEL_MISSING 없이 Adapter 호출 시도 확인
+- GOOGLE 기본 모델: Google 모델을 기본 지정 → 기존 Gemini 호출 정상 확인
+
+[오류 분기 테스트]
+- MODEL_MISSING: 기본 모델 없음 또는 기본 모델 rawModelName 비움 → MODEL_MISSING 확인
+- PROVIDER_MISSING: 모델은 있지만 연결된 providerId의 Provider를 삭제/비활성 → PROVIDER_MISSING 확인
+- BASE_URL_MISSING: OPENAI_COMPATIBLE/LOCAL/CUSTOM Provider의 baseUrl 비움 → BASE_URL_MISSING 확인
+- API_KEY_MISSING: OPENAI_COMPATIBLE Provider + baseUrl 있음 + API Key 없음 → API_KEY_MISSING 확인
+- NETWORK/TIMEOUT: LOCAL/CUSTOM Provider + baseUrl 있음 + 서버 없음 → NETWORK_ERROR/TIMEOUT/UNKNOWN 계열 확인
+
+[Adapter 도달 테스트]
+- OPENAI_COMPATIBLE: 기본 모델 지정 + Provider 설정 → OpenAiCompatibleProviderAdapter 분기 도달 확인
+- LOCAL: 기본 모델 지정 + baseUrl 있음 + API Key 없음 → API Key 없이 OpenAiCompatibleProviderAdapter 호출 시도 확인
+- CUSTOM: 기본 모델 지정 + baseUrl 있음 + API Key 없음 → API Key 없이 OpenAiCompatibleProviderAdapter 호출 시도 확인
+- Google 기존 경로: providerType=GOOGLE → GoogleGeminiProviderAdapter 기존 경로 유지 확인
+
+[기존 기능 영향]
+- Provider 관리: Provider 추가/수정/삭제/토글 확인
+- Model 관리: 모델 추가/수정/삭제/즐겨찾기/기본 지정 확인
+- Gemini 호출: Google Provider + 기본 모델로 기존 Gemini 응답 확인
+- RAG: 검색 ON/OFF, RAG 섹션, 참조 컨텍스트 보기 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[수정된 문제]
+- GROQ/OPENAI_COMPATIBLE/LOCAL/CUSTOM 모델을 기본 대화 모델로 지정해도 MODEL_MISSING으로 먼저 차단되던 문제 보정
+- providerId와 ProviderProfile.providerId 매칭 전에 MODEL_MISSING으로 뭉뚱그리던 흐름 정리
+- Provider/baseUrl/API Key 오류가 각 errorType으로 분리되도록 경로 정리
+
+[변경 파일]
+- ConversationEngine.kt
+- ConversationViewModel.kt
+- ModelManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI-compatible Provider UX 보정 또는 도구 호출 정책 설계
+
+==============================
 [2026-05-02 17:52] OpenAI-compatible Adapter 일반화 설계
 ==============================
 

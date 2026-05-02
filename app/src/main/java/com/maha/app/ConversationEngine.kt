@@ -3,7 +3,9 @@ package com.maha.app
 class ConversationEngine(
     private val promptBuilder: ConversationPromptBuilder = ConversationPromptBuilder(),
     private val apiKeyProvider: (providerName: String) -> String? = { null },
-    private val googleGeminiProviderAdapter: GoogleGeminiProviderAdapter = GoogleGeminiProviderAdapter()
+    private val providerProfileProvider: (providerId: String) -> ProviderProfile? = { null },
+    private val googleGeminiProviderAdapter: GoogleGeminiProviderAdapter = GoogleGeminiProviderAdapter(),
+    private val openAiCompatibleProviderAdapter: OpenAiCompatibleProviderAdapter = OpenAiCompatibleProviderAdapter()
 ) {
     suspend fun execute(request: ConversationRequest): ConversationResponse {
         val startedAt = System.currentTimeMillis()
@@ -12,9 +14,24 @@ class ConversationEngine(
             val prompt = promptBuilder.build(request)
             val providerName = resolveProviderName(request.selectedProvider)
             val modelName = resolveModelName(request.selectedModel)
+            val providerProfile = if (providerName.isBlank() || providerName.equals("DUMMY", ignoreCase = true)) {
+                null
+            } else {
+                providerProfileProvider(providerName)
+            }
 
-            if (isModelMissing(providerName, modelName)) {
+            if (isModelMissing(modelName)) {
                 return createModelMissingResponse(
+                    request = request,
+                    providerName = providerName.ifBlank { "PROVIDER_UNKNOWN" },
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length
+                )
+            }
+
+            if (providerName.equals("DUMMY", ignoreCase = true)) {
+                return createDummySuccessResponse(
                     request = request,
                     providerName = providerName,
                     modelName = modelName,
@@ -23,7 +40,18 @@ class ConversationEngine(
                 )
             }
 
-            if (isGoogleProvider(providerName)) {
+            if (providerName.isBlank() || providerProfile == null) {
+                return createProviderSetupFailureResponse(
+                    request = request,
+                    providerName = providerName.ifBlank { "PROVIDER_MISSING" },
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length,
+                    errorType = "PROVIDER_MISSING"
+                )
+            }
+
+            if (isGoogleProvider(providerName, providerProfile)) {
                 val apiKey = apiKeyProvider(providerName)
                 if (apiKey.isNullOrBlank()) {
                     return createApiKeyMissingResponse(
@@ -48,7 +76,8 @@ class ConversationEngine(
                         providerName = providerResult.providerName,
                         modelName = modelName,
                         latencySec = providerResult.latencySec,
-                        promptLength = prompt.length
+                        promptLength = prompt.length,
+                        providerResponseSummary = providerResult.responseSummary
                     )
                 } else {
                     createProviderFailureResponse(
@@ -64,22 +93,78 @@ class ConversationEngine(
                 }
             }
 
-            if (requiresApiKey(providerName) && apiKeyProvider(providerName).isNullOrBlank()) {
-                return createApiKeyMissingResponse(
-                    request = request,
-                    providerName = providerName,
+            if (isOpenAiCompatibleProvider(providerProfile)) {
+                if (providerProfile == null) {
+                    return createProviderSetupFailureResponse(
+                        request = request,
+                        providerName = providerName,
+                        modelName = modelName,
+                        startedAt = startedAt,
+                        promptLength = prompt.length,
+                        errorType = "PROVIDER_MISSING"
+                    )
+                }
+
+                if (providerProfile.baseUrl.isBlank()) {
+                    return createProviderSetupFailureResponse(
+                        request = request,
+                        providerName = providerName,
+                        modelName = modelName,
+                        startedAt = startedAt,
+                        promptLength = prompt.length,
+                        errorType = "BASE_URL_MISSING"
+                    )
+                }
+
+                val apiKey = apiKeyProvider(providerProfile.providerId)
+                if (isApiKeyRequired(providerProfile.providerType) && apiKey.isNullOrBlank()) {
+                    return createApiKeyMissingResponse(
+                        request = request,
+                        providerName = providerName,
+                        modelName = modelName,
+                        startedAt = startedAt,
+                        promptLength = prompt.length
+                    )
+                }
+
+                val providerResult = openAiCompatibleProviderAdapter.callChatCompletions(
+                    prompt = prompt,
                     modelName = modelName,
-                    startedAt = startedAt,
-                    promptLength = prompt.length
+                    providerProfile = providerProfile,
+                    apiKey = apiKey
                 )
+
+                return if (providerResult.success) {
+                    createProviderSuccessResponse(
+                        request = request,
+                        rawText = providerResult.rawText,
+                        providerName = providerResult.providerName,
+                        modelName = providerResult.modelName.ifBlank { modelName },
+                        latencySec = providerResult.latencySec,
+                        promptLength = prompt.length,
+                        providerResponseSummary = providerResult.responseSummary
+                    )
+                } else {
+                    createProviderFailureResponse(
+                        request = request,
+                        providerName = providerResult.providerName.ifBlank { providerName },
+                        modelName = providerResult.modelName.ifBlank { modelName },
+                        latencySec = providerResult.latencySec,
+                        promptLength = prompt.length,
+                        errorType = providerResult.errorType ?: "UNKNOWN",
+                        errorMessage = providerResult.errorMessage ?: "OpenAI-compatible Provider 호출에 실패했습니다.",
+                        responseSummary = providerResult.responseSummary
+                    )
+                }
             }
 
-            createDummySuccessResponse(
+            createProviderSetupFailureResponse(
                 request = request,
                 providerName = providerName,
                 modelName = modelName,
                 startedAt = startedAt,
-                promptLength = prompt.length
+                promptLength = prompt.length,
+                errorType = "PROVIDER_MISSING"
             )
         } catch (throwable: Throwable) {
             createFailureResponse(
@@ -96,7 +181,8 @@ class ConversationEngine(
         providerName: String,
         modelName: String,
         latencySec: Double,
-        promptLength: Int
+        promptLength: Int,
+        providerResponseSummary: String? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val traceText = buildTraceText(
@@ -107,6 +193,7 @@ class ConversationEngine(
             responseLength = rawText.length,
             actualApiCall = true,
             errorType = null,
+            providerResponseSummary = providerResponseSummary,
             status = "COMPLETED",
             latencySec = latencySec
         )
@@ -127,17 +214,22 @@ class ConversationEngine(
                         latencySec = latencySec,
                         retryCount = 0,
                         errorType = "",
-                        outputSummary = "Google Gemini 실제 호출 완료",
+                        outputSummary = "Provider 실제 호출 완료",
                         rawOutput = buildString {
                             appendLine(rawText.take(800))
                             appendLine()
-                            appendLine("[GOOGLE_GEMINI_CALL]")
+                            appendLine("[PROVIDER_CALL]")
                             appendLine("providerName: $providerName")
                             appendLine("modelName: $modelName")
                             appendLine("promptLength: $promptLength")
                             appendLine("responseLength: ${rawText.length}")
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: true")
+                            if (!providerResponseSummary.isNullOrBlank()) {
+                                appendLine()
+                                appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                                appendLine(providerResponseSummary.take(1200))
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -157,7 +249,7 @@ class ConversationEngine(
                 ConversationOutputBlock(
                     blockId = "block_assistant_$now",
                     type = ConversationOutputBlockType.TEXT_BLOCK,
-                    title = "Google Gemini 응답",
+                    title = "Provider 응답",
                     content = rawText,
                     collapsed = false
                 ),
@@ -220,11 +312,11 @@ class ConversationEngine(
                         latencySec = latencySec,
                         retryCount = 0,
                         errorType = errorType,
-                        outputSummary = "Google Gemini 호출 실패: $errorType",
+                        outputSummary = "Provider 호출 실패: $errorType",
                         rawOutput = buildString {
                             appendLine(safeErrorMessage.take(800))
                             appendLine()
-                            appendLine("[GOOGLE_GEMINI_CALL]")
+                            appendLine("[PROVIDER_CALL]")
                             appendLine("providerName: $providerName")
                             appendLine("modelName: $modelName")
                             appendLine("promptLength: $promptLength")
@@ -265,7 +357,7 @@ class ConversationEngine(
                 ConversationOutputBlock(
                     blockId = "block_error_$now",
                     type = ConversationOutputBlockType.ERROR_BLOCK,
-                    title = "Gemini 호출 실패",
+                    title = "Provider 호출 실패",
                     content = safeErrorMessage,
                     collapsed = false
                 ),
@@ -372,6 +464,107 @@ class ConversationEngine(
             modelName = modelName,
             latencySec = latencySec,
             errorType = null,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createProviderSetupFailureResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        startedAt: Long,
+        promptLength: Int,
+        errorType: String
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
+        val errorText = buildUserFacingErrorMessage(errorType, "")
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = 0,
+            actualApiCall = false,
+            errorType = errorType,
+            status = "FAILED",
+            latencySec = latencySec
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Provider 설정 오류: $errorType",
+                        rawOutput = buildString {
+                            appendLine(errorText)
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("providerId: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("latencySec: $latencySec")
+                            appendLine("actualApiCall: false")
+                            appendLine("errorType: $errorType")
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Provider 설정 오류로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "Provider 설정 필요",
+                    content = errorText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = errorText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
+            errorType = errorType,
             runInfo = runInfo,
             createdAt = now
         )
@@ -702,39 +895,65 @@ class ConversationEngine(
         fallbackMessage: String
     ): String {
         return when (errorType) {
-            "API_KEY_MISSING" -> "Google API Key가 설정되지 않았습니다. Provider 관리에서 API Key를 입력하세요."
+            "API_KEY_MISSING" -> "API Key가 설정되지 않았습니다. Provider 관리에서 API Key를 입력하세요."
+            "PROVIDER_MISSING" -> "Provider 설정을 찾지 못했습니다. Provider 관리에서 Provider를 확인하세요."
+            "BASE_URL_MISSING" -> "Provider Base URL이 설정되지 않았습니다. Provider 관리에서 Base URL을 입력하세요."
             "MODEL_MISSING" -> "대화모드 기본 모델이 설정되지 않았습니다. Model 관리에서 기본 모델을 지정하세요."
-            "INVALID_REQUEST" -> "Gemini 요청 형식 또는 모델명이 올바르지 않습니다. 모델명을 확인하세요."
-            "INVALID_RESPONSE" -> "Gemini 응답에서 표시 가능한 텍스트를 찾지 못했습니다."
+            "INVALID_REQUEST" -> "요청 형식 또는 모델명이 올바르지 않습니다. 모델명과 Provider 설정을 확인하세요."
+            "INVALID_RESPONSE" -> "응답에서 표시 가능한 텍스트를 찾지 못했습니다."
             "TOOL_CALL_NOT_SUPPORTED" -> "이 응답은 도구 호출이 필요하지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
             "RATE_LIMIT" -> "요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."
-            "SERVER_ERROR" -> "Gemini 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
+            "SERVER_ERROR" -> "Provider 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
+            "AUTH_FAILED" -> "Provider 인증에 실패했습니다. API Key와 Provider 설정을 확인하세요."
+            "NETWORK_ERROR" -> "Provider 서버에 연결하지 못했습니다. Base URL과 네트워크 상태를 확인하세요."
             "TIMEOUT" -> "요청 시간이 초과되었습니다. 잠시 후 다시 시도하세요."
             else -> fallbackMessage.takeIf { it.isNotBlank() } ?: "알 수 없는 오류가 발생했습니다. 실행정보를 확인하세요."
         }
     }
 
-    private fun isModelMissing(providerName: String, modelName: String): Boolean {
-        return providerName.equals("MODEL_MISSING", ignoreCase = true) ||
-                modelName.equals("MODEL_MISSING", ignoreCase = true) ||
+    private fun isModelMissing(modelName: String): Boolean {
+        return modelName.equals("MODEL_MISSING", ignoreCase = true) ||
                 modelName.isBlank()
     }
 
     private fun resolveProviderName(selectedProvider: String?): String {
-        return selectedProvider?.trim()?.takeIf { it.isNotBlank() } ?: "DUMMY"
+        return selectedProvider?.trim().orEmpty()
     }
 
     private fun resolveModelName(selectedModel: String?): String {
-        return selectedModel?.trim()?.takeIf { it.isNotBlank() } ?: "conversation-engine-dummy"
+        return selectedModel?.trim().orEmpty()
     }
 
     private fun requiresApiKey(providerName: String): Boolean {
         return !providerName.equals("DUMMY", ignoreCase = true)
     }
 
-    private fun isGoogleProvider(providerName: String): Boolean {
-        return providerName.equals("GOOGLE", ignoreCase = true) ||
+    private fun isGoogleProvider(
+        providerName: String,
+        providerProfile: ProviderProfile?
+    ): Boolean {
+        return providerProfile?.providerType == ProviderType.GOOGLE ||
+                providerName.equals("GOOGLE", ignoreCase = true) ||
                 providerName.contains("google", ignoreCase = true) ||
                 providerName.contains("gemini", ignoreCase = true)
+    }
+
+    private fun isOpenAiCompatibleProvider(providerProfile: ProviderProfile?): Boolean {
+        return when (providerProfile?.providerType) {
+            ProviderType.OPENAI_COMPATIBLE,
+            ProviderType.LOCAL,
+            ProviderType.CUSTOM -> true
+            else -> false
+        }
+    }
+
+    private fun isApiKeyRequired(providerType: ProviderType): Boolean {
+        return when (providerType) {
+            ProviderType.OPENAI_COMPATIBLE,
+            ProviderType.NVIDIA,
+            ProviderType.GOOGLE -> true
+            ProviderType.LOCAL,
+            ProviderType.CUSTOM -> false
+        }
     }
 }

@@ -301,7 +301,7 @@ private fun ModelProfileCard(
 
             if (model.isDefaultForConversation) {
                 Text(
-                    text = "기본 모델 · Gemini 호출에 사용됨",
+                    text = "기본 모델 · 대화 호출에 사용됨",
                     style = MaterialTheme.typography.labelMedium,
                     color = Color(0xFF9FE3B1)
                 )
