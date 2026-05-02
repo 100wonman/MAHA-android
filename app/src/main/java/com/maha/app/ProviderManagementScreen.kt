@@ -61,11 +61,19 @@ fun ProviderManagementScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val googleModelListFetcher = remember { GoogleModelListFetcher() }
+    val openAiCompatibleModelListFetcher = remember { OpenAiCompatibleModelListFetcher() }
     var modelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
     var googleModels by remember { mutableStateOf<List<GoogleModelListItem>>(emptyList()) }
     var googleModelListError by remember { mutableStateOf<String?>(null) }
     var googleModelListMessage by remember { mutableStateOf<String?>(null) }
     var isGoogleModelListLoading by remember { mutableStateOf(false) }
+
+    var openAiModelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
+    var openAiModelCandidates by remember { mutableStateOf<List<OpenAiModelListCandidate>>(emptyList()) }
+    var openAiModelListError by remember { mutableStateOf<String?>(null) }
+    var openAiModelListMessage by remember { mutableStateOf<String?>(null) }
+    var isOpenAiModelListLoading by remember { mutableStateOf(false) }
+    var openAiModelListEndpoint by remember { mutableStateOf<String?>(null) }
 
     fun reloadProviders() {
         providers = store.loadProviderProfiles().sortedBy { it.displayName.lowercase() }
@@ -153,6 +161,80 @@ fun ProviderManagementScreen(
         googleModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
     }
 
+    fun openOpenAiCompatibleModelList(provider: ProviderProfile) {
+        openAiModelListProvider = provider
+        openAiModelCandidates = emptyList()
+        openAiModelListError = null
+        openAiModelListMessage = null
+        openAiModelListEndpoint = null
+        isOpenAiModelListLoading = true
+
+        coroutineScope.launch {
+            val apiKey = store.loadProviderApiKey(provider.providerId)
+            val result = openAiCompatibleModelListFetcher.fetchModels(
+                provider = provider,
+                apiKey = apiKey
+            )
+            isOpenAiModelListLoading = false
+            openAiModelListEndpoint = result.endpoint
+            if (result.success) {
+                openAiModelCandidates = result.models
+                openAiModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
+            } else {
+                openAiModelListError = result.errorMessage ?: result.errorType ?: "모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun addOpenAiCompatibleModelProfile(provider: ProviderProfile, candidate: OpenAiModelListCandidate) {
+        val rawModelName = candidate.rawModelName.trim()
+        if (rawModelName.isBlank()) {
+            openAiModelListMessage = "rawModelName이 비어 있어 추가할 수 없습니다."
+            return
+        }
+
+        val current = store.loadModelProfiles()
+        val alreadyExists = current.any { model ->
+            model.providerId == provider.providerId && model.rawModelName == rawModelName
+        }
+        if (alreadyExists) {
+            openAiModelListMessage = "이미 추가된 모델입니다: $rawModelName"
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val safeIdPart = rawModelName
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(48)
+            .ifBlank { "openai_compatible_model" }
+
+        val profile = ConversationModelProfile(
+            modelId = "model_${provider.providerId}_${safeIdPart}_$now",
+            providerId = provider.providerId,
+            displayName = candidate.displayName.ifBlank { rawModelName },
+            rawModelName = rawModelName,
+            contextWindow = candidate.contextWindow,
+            inputModalities = candidate.inputModalities.ifEmpty { listOf("text") },
+            outputModalities = candidate.outputModalities.ifEmpty { listOf("text") },
+            capabilities = ConversationModelCapability(
+                text = true
+            ),
+            isFavorite = false,
+            isDefaultForConversation = false,
+            lastUsedAt = null,
+            enabled = true,
+            capabilitiesV2 = createOpenAiCompatibleMetadataCapabilityV2(),
+            capabilitySource = "METADATA",
+            supportedGenerationMethods = emptyList(),
+            inputTokenLimit = candidate.contextWindow,
+            outputTokenLimit = null,
+            metadataRawSummary = candidate.metadataRawSummary,
+            lastMetadataFetchedAt = now
+        )
+        store.addModelProfile(profile)
+        openAiModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
+    }
+
     LaunchedEffect(Unit) {
         store.ensureSettingsFiles()
         reloadProviders()
@@ -217,7 +299,7 @@ fun ProviderManagementScreen(
                     color = Color.White
                 )
                 Text(
-                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. 실제 연결 테스트와 모델 목록 조회는 후속 단계입니다.",
+                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. Google 및 OpenAI-compatible 계열 모델 목록 조회를 지원합니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFD0D3DA)
                 )
@@ -283,6 +365,7 @@ fun ProviderManagementScreen(
                     onEditClick = { editingProvider = provider },
                     onDeleteClick = { providerToDelete = provider },
                     onLoadGoogleModels = { openGoogleModelList(provider) },
+                    onLoadOpenAiCompatibleModels = { openOpenAiCompatibleModelList(provider) },
                     onEnabledChange = { enabled ->
                         val now = System.currentTimeMillis()
                         store.updateProviderProfile(
@@ -384,6 +467,27 @@ fun ProviderManagementScreen(
                 isGoogleModelListLoading = false
             },
             onAddModel = { item -> addGoogleModelProfile(provider, item) }
+        )
+    }
+
+    openAiModelListProvider?.let { provider ->
+        OpenAiCompatibleModelListDialog(
+            provider = provider,
+            isLoading = isOpenAiModelListLoading,
+            models = openAiModelCandidates,
+            errorMessage = openAiModelListError,
+            resultMessage = openAiModelListMessage,
+            endpoint = openAiModelListEndpoint,
+            existingModels = store.loadModelProfiles(),
+            onDismiss = {
+                openAiModelListProvider = null
+                openAiModelCandidates = emptyList()
+                openAiModelListError = null
+                openAiModelListMessage = null
+                openAiModelListEndpoint = null
+                isOpenAiModelListLoading = false
+            },
+            onAddModel = { item -> addOpenAiCompatibleModelProfile(provider, item) }
         )
     }
 }
@@ -567,8 +671,14 @@ private fun ProviderProfileCard(
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onLoadGoogleModels: () -> Unit,
+    onLoadOpenAiCompatibleModels: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
+    val canLoadOpenAiCompatibleModels = canLoadOpenAiCompatibleModelList(
+        provider = provider,
+        hasApiKey = hasApiKey
+    )
+
     Card(
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF252A33)
@@ -653,6 +763,14 @@ private fun ProviderProfileCard(
                     TextButton(
                         onClick = onLoadGoogleModels,
                         enabled = hasApiKey
+                    ) {
+                        Text(text = "모델 목록 불러오기")
+                    }
+                }
+                if (isOpenAiCompatibleModelListProvider(provider.providerType)) {
+                    TextButton(
+                        onClick = onLoadOpenAiCompatibleModels,
+                        enabled = canLoadOpenAiCompatibleModels
                     ) {
                         Text(text = "모델 목록 불러오기")
                     }
@@ -780,6 +898,147 @@ private fun GoogleModelListDialog(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
+
+                            Button(
+                                onClick = { onAddModel(item) },
+                                enabled = !alreadyAdded,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = if (alreadyAdded) "이미 추가됨" else "추가")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
+}
+
+
+@Composable
+private fun OpenAiCompatibleModelListDialog(
+    provider: ProviderProfile,
+    isLoading: Boolean,
+    models: List<OpenAiModelListCandidate>,
+    errorMessage: String?,
+    resultMessage: String?,
+    endpoint: String?,
+    existingModels: List<ConversationModelProfile>,
+    onDismiss: () -> Unit,
+    onAddModel: (OpenAiModelListCandidate) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "OpenAI-compatible 모델 목록") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = provider.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "endpoint: ${endpoint ?: "확인 중"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (isLoading) {
+                    Text(text = "모델 목록을 불러오는 중입니다...")
+                }
+
+                errorMessage?.let { message ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFFFC4C4)
+                        )
+                    }
+                }
+
+                resultMessage?.let { message ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF203020)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFBFECC4)
+                        )
+                    }
+                }
+
+                if (!isLoading && errorMessage == null && models.isEmpty()) {
+                    Text(text = "표시할 모델이 없습니다.")
+                }
+
+                models.forEach { item ->
+                    val alreadyAdded = existingModels.any { model ->
+                        model.providerId == provider.providerId && model.rawModelName == item.rawModelName
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = item.displayName.ifBlank { item.rawModelName },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "rawModelName: ${item.rawModelName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            Text(
+                                text = "contextWindow: ${item.contextWindow ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            Text(
+                                text = "ownedBy: ${item.ownedBy ?: "unknown"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            Text(
+                                text = "input: ${item.inputModalities.joinToString().ifBlank { "text" }} / output: ${item.outputModalities.joinToString().ifBlank { "text" }}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            item.description?.takeIf { it.isNotBlank() }?.let { description ->
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFD0D3DA),
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
 
                             Button(
                                 onClick = { onAddModel(item) },
@@ -1114,6 +1373,53 @@ private fun ProviderProfileEditDialog(
     )
 }
 
+
+
+private fun isOpenAiCompatibleModelListProvider(providerType: ProviderType): Boolean {
+    return providerType == ProviderType.OPENAI_COMPATIBLE ||
+            providerType == ProviderType.LOCAL ||
+            providerType == ProviderType.CUSTOM
+}
+
+private fun canLoadOpenAiCompatibleModelList(
+    provider: ProviderProfile,
+    hasApiKey: Boolean
+): Boolean {
+    val hasEndpoint = provider.modelListEndpoint?.isNotBlank() == true || provider.baseUrl.isNotBlank()
+    val hasRequiredApiKey = provider.providerType != ProviderType.OPENAI_COMPATIBLE || hasApiKey
+    return isOpenAiCompatibleModelListProvider(provider.providerType) && hasEndpoint && hasRequiredApiKey
+}
+
+private fun createOpenAiCompatibleMetadataCapabilityV2(): ModelCapabilityV2 {
+    return ModelCapabilityV2(
+        input = ModelInputCapability(
+            text = CapabilityStatus.SUPPORTED,
+            image = CapabilityStatus.UNKNOWN,
+            audio = CapabilityStatus.UNKNOWN,
+            video = CapabilityStatus.UNKNOWN,
+            file = CapabilityStatus.UNKNOWN
+        ),
+        output = ModelOutputCapability(
+            text = CapabilityStatus.SUPPORTED,
+            code = CapabilityStatus.UNKNOWN,
+            json = CapabilityStatus.UNKNOWN,
+            image = CapabilityStatus.UNKNOWN,
+            audio = CapabilityStatus.UNKNOWN,
+            video = CapabilityStatus.UNKNOWN
+        ),
+        tools = ModelToolCapability(
+            functionCalling = CapabilityStatus.UNKNOWN,
+            webSearch = CapabilityStatus.UNKNOWN,
+            codeExecution = CapabilityStatus.UNKNOWN,
+            structuredOutput = CapabilityStatus.UNKNOWN
+        ),
+        reasoning = ModelReasoningCapability(
+            thinking = CapabilityStatus.UNKNOWN,
+            thinkingSummary = CapabilityStatus.UNKNOWN,
+            chainOfThoughtRawAllowed = CapabilityStatus.UNSUPPORTED
+        )
+    )
+}
 
 private fun createGoogleMetadataCapabilityV2(): ModelCapabilityV2 {
     return ModelCapabilityV2(

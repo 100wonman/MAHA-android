@@ -1,4 +1,376 @@
 ==============================
+[2026-05-03 06:00] OpenAI-compatible 모델 목록 조회 구현
+==============================
+
+[작업]
+- OpenAiCompatibleModelListFetcher 추가
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM models endpoint 조회 구현
+- modelListEndpoint 우선, 없으면 baseUrl + /models 사용
+- providerId 기준 API Key required/optional 정책 적용
+- 표준 OpenAI-compatible models 응답 파싱
+- OpenRouter 확장 metadata 일부 파싱
+- 조회 결과 Dialog 표시
+- 선택 모델을 ConversationModelProfile로 저장
+- providerId + rawModelName 기준 중복 추가 방지
+- 기존 Google 모델 목록 조회 로직 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- OpenAiCompatibleModelListFetcher 신규 추가
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM Provider 모델 목록 조회 추가
+- modelListEndpoint 우선, 없으면 baseUrl + /models 사용
+- 조회 결과 Dialog와 모델 추가 기능 추가
+- providerId + rawModelName 기준 중복 추가 방지
+
+[OpenAI-compatible 모델 조회 테스트]
+- OPENAI_COMPATIBLE 조회:  확인
+- LOCAL 조회:  확인
+- CUSTOM 조회:  확인
+- API Key 없음 처리:  확인
+- baseUrl 없음 처리:  확인
+- 조회 결과 Dialog:  확인
+
+[ModelProfile 저장 테스트]
+- rawModelName:  확인
+- displayName:  확인
+- contextWindow:  확인
+- providerId:  확인
+- 중복 추가 방지:  확인
+- Model 관리 표시: 확인
+
+[기존 기능 영향]
+- Google 모델 목록 조회: 유지
+- Provider 관리: 유지
+- Model 관리: 유지
+- Gemini/OpenAI-compatible 호출: 변경 없음
+- RAG/Web Search: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ProviderManagementScreen.kt
+- OpenAiCompatibleModelListFetcher.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+OpenAI-compatible 모델 목록 조회 구현
+
+목표:
+- Google 외 Provider에서도 모델 목록을 불러올 수 있게 한다.
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM Provider 카드에 “모델 목록 불러오기” 기능을 추가한다.
+- 조회된 모델을 ConversationModelProfile로 저장할 수 있게 한다.
+- 기존 Google 모델 목록 조회 로직은 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ OpenAiCompatibleModelListFetcher 추가
+✔ OPENAI_COMPATIBLE / LOCAL / CUSTOM models endpoint 조회
+✔ modelListEndpoint 우선 사용
+✔ modelListEndpoint 없으면 baseUrl + /models 사용
+✔ providerId 기준 API Key required/optional 정책 적용
+✔ 표준 OpenAI-compatible models 응답 파싱
+✔ OpenRouter 확장 metadata 일부 파싱
+✔ 조회 결과 Dialog 표시
+✔ 선택 모델을 ConversationModelProfile로 저장
+✔ providerId + rawModelName 기준 중복 추가 방지
+
+이번 단계에서 금지:
+
+❌ 기존 GoogleModelListFetcher 대체
+❌ Google 모델 목록 조회 로직 변경
+❌ Provider 호출 로직 변경
+❌ ConversationEngine 호출 로직 변경
+❌ capability 과도 자동 판단
+❌ API Key 원문 노출
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 ProviderType
+--------------------------------------------------
+
+모델 목록 불러오기 버튼 대상:
+
+- GOOGLE: 기존 Google 모델 목록 조회 유지
+- OPENAI_COMPATIBLE: 신규 OpenAiCompatibleModelListFetcher 사용
+- LOCAL: 신규 OpenAiCompatibleModelListFetcher 사용
+- CUSTOM: 신규 OpenAiCompatibleModelListFetcher 사용
+
+보류:
+- NVIDIA
+
+주의:
+- GOOGLE 경로는 건드리지 말 것
+- Provider 카드 UI에서 ProviderType별로 적절한 fetcher만 호출
+
+--------------------------------------------------
+3. Endpoint 정책
+--------------------------------------------------
+
+우선순위:
+
+1. provider.modelListEndpoint가 blank가 아니면 해당 값 사용
+2. 아니면 provider.baseUrl + "/models" 사용
+
+baseUrl 처리:
+- 끝 slash 제거
+- 중복 slash 방지
+- /chat/completions 붙이지 않음
+
+예:
+- https://api.groq.com/openai/v1
+  → https://api.groq.com/openai/v1/models
+
+- https://openrouter.ai/api/v1
+  → https://openrouter.ai/api/v1/models
+
+- http://192.168.0.25:1234/v1
+  → http://192.168.0.25:1234/v1/models
+
+- http://192.168.0.25:11434/v1
+  → http://192.168.0.25:11434/v1/models
+
+baseUrl과 modelListEndpoint가 모두 없으면:
+- BASE_URL_MISSING 또는 안내 메시지
+
+--------------------------------------------------
+4. API Key 정책
+--------------------------------------------------
+
+OPENAI_COMPATIBLE:
+- API Key required
+- 없으면 API_KEY_MISSING
+
+LOCAL:
+- API Key optional
+- 없으면 Authorization header 생략
+
+CUSTOM:
+- API Key optional
+- 없으면 Authorization header 생략
+
+구현:
+- ProviderSettingsStore.loadProviderApiKey(providerId)
+- API Key 로그 출력 금지
+- API Key UI 원문 노출 금지
+
+--------------------------------------------------
+5. Fetcher 구조
+--------------------------------------------------
+
+신규 파일 후보:
+
+- OpenAiCompatibleModelListFetcher.kt
+
+반환 후보 data class:
+
+OpenAiModelListCandidate:
+- rawModelName: String
+- displayName: String
+- description: String?
+- contextWindow: Int?
+- inputModalities: List<String>
+- outputModalities: List<String>
+- ownedBy: String?
+- metadataRawSummary: String?
+
+또는 기존 Google candidate 구조가 있으면 별도 충돌 없이 맞춰 사용.
+
+필수 함수 후보:
+
+fetchModels(
+    provider: ProviderProfile,
+    apiKey: String?
+): Result<List<OpenAiModelListCandidate>>
+
+또는 프로젝트 스타일에 맞춰 success/error wrapper 사용.
+
+--------------------------------------------------
+6. 응답 파싱 정책
+--------------------------------------------------
+
+표준 OpenAI-compatible 응답:
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "model-id",
+      "object": "model",
+      "created": 123,
+      "owned_by": "..."
+    }
+  ]
+}
+
+파싱:
+- data[].id → rawModelName
+- data[].id → displayName 기본값
+- data[].owned_by → ownedBy
+- object/created/owned_by → metadataRawSummary
+
+OpenRouter 확장 응답 후보:
+- id
+- name
+- description
+- context_length
+- architecture.input_modalities
+- architecture.output_modalities
+- supported_parameters
+
+파싱:
+- name 있으면 displayName
+- context_length 있으면 contextWindow
+- architecture.input_modalities 있으면 inputModalities
+- architecture.output_modalities 있으면 outputModalities
+- description/supported_parameters는 metadataRawSummary에 요약
+
+주의:
+- 없는 값은 null 또는 기본값
+- response schema가 달라도 앱 크래시 금지
+- data 배열이 없거나 비어 있으면 INVALID_RESPONSE 또는 “모델 없음” 안내
+
+--------------------------------------------------
+7. ModelProfile 저장 정책
+--------------------------------------------------
+
+ConversationModelProfile 생성:
+
+- modelId: 자동 생성
+- providerId: 해당 Provider providerId
+- displayName: candidate.displayName
+- rawModelName: candidate.rawModelName
+- contextWindow: candidate.contextWindow
+- inputModalities: candidate.inputModalities 또는 ["text"]
+- outputModalities: candidate.outputModalities 또는 ["text"]
+- capabilities:
+  - text = true
+  - 나머지는 기존 기본값 유지
+- capabilitiesV2:
+  - input.text = SUPPORTED
+  - output.text = SUPPORTED
+  - 나머지 UNKNOWN
+- capabilitySource = METADATA
+- metadataRawSummary = candidate.metadataRawSummary
+- enabled = true
+- isFavorite = false
+- isDefaultForConversation = false
+
+중복 처리:
+- providerId + rawModelName이 이미 있으면 중복 추가 금지
+- Dialog에서 “이미 추가됨” 표시
+
+--------------------------------------------------
+8. Provider 관리 UI 연결
+--------------------------------------------------
+
+ProviderManagementScreen에서:
+
+- GOOGLE: 기존 “모델 목록 불러오기” 유지
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM:
+  - “모델 목록 불러오기” 버튼 표시
+  - 비활성 조건:
+    - endpoint 없음
+    - OPENAI_COMPATIBLE인데 API Key 없음
+
+버튼 클릭:
+- OpenAiCompatibleModelListFetcher.fetchModels(...)
+- 로딩 상태 표시
+- 성공 시 Dialog 표시
+- 실패 시 짧은 오류 표시
+
+주의:
+- 기존 Provider 추가/수정/삭제 영향 금지
+- API Key 원문 표시 금지
+
+--------------------------------------------------
+9. 결과 Dialog 정책
+--------------------------------------------------
+
+표시 항목:
+
+- displayName
+- rawModelName
+- contextWindow
+- ownedBy/provider
+- input/output modalities
+- description 일부
+- [추가] 버튼
+- 이미 추가됨 상태
+
+오류 표시:
+- API_KEY_MISSING
+- BASE_URL_MISSING
+- NETWORK_ERROR
+- INVALID_RESPONSE
+- SERVER_ERROR
+- UNKNOWN
+
+저장 후:
+- “모델을 추가했습니다” 안내
+- Model 관리 화면에서 확인 가능
+
+--------------------------------------------------
+10. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google 모델 목록 조회
+- Provider 관리 CRUD
+- API Key 저장/삭제
+- Model 관리 CRUD
+- Gemini 호출
+- OpenAI-compatible 호출
+- RAG/Web Search
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ GoogleModelListFetcher 대체 금지
+❌ ConversationEngine 수정 금지
+❌ Provider 호출 Adapter 수정 금지
+❌ ModelProfile 저장 구조 대규모 변경 금지
+❌ capability 과도 자동 판단 금지
+❌ API Key 로그 출력 금지
+❌ API Key 원문 UI 노출 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- OPENAI_COMPATIBLE Provider에서 모델 목록 조회 가능
+- LOCAL Provider에서 /models 조회 시도 가능
+- CUSTOM Provider에서 /models 조회 시도 가능
+- 조회 결과 Dialog 표시
+- 선택 모델 ModelProfile 저장 가능
+- 중복 추가 방지
+- 기존 Google 모델 목록 조회 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+모델/API 설정 백업 포함 정책 설계 또는 Provider/Model 안정화 점검
+
+==============================
 [2026-05-03 01:17] OpenAI-compatible 모델 목록 조회 구조 설계
 ==============================
 
