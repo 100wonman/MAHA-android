@@ -1,4 +1,355 @@
 ==============================
+[2026-05-02 17:04] Google 모델 metadata / capability 표시 정책 설계
+==============================
+
+[작업]
+- 모델 capability 하드코딩 최소화 정책 설계
+- Google models metadata 기반 표시 정책 설계
+- unknown / user override / metadata source 정책 설계
+- input/output/tools/reasoning 기반 Capability V2 구조 설계
+- thinking summary 표시 정책 설계
+- webSearch / toolCalling 표시 및 미지원 처리 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- 모델 capability는 모델명 하드코딩이 아니라 metadata 기반 + unknown + 사용자 override 구조로 관리
+- Google metadata로 확인 불가한 image/audio/video/webSearch/thinking/tool 기능은 UNKNOWN으로 처리
+- 기존 Boolean capability는 즉시 제거하지 않고 V2 구조와 병행 또는 변환 정책으로 유지
+- thinking 원문은 표시하지 않고 Provider가 제공하는 안전한 summary만 실행정보에 표시
+- 1차 구현은 CapabilityStatus / ModelCapabilityV2 / metadata 저장 / badge 표시까지로 제한 :contentReference[oaicite:0]{index=0}
+
+[하드코딩 정책]
+- metadata 우선: name, displayName, description, supportedGenerationMethods, inputTokenLimit, outputTokenLimit 기준으로 표시
+- unknown 처리: metadata에서 확정 불가한 기능은 false가 아니라 UNKNOWN으로 저장
+- override: Provider별/모델별 보정값은 optional override table 구조로 후속 분리
+- 사용자 수정: 사용자 지정값은 metadata보다 우선하며 metadata 재조회 시 덮어쓰지 않음
+
+[Capability V2 구조]
+- input: text, image, audio, video, file
+- output: text, code, json, image, audio, video
+- tools: functionCalling, webSearch, codeExecution, structuredOutput
+- reasoning: thinking, thinkingSummary, chainOfThoughtRawAllowed=false
+- 상태값: SUPPORTED, UNSUPPORTED, UNKNOWN, USER_ENABLED, USER_DISABLED
+
+[UI 표시 정책]
+- 모델 카드: 입력 / 출력 / 도구 / 추론 그룹으로 capability badge 표시
+- badge: SUPPORTED는 일반 badge, UNKNOWN은 ? badge, USER_ENABLED는 사용자 지정 badge, USER_DISABLED는 비활성 badge
+- 사용자 지정 표시: 사용자가 수정한 capability는 “사용자 지정” 상태로 구분
+
+[Thinking 정책]
+- 표시 위치: 답변 본문이 아니라 실행정보 블록 내부에 표시
+- 접힘/펼침: Thinking summary는 기본 접힘 상태로 표시하고 필요 시 펼침
+- 실시간 표시: streaming 구현 전까지 보류
+
+[WebSearch/Tool 정책]
+- 기본 상태: webSearch/toolCalling/codeExecution은 기본 UNKNOWN
+- 사용자 선택: 사용자가 활성화할 수 있으나 실제 성공 보장은 하지 않음
+- 미지원 처리: 호출 시 미지원이면 TOOL_NOT_SUPPORTED 또는 TOOL_CALL_NOT_SUPPORTED로 처리
+
+[1차 구현 범위]
+- CapabilityStatus enum 추가
+- ModelCapabilityV2 data class 추가
+- 기존 ConversationModelCapability와 V2 변환 함수 추가
+- Google 모델 조회 결과를 supportedGenerationMethods / tokenLimit / metadataRawSummary에 저장
+- Model 관리 카드에 input/output/tools/reasoning badge 표시
+
+[보류 항목]
+- 실제 tool calling 구현
+- 실제 webSearch 구현
+- streaming thinking 표시
+- 모델명 기반 override table 구현
+- Model 관리 UI 대규모 재작성
+
+[문제]
+- 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Google 모델 metadata / capability 표시 정책 설계
+
+목표:
+- Google 모델 목록 조회 결과를 바탕으로 모델 metadata와 capability 표시 정책을 설계한다.
+- 모델별 capability를 하드코딩하지 않고, metadata 기반 + 사용자 수정 + optional override 구조로 설계한다.
+- 기존 단일 capability 표시를 input/output/tools 구조로 정리한다.
+- thinking / webSearch / multimodal 등 불확실한 기능은 unknown 상태로 관리한다.
+- 이번 단계는 설계만 수행한다. 실제 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 핵심 원칙
+--------------------------------------------------
+
+범용성을 위해 하드코딩은 지양한다.
+
+정책:
+- API metadata에서 확인 가능한 값은 metadata 기준으로 표시
+- metadata에서 확인 불가한 값은 false로 단정하지 말고 unknown으로 처리
+- 사용자가 capability를 직접 수정할 수 있게 한다
+- Provider별/모델별 보정값은 optional override 구조로 분리한다
+- 모델명 기반 if/else 하드코딩 금지
+
+허용:
+- enum 정의
+- 기본 fallback 값
+- unknown 상태
+- 후속 override table 구조
+
+금지:
+- gemma-4-31b-it이면 image 가능 같은 모델명 직접 분기
+- 특정 Provider 응답에만 의존하는 고정 UI
+- 확인 불가능한 capability를 true로 자동 지정
+
+--------------------------------------------------
+2. metadata 확인 가능 범위
+--------------------------------------------------
+
+Google models endpoint에서 확인 가능한 정보 후보:
+
+- name
+- displayName
+- description
+- supportedGenerationMethods
+- inputTokenLimit
+- outputTokenLimit
+
+이 정보로 추론 가능한 것:
+- 모델 표시명
+- rawModelName
+- token limit
+- 지원 generation method
+- 기본 text generation 가능성
+
+불확실한 것:
+- image input
+- audio input
+- video input
+- webSearch
+- toolCalling
+- thinking
+- codeExecution
+- structuredOutput 세부 지원
+
+정책:
+- 명확히 내려오지 않는 항목은 unknown
+- description 기반 추론은 “추정” 상태로만 표시 가능
+- 사용자가 직접 수정 가능
+
+--------------------------------------------------
+3. capability 구조 변경
+--------------------------------------------------
+
+기존:
+- text
+- code
+- vision
+- audio
+- video
+- toolCalling
+- functionCalling
+- webSearch
+- jsonMode
+- imageGeneration
+- structuredOutput
+
+변경 방향:
+
+ModelCapabilityV2 후보:
+
+input:
+- text
+- image
+- audio
+- video
+- file
+
+output:
+- text
+- code
+- json
+- image
+- audio
+- video
+
+tools:
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+
+reasoning:
+- thinking
+- thinkingSummary
+- chainOfThoughtRawAllowed = false 고정 또는 미지원
+
+상태값:
+- SUPPORTED
+- UNSUPPORTED
+- UNKNOWN
+- USER_ENABLED
+- USER_DISABLED
+
+주의:
+- Boolean만으로는 unknown 표현이 어려우므로 enum 기반 capability 상태를 검토한다.
+
+--------------------------------------------------
+4. UI 표시 정책
+--------------------------------------------------
+
+모델 카드 표시:
+
+[입력]
+Text · Image? · Audio?
+
+[출력]
+Text · JSON? · Code?
+
+[도구]
+Function · Web Search? · Code Exec?
+
+[추론]
+Thinking? · Summary?
+
+표시 규칙:
+- SUPPORTED: 일반 badge
+- UNKNOWN: ? badge
+- USER_ENABLED: 사용자 지정 badge
+- USER_DISABLED: 비활성 badge
+
+예:
+- 입력: Text, Image?
+- 출력: Text, JSON?
+- 도구: Web Search?
+- 추론: Thinking?
+
+--------------------------------------------------
+5. 사용자 수정 정책
+--------------------------------------------------
+
+사용자는 모델별 capability를 수정할 수 있다.
+
+수정 시 저장:
+- capabilitySource = USER
+- updatedAt 갱신
+
+자동 조회값:
+- capabilitySource = METADATA
+
+수동 보정값:
+- capabilitySource = OVERRIDE
+
+정책:
+- 사용자 지정값이 metadata보다 우선
+- metadata 재조회 시 사용자 지정값을 덮어쓰지 않음
+- “metadata 값으로 초기화” 버튼은 후속 단계 가능
+
+--------------------------------------------------
+6. thinking 표시 정책
+--------------------------------------------------
+
+thinking은 답변 본문에 직접 표시하지 않는다.
+
+정책:
+- thinking summary가 응답에 존재할 때만 실행정보 블록에 표시
+- 기본 접힘
+- 원본 chain-of-thought 표시 금지
+- summary / thoughtSignature 등 Provider가 제공하는 안전한 정보만 표시
+
+UI:
+- 실행정보 블록
+  - Thinking summary
+  - 기본 접힘
+  - 복사 가능
+
+실시간 thinking:
+- streaming 구현 전까지 보류
+- streaming + API 지원 확인 후 별도 단계
+
+--------------------------------------------------
+7. webSearch / tool 정책
+--------------------------------------------------
+
+webSearch는 모델 metadata만으로 확정하지 않는다.
+
+정책:
+- capability 상태 기본 UNKNOWN
+- 사용자가 활성화 가능
+- 실제 호출 시 Provider adapter가 지원 여부를 판단
+- 미지원이면 TOOL_NOT_SUPPORTED 또는 TOOL_CALL_NOT_SUPPORTED
+
+주의:
+- OpenAI-compatible endpoint와 native Gemini endpoint의 tool 지원 차이를 고려한다
+- 이번 단계에서는 실제 tool 호출 구현 금지
+
+--------------------------------------------------
+8. 저장 구조 설계
+--------------------------------------------------
+
+ConversationModelProfile 확장 후보:
+
+- capabilitiesV2: ModelCapabilitySet?
+- capabilitySource: String
+  - METADATA
+  - USER
+  - OVERRIDE
+  - MIXED
+- metadataRawSummary?
+- supportedGenerationMethods: List<String>
+- inputTokenLimit: Int?
+- outputTokenLimit: Int?
+- lastMetadataFetchedAt: Long?
+
+기존 capabilities Boolean 구조는 즉시 제거하지 않는다.
+1차에서는 병행 또는 변환 정책을 설계한다.
+
+--------------------------------------------------
+9. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- CapabilityStatus enum 추가
+- ModelCapabilityV2 data class 추가
+- 기존 ConversationModelCapability와 변환 함수 추가
+- Google 모델 목록 조회 결과를 metadataRawSummary / supportedGenerationMethods / tokenLimit에 저장
+- UI에서 input/output/tools/reasoning badge 표시
+- 사용자 수정은 기존 checkbox 유지 또는 후속으로 분리
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 모델명 기반 capability 하드코딩
+❌ 실제 tool calling 구현
+❌ 실제 webSearch 구현
+❌ streaming thinking 구현
+❌ 기존 Model 관리 UI 대규모 재작성
+❌ ConversationEngine 호출 구조 변경
+❌ 작업모드 Provider 구조 변경
+
+--------------------------------------------------
+완료 기준:
+- 하드코딩 최소화 정책 확정
+- metadata 기반/unknown/user override 정책 확정
+- input/output/tools/reasoning capability 구조 확정
+- thinking 표시 정책 확정
+- webSearch/tool 표시 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+ModelCapability V2 및 metadata 표시 1차 구현
+
+==============================
 [2026-05-02 16:53] Google 모델 목록 조회 및 ModelProfile 저장 구현
 ==============================
 
