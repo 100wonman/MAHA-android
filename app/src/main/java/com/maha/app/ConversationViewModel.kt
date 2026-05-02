@@ -28,6 +28,7 @@ class ConversationViewModel(
         context = application.applicationContext,
         storageManager = storageManager
     )
+    private val providerSettingsStore = ProviderSettingsStore(application.applicationContext)
 
     val conversationSessions = mutableStateListOf<ConversationSession>()
     val favoriteSessionIds = mutableStateListOf<String>()
@@ -69,6 +70,7 @@ class ConversationViewModel(
         storageManager.ensureDirectories()
         ragStorageManager.ensureRagDirectories()
         ragIndexStore.ensureIndexMetadata()
+        providerSettingsStore.ensureSettingsFiles()
         refreshStorageState()
         loadInitialSessions()
     }
