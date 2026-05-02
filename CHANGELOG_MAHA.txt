@@ -1,4 +1,357 @@
 ==============================
+[2026-05-02 09:57] 대화모드 Provider / API / 모델 관리 구조 설계
+==============================
+
+[작업]
+- 대화모드 ProviderProfile 구조 설계
+- Provider별 Base URL / API Key 저장 정책 설계
+- ConversationModelProfile 및 ModelCapability 구조 설계
+- Provider 추가 UI 구조 설계
+- 통합 모델 선택 페이지 및 즐겨찾기 정책 설계
+- 도구 호출 체크박스 정책 설계
+- ConversationEngine 연결 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- 대화모드 Provider/API/Model 관리는 작업모드 Provider 구조와 분리
+- 실시간 설정 저장은 앱 전용 저장소 MAHA/settings/ 사용
+- Provider는 사용자가 여러 개 추가 가능한 확장형 구조로 설계
+- 모델 capability는 자동 조회값 또는 사용자 체크박스 수정값으로 관리
+- 1차 구현은 저장/로드와 UI skeleton까지만 진행 :contentReference[oaicite:0]{index=0}
+
+[ProviderProfile 구조]
+- 필드: providerId, displayName, providerType, baseUrl, apiKeyAlias, modelListEndpoint?, isEnabled, createdAt, updatedAt
+- providerType: GOOGLE, OPENAI_COMPATIBLE, NVIDIA, LOCAL, CUSTOM
+- 여러 Provider 추가 정책: 같은 providerType이어도 baseUrl/API Key 조합별로 여러 Provider 등록 가능
+
+[API Key 정책]
+- 저장 방식: providerId 기준으로 앱 전용 저장소 설정 파일에 연결, UI에서는 마스킹 표시
+- 수정/삭제: Provider 관리 화면에서 수정/삭제 가능
+- 하드코딩 방지: 코드 내 API Key 하드코딩 금지, ProviderProfile과 분리된 저장 정책 유지
+
+[ModelProfile 구조]
+- 필드: modelId, providerId, displayName, rawModelName, contextWindow?, inputModalities, outputModalities, capabilities, isFavorite, isDefaultForConversation, lastUsedAt?, enabled
+- 즐겨찾기: 모델별 isFavorite로 관리
+- 기본 모델: isDefaultForConversation으로 대화모드 기본 모델 지정
+
+[Capability 정책]
+- 필드: text, code, vision, audio, video, toolCalling, functionCalling, webSearch, jsonMode, imageGeneration, structuredOutput
+- 체크박스: 사용자가 모델별 capability를 직접 수정 가능
+- unknown 처리: 확실하지 않은 capability는 false 또는 unknown으로 저장하고 사용자 지정 표시 가능
+
+[UI 구조]
+- Provider 관리: 대화모드 전역 설정 > 모델/API 설정 > Provider 관리
+- 통합 모델 선택: 전체 / 즐겨찾기 / Google / OpenAI-compatible / NVIDIA / Local / Custom 탭 구조
+- 즐겨찾기: 모델 카드에서 ★ 토글, 즐겨찾기 탭에 별도 표시
+
+[ConversationEngine 연결]
+- Provider 선택: selectedProvider가 있으면 우선 사용, 없으면 기본 Provider 사용
+- Model 선택: selectedModel이 있으면 우선 사용, 없으면 대화모드 기본 모델 사용
+- 오류 처리: Provider 없음, Model 없음, API Key 없음은 ERROR_BLOCK + 실행정보 errorType으로 기록
+
+[1차 구현 범위]
+- ProviderProfile data class 추가
+- ConversationModelProfile data class 추가
+- ModelCapability data class 추가
+- ProviderSettingsStore 추가
+- provider_profiles.json / model_profiles.json 저장·로드 구현
+
+[보류 항목]
+- 실제 API 호출
+- Provider 연결 테스트 네트워크 호출
+- 모델 목록 실제 API 조회
+- ConversationEngine 실제 Provider 호출 연결
+- 작업모드 Provider 구조 통합
+
+[문제]
+- 없음
+
+--------------------------------------------------
+[설계 모드]
+
+작업명:
+대화모드 Provider / API / 모델 관리 구조 설계
+
+목표:
+- 대화모드에서 사용할 Provider, API Key, Base URL, 모델 목록, 모델 capability를 관리하는 구조를 설계한다.
+- 기존 작업모드 Provider 구조와 충돌하지 않도록 대화모드 전용 연결 구조를 분리한다.
+- 사용자가 Provider를 직접 추가할 수 있는 확장형 구조를 설계한다.
+- 이번 단계는 설계만 수행한다. 실제 API 호출 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료된 구조:
+- ConversationEngine skeleton
+- ConversationPromptBuilder
+- API_KEY_MISSING dry-run 처리
+- ConversationViewModel → ConversationEngine 경로
+- RAG context 연결
+- 실행정보 블록
+- 기존 작업모드 Provider/API 구조 존재
+
+현재 판단:
+- 작업모드 API 호출과 대화모드 API 호출은 분리하는 것이 적합하다.
+- Provider 구현체 일부는 재사용 가능하지만 요청/응답 흐름은 분리한다.
+
+--------------------------------------------------
+2. 핵심 설계 목표
+--------------------------------------------------
+
+확정할 것:
+
+1. 대화모드 ProviderProfile 구조
+2. API Key / Base URL 저장 구조
+3. 모델 목록 구조
+4. 모델 capability 구조
+5. Provider 추가 UI 구조
+6. 통합 모델 선택 페이지 구조
+7. 즐겨찾기 모델 정책
+8. 도구 호출 체크박스 정책
+9. 1차 구현 범위
+
+--------------------------------------------------
+3. ProviderProfile 설계
+--------------------------------------------------
+
+ProviderProfile 필드 후보:
+
+- providerId
+- displayName
+- providerType
+  - GOOGLE
+  - OPENAI_COMPATIBLE
+  - NVIDIA
+  - LOCAL
+  - CUSTOM
+- baseUrl
+- apiKeyAlias 또는 apiKey
+- modelListEndpoint?
+- isEnabled
+- createdAt
+- updatedAt
+
+정책:
+- API Key는 코드에 하드코딩 금지
+- Provider는 사용자가 여러 개 추가 가능
+- 같은 providerType이어도 baseUrl/API Key 쌍을 여러 개 등록 가능
+
+예:
+- OpenRouter
+- Local LM Studio
+- Ollama Gateway
+- Custom OpenAI-compatible Server
+
+--------------------------------------------------
+4. API Key 저장 정책
+--------------------------------------------------
+
+설계할 것:
+- 기존 ApiKeyManager 재사용 가능 여부
+- Provider별 API Key 저장 방식
+- providerId 기준 저장
+- API Key 삭제/수정 정책
+
+원칙:
+- API Key는 ProviderProfile과 연결
+- UI에는 마스킹 표시
+- 삭제 가능
+- 코드 하드코딩 금지
+
+--------------------------------------------------
+5. 모델 구조 설계
+--------------------------------------------------
+
+ConversationModelProfile 필드 후보:
+
+- modelId
+- providerId
+- displayName
+- rawModelName
+- contextWindow?
+- inputModalities
+- outputModalities
+- capabilities
+- isFavorite
+- isDefaultForConversation
+- isDefaultForWorkMode?
+- lastUsedAt?
+- enabled
+
+--------------------------------------------------
+6. ModelCapability 설계
+--------------------------------------------------
+
+Capability 필드 후보:
+
+- text
+- code
+- vision
+- audio
+- video
+- toolCalling
+- functionCalling
+- webSearch
+- jsonMode
+- imageGeneration?
+- structuredOutput?
+
+정책:
+- 사용자가 체크박스로 직접 수정 가능
+- Provider 자동 조회 결과가 있으면 기본값으로 채움
+- 확실하지 않은 capability는 false 또는 unknown 처리
+- 호출 시 capability를 기준으로 요청 구성
+
+--------------------------------------------------
+7. Provider 추가 UI 설계
+--------------------------------------------------
+
+위치 후보:
+
+대화모드 전역 설정
+→ 일반 설정 또는 모델/API 설정
+→ Provider 관리
+
+UI 구성:
+- Provider 이름
+- Provider Type 선택
+- Base URL 입력
+- API Key 입력
+- 저장 버튼
+- 연결 테스트 버튼
+- 모델 목록 불러오기 버튼
+- Provider 추가 버튼
+
+여러 Provider 추가:
+- Provider 카드 목록
+- 수정
+- 삭제
+- 활성/비활성
+
+--------------------------------------------------
+8. 통합 모델 선택 페이지 설계
+--------------------------------------------------
+
+구조:
+
+모델 관리
+├─ 전체
+├─ 즐겨찾기
+├─ Google
+├─ OpenAI-compatible
+├─ NVIDIA
+├─ Local
+└─ Custom
+
+모델 카드 표시:
+- 모델명
+- Provider
+- capability badge
+- 즐겨찾기 ★
+- 기본 대화 모델 지정
+- 도구 사용 체크박스
+
+--------------------------------------------------
+9. 도구 호출 체크박스 정책
+--------------------------------------------------
+
+모델별 설정:
+- Web Search
+- Tool Calling
+- Function Calling
+- Vision
+- Audio
+- Video
+- JSON Mode
+
+주의:
+- 체크했다고 모든 모델에서 성공 보장하지 않음
+- 실제 호출 실패 시 실행정보에 errorType 기록
+- 모델 capability는 사용자 수정 가능하되 “사용자 지정” 표시 필요
+
+--------------------------------------------------
+10. ConversationEngine 연결 정책
+--------------------------------------------------
+
+대화모드 요청 흐름:
+
+ConversationViewModel
+→ ConversationEngine
+→ ProviderProfile 선택
+→ ModelProfile 선택
+→ ConversationPromptBuilder
+→ ProviderAdapter
+→ ConversationResponse
+
+1차에서는 실제 호출 전:
+- ProviderProfile / ModelProfile 선택 구조만 준비
+- API Key 없음 / Provider 없음 / Model 없음 오류 처리 설계
+
+--------------------------------------------------
+11. 저장 위치 설계
+--------------------------------------------------
+
+저장 후보:
+- 앱 전용 저장소 MAHA/settings/provider_profiles.json
+- MAHA/settings/model_profiles.json
+- MAHA/settings/model_favorites.json
+
+주의:
+- SAF는 백업/복원용
+- 실시간 설정 저장은 앱 전용 저장소 사용
+
+--------------------------------------------------
+12. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- ProviderProfile data class
+- ConversationModelProfile data class
+- ModelCapability data class
+- ProviderSettingsStore
+- provider_profiles.json 저장/로드
+- model_profiles.json 저장/로드
+- Provider 관리 UI skeleton
+- 실제 API 호출은 아직 보류
+
+--------------------------------------------------
+13. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 API 호출
+❌ API Key 하드코딩
+❌ Provider 연결 테스트 실제 네트워크 호출
+❌ 모델 목록 실제 API 조회
+❌ 작업모드 Provider 구조 대규모 수정
+❌ ConversationEngine 실제 Provider 호출 구현
+❌ RAG 검색 알고리즘 변경
+❌ 저장소 구조 대규모 변경
+
+--------------------------------------------------
+완료 기준:
+- 대화모드 ProviderProfile 구조 확정
+- API Key 저장 정책 확정
+- 모델 프로필 구조 확정
+- capability 구조 확정
+- Provider 추가 UI 구조 확정
+- 통합 모델 선택 페이지 구조 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+Provider / Model 설정 저장소 1차 구현
+
+==============================
 [2026-05-02 09:24] Provider 연결 dry-run 및 API Key 오류 처리 구현
 ==============================
 
