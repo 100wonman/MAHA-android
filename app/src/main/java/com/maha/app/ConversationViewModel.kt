@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 
 class ConversationViewModel(
     application: Application
@@ -278,33 +280,54 @@ class ConversationViewModel(
             createdAt = currentTimeMillis
         )
 
-        val response = conversationEngine.execute(request)
-
-        val assistantMessage = ConversationMessage(
-            messageId = "message_assistant_$currentTimeMillis",
-            sessionId = targetSession.sessionId,
-            role = ConversationRole.ASSISTANT,
-            createdAt = nowText,
-            blocks = response.blocks,
-            linkedRunId = runId
-        )
-
-        val updatedSession = targetSession.copy(
+        val userOnlySession = targetSession.copy(
             lastMessageSummary = textToSend.take(60),
             updatedAt = nowText,
-            messages = targetSession.messages + userMessage + assistantMessage,
-            latestRun = response.runInfo
+            messages = targetSession.messages + userMessage
         )
 
-        conversationSessions[targetIndex] = updatedSession
+        conversationSessions[targetIndex] = userOnlySession
         conversationFileStore.appendMessage(targetSession.sessionId, userMessage)
-        conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
         conversationFileStore.updateSession(
-            session = updatedSession,
+            session = userOnlySession,
             isFavorite = favoriteSessionIds.contains(targetSession.sessionId)
         )
 
         inputText = ""
+
+        viewModelScope.launch {
+            val response = conversationEngine.execute(request)
+            val assistantNowText = getCurrentTimeText()
+            val assistantMessage = ConversationMessage(
+                messageId = "message_assistant_${System.currentTimeMillis()}",
+                sessionId = targetSession.sessionId,
+                role = ConversationRole.ASSISTANT,
+                createdAt = assistantNowText,
+                blocks = response.blocks,
+                linkedRunId = runId
+            )
+
+            val latestIndex = conversationSessions.indexOfFirst {
+                it.sessionId == targetSession.sessionId
+            }
+
+            if (latestIndex == -1) return@launch
+
+            val latestSession = conversationSessions[latestIndex]
+            val updatedSession = latestSession.copy(
+                lastMessageSummary = textToSend.take(60),
+                updatedAt = assistantNowText,
+                messages = latestSession.messages + assistantMessage,
+                latestRun = response.runInfo
+            )
+
+            conversationSessions[latestIndex] = updatedSession
+            conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
+            conversationFileStore.updateSession(
+                session = updatedSession,
+                isFavorite = favoriteSessionIds.contains(targetSession.sessionId)
+            )
+        }
     }
 
     fun updateUserMessage(
@@ -356,6 +379,16 @@ class ConversationViewModel(
 
 
     private fun resolveSelectedProviderName(): String {
+        val defaultModel = resolveDefaultConversationModelProfile()
+        val providerForModel = defaultModel?.let { model ->
+            providerSettingsStore.loadProviderProfiles()
+                .firstOrNull { it.providerId == model.providerId && it.isEnabled }
+        }
+
+        if (providerForModel != null) {
+            return providerForModel.providerType.name
+        }
+
         val context = getApplication<Application>().applicationContext
         val selectedProvider = runCatching {
             ApiKeyManager.getSelectedProvider(context)
@@ -371,6 +404,11 @@ class ConversationViewModel(
     }
 
     private fun resolveSelectedModelName(): String {
+        val defaultModel = resolveDefaultConversationModelProfile()
+        if (defaultModel != null && defaultModel.rawModelName.isNotBlank()) {
+            return defaultModel.rawModelName
+        }
+
         val context = getApplication<Application>().applicationContext
         val fallbackModel = runCatching {
             ApiKeyManager.getFallbackModel(context)
@@ -379,10 +417,23 @@ class ConversationViewModel(
         return fallbackModel?.takeIf { it.isNotBlank() } ?: "conversation-engine-dummy"
     }
 
+    private fun resolveDefaultConversationModelProfile(): ConversationModelProfile? {
+        return runCatching {
+            val enabledModels = providerSettingsStore.loadModelProfiles()
+                .filter { it.enabled }
+
+            enabledModels.firstOrNull { it.isDefaultForConversation }
+                ?: enabledModels.firstOrNull { it.isFavorite }
+                ?: enabledModels.firstOrNull()
+        }.getOrNull()
+    }
+
     private fun resolveProviderApiKey(providerName: String): String? {
         val context = getApplication<Application>().applicationContext
         return when {
-            providerName.equals("GOOGLE", ignoreCase = true) -> {
+            providerName.equals("GOOGLE", ignoreCase = true) ||
+                    providerName.contains("google", ignoreCase = true) ||
+                    providerName.contains("gemini", ignoreCase = true) -> {
                 runCatching { ApiKeyManager.getGoogleApiKey(context) }.getOrNull()
             }
 

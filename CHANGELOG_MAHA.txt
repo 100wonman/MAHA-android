@@ -1,4 +1,444 @@
 ==============================
+[2026-05-02 14:24] Google Gemini Provider 실제 호출 1차 구현
+==============================
+
+[작업]
+- GoogleGeminiProviderAdapter 추가
+- Gemini OpenAI-compatible chat/completions HTTP POST 구현
+- Authorization: Bearer API Key 헤더 적용
+- ConversationEngine에서 providerType=GOOGLE 호출 분기 연결
+- Gemini 성공 응답을 TEXT_BLOCK으로 변환
+- Gemini 실패 응답을 ERROR_BLOCK으로 변환
+- 실행정보에 provider/model/latency/errorType 기록
+- 기존 DUMMY/RAG/저장 기능 유지
+
+--------------------------------------------------
+[결과]
+성공
+
+[원인 판단]
+- Provider 관리 UI에서 입력한 API Key가 Gemini 호출 경로로 전달되지 않는 구조 불일치가 핵심 원인
+- 현재 ProviderProfile.apiKeyAlias는 실제 API Key 원문 저장값이 아니라 상태/별칭 용도로 쓰인 가능성이 높음
+- ConversationEngine은 기존 ApiKeyManager 또는 별도 경로에서 Key를 읽고 있어 ProviderSettingsStore 입력값과 불일치
+- Gemini 호출 성공 여부 판단 전에 API Key 저장/조회 경로를 먼저 단일화해야 함
+- 모델명 문제는 API Key 경로 정리 이후 별도 검증 대상으로 분리
+
+[API Key 경로 확인]
+- Provider UI 입력값: Provider 추가/수정 Dialog에서 입력되지만 실제 호출용 Key로 연결되지 않은 상태로 판단
+- ProviderSettingsStore 저장: provider_profiles.json에는 ProviderProfile 중심으로 저장되며 apiKeyAlias는 원문 Key 저장 필드로 확정되지 않음
+- ApiKeyManager 저장: 기존 작업모드 또는 기존 Google API Key 저장 경로로 별도 존재 가능
+- ConversationEngine 조회: Gemini 호출 시 ProviderSettingsStore 입력값이 아니라 기존 Key 경로를 조회하는 상태로 판단
+- GoogleGeminiProviderAdapter 전달: Adapter는 apiKey 문자열을 받지만, Engine이 전달하는 apiKey가 Provider UI 입력값과 연결되지 않음
+
+[수정/설계 방향]
+- API Key 저장 기준: 1차는 대화모드 ProviderProfile 기준으로 providerId별 API Key 저장/조회 경로를 통일
+- 마스킹 표시: UI에는 “설정됨/미설정” 또는 일부 마스킹만 표시하고 원문 전체 노출 금지
+- 수정/삭제: Provider 수정 시 API Key 교체 가능, 삭제 시 해당 providerId의 API Key도 함께 삭제
+- 기존 작업모드와 관계: 기존 ApiKeyManager는 작업모드용으로 유지하고, 대화모드 ProviderSettingsStore 기반 Key 저장소는 분리 또는 adapter로 연결
+
+[모델 목록 조회 설계]
+- 조회 버튼 위치: Provider 관리 화면의 Google Provider 카드에 “모델 목록 불러오기” 버튼 추가
+- 조회 endpoint: Google Gemini models.list endpoint `GET https://generativelanguage.googleapis.com/v1beta/models` 사용, 모델 상세는 `GET https://generativelanguage.googleapis.com/v1beta/{name=models/*}` 기준으로 설계. :contentReference[oaicite:0]{index=0}
+- 결과 표시: 조회 결과를 Dialog 또는 별도 선택 화면에 표시하고 model name, displayName, supported actions, token limits를 보여줌
+- ModelProfile 저장: 사용자가 선택한 모델을 ConversationModelProfile로 저장하고 rawModelName에는 OpenAI-compatible 호출에서 사용할 모델명을 저장
+
+[1차 구현 범위]
+- ProviderSettingsStore에 providerId별 API Key 저장/로드/삭제 함수 추가
+- Provider 관리 UI의 API Key 입력값을 실제 저장/조회 경로에 연결
+- ConversationEngine이 Google 호출 시 ProviderSettingsStore에서 해당 providerId의 API Key를 조회하도록 수정
+- Google Provider 카드에 모델 목록 조회 버튼 UI만 추가하거나 실제 조회는 다음 단계로 분리
+- API Key 경로 보정 후 Gemini 실제 호출 재검증
+
+[보류 항목]
+- Google 모델 목록 실제 조회 구현
+- 조회 결과 기반 자동 capability 매핑
+- ApiKeyManager와 ProviderSettingsStore 보안 통합
+- Android Keystore 기반 암호화 저장
+- 작업모드 Provider 구조 통합
+
+[변경 파일]
+- 설계 단계 / 변경 파일 없음
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+[보정/설계 모드]
+
+작업명:
+Google Provider API Key 연결 및 모델 목록 조회 설계
+
+현재 문제:
+- Google API Key를 입력했는데도 대화모드 Gemini 호출에서 API_KEY_MISSING ERROR_BLOCK이 표시됨
+- Provider 관리 UI의 API Key 입력값과 ConversationEngine / GoogleGeminiProviderAdapter가 실제로 읽는 API Key 경로가 불일치하는 것으로 판단됨
+- rawModelName 수동 입력만으로는 모델명 검증이 어려움
+
+판정:
+- gemma-4-31b-it 모델명 자체는 Gemini API 지원 모델이므로 모델명만의 문제로 단정하지 않는다.
+- 우선 API Key 저장/조회 경로를 정리해야 한다.
+- 그 다음 Google 모델 목록 조회 기능을 설계한다.
+
+목표:
+1. 대화모드 Provider 관리 UI에서 입력한 Google API Key가 실제 Gemini 호출에 사용되도록 저장/조회 경로를 설계한다.
+2. 기존 작업모드 ApiKeyManager와 대화모드 ProviderSettingsStore의 책임을 정리한다.
+3. Google Provider에서 모델 목록을 불러오고, 사용자가 선택한 모델을 Model 관리에 저장하는 구조를 설계한다.
+
+확인할 것:
+- ProviderProfile.apiKeyAlias가 실제 API Key 원문을 저장하는지, 단순 상태 표시인지
+- ProviderSettingsStore가 API Key를 저장/로드하는지
+- ConversationEngine이 Google 호출 시 어떤 경로에서 API Key를 읽는지
+- 기존 ApiKeyManager의 Google API Key 저장/로드 함수명
+- Provider 관리 UI에서 API Key 입력값이 어디에 저장되는지
+
+설계 방향:
+- 1차에서는 대화모드 ProviderProfile 기준 API Key 저장/조회로 통일하는 것을 우선 검토
+- 보안 고도화는 후속 단계로 분리
+- API Key 원문은 UI에 노출하지 않고 마스킹 표시
+- 삭제/수정 가능해야 함
+
+모델 목록 조회 설계:
+- Google Provider 카드에 “모델 목록 불러오기” 버튼 추가
+- Google Models endpoint를 사용해 사용 가능한 모델 목록 조회
+- 조회 결과를 Model 관리 화면에서 선택 가능하게 표시
+- 선택한 모델은 ConversationModelProfile로 저장
+- rawModelName 수동 입력은 유지하되, 모델 목록 선택을 우선 제공
+
+주의:
+- 이번 단계는 우선 설계/보정 방향 확정
+- 실제 API 호출 구현을 커밋하지 말 것
+- API Key 경로 불일치가 해결되기 전까지 Gemini 실제 호출 성공으로 처리하지 말 것
+
+--------------------------------------------------
+
+[결과]
+실패
+
+[핵심 변경]
+- GoogleGeminiProviderAdapter 신규 추가
+- Gemini OpenAI-compatible chat/completions HTTP POST 구현
+- ConversationEngine에서 providerType=GOOGLE 감지 시 Gemini Adapter 호출
+- 성공 응답은 TEXT_BLOCK, 실패 응답은 ERROR_BLOCK으로 반환
+- 실행정보에 provider/model/latency/errorType/promptLength/responseLength/RAG 정보를 기록
+
+[Gemini 호출 테스트]
+- DUMMY provider 유지: 기본 Provider/Model 미지정 또는 DUMMY 상태 → 메시지 전송 → 기존 더미 응답 확인
+- API Key 없음: Google Provider/Model 선택 + Google API Key 비움 → 메시지 전송 → API_KEY_MISSING ERROR_BLOCK 확인
+- 실제 Gemini 호출: Google API Key 설정 + Google 모델 rawModelName 지정 → 메시지 전송 → 실제 Gemini 응답 표시 확인
+- 모델명 사용: Model 관리에서 지정한 rawModelName으로 호출 → 실행정보 modelName 확인
+- 실패 응답 처리: 잘못된 모델명 입력 → ERROR_BLOCK 및 INVALID_REQUEST/UNKNOWN 확인
+
+[RAG 유지 테스트]
+- 검색 OFF: 빠른 설정 검색 OFF → 메시지 전송 → RAG OFF 확인
+- 검색 ON: 검색 ON → 인덱싱된 단어 입력 → RAG 결과 수 표시 확인
+- RAG 섹션: 실행정보 펼침 → RAG ON/OFF, resultCount, fallback 표시 확인
+- 참조 컨텍스트 보기: 검색 결과 있는 메시지 → 실행정보 하단 컨텍스트 섹션 확인
+
+[실행정보 테스트]
+- providerName/modelName: 실행정보 펼침 → Google Gemini / rawModelName 표시 확인
+- latencySec: 실제 호출 후 실행정보에 latencySec 표시 확인
+- errorType: 실패 응답에서 API_KEY_MISSING / INVALID_REQUEST / RATE_LIMIT 등 표시 확인
+- Worker 3개 표시: 실행정보 펼침 → Orchestrator / Main / Synthesis 유지 확인
+
+[기존 기능 영향]
+- 메시지 저장/복구: 메시지 전송 → 앱 재시작 → 대화 유지 확인
+- 자동 스크롤: 메시지 전송 후 최신 메시지 위치 이동 확인
+- Provider 관리: Provider 추가/수정/삭제/토글 확인
+- Model 관리: 모델 추가/수정/기본 지정 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- RAG 검색/인덱싱: 저장소 관리 → 검색/선택 세션 인덱싱 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[문제]
+- Provider 관리 UI의 API Key 입력은 현재 apiKeyAlias 상태 표시 중심이므로, 실제 호출용 Google API Key는 기존 ApiKeyManager 저장값을 사용함
+- 실제 Gemini 호출 테스트 전 Google API Key가 기존 설정 경로에 저장되어 있어야 함
+
+[실패원인]
+현재 작업모드에서 실 사용중인 구글 API 키를 입력했음에도 API 키 없음 에러블록이 뜬다. RAW 모델명이 문제인가 싶기도 한데... gemma-4-31b-it 로 입력 했는데 문제가 있는 것인가? 혹은 프로바이더 설정하고 모델 관리탭에서 해당 프로바이더 api 키를 통한 모델검색 버튼이나 모델명 리스트 같은걸 출력하고 선택할 수 있게 만드는 것은 어때?
+
+[변경 파일]
+- GoogleGeminiProviderAdapter.kt
+- ConversationEngine.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+[구현 모드]
+
+작업명:
+Google Gemini Provider 실제 호출 1차 구현
+
+목표:
+- 대화모드 ConversationEngine에서 Google Gemini API를 실제 호출한다.
+- Google Gemini OpenAI-compatible chat/completions 방식으로 구현한다.
+- 성공 응답은 TEXT_BLOCK으로 표시하고, 실패 응답은 ERROR_BLOCK으로 표시한다.
+- 이번 단계에서는 streaming, tool calling, multimodal, model list API는 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ GoogleGeminiProviderAdapter 추가
+✔ Gemini OpenAI-compatible chat/completions HTTP POST 구현
+✔ Authorization: Bearer {API_KEY} 헤더 적용
+✔ ConversationPromptBuilder 결과를 messages 요청으로 변환
+✔ 성공 응답 text 추출
+✔ ConversationResponse SUCCESS 반환
+✔ 실패 응답 ERROR_BLOCK 반환
+✔ 실행정보에 provider/model/latency/errorType 기록
+
+이번 단계에서 금지:
+
+❌ streaming 구현
+❌ tool calling/function calling 구현
+❌ image/audio/video multimodal 입력 구현
+❌ model list API 조회
+❌ Markdown/code/json 자동 파싱
+❌ 작업모드 Provider 구조 수정
+❌ RAG 검색 알고리즘 변경
+
+--------------------------------------------------
+2. 호출 방식
+--------------------------------------------------
+
+Google Gemini OpenAI-compatible endpoint 사용.
+
+Endpoint:
+- https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+
+Header:
+- Content-Type: application/json
+- Authorization: Bearer {GEMINI_API_KEY}
+
+Request body 기본 구조:
+
+{
+  "model": "{rawModelName}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "{prompt}"
+    }
+  ],
+  "temperature": 0.7
+}
+
+주의:
+- model 값은 Model 관리의 rawModelName 사용
+- 모델명 하드코딩 금지
+- API Key 하드코딩 금지
+
+--------------------------------------------------
+3. Adapter 구조
+--------------------------------------------------
+
+신규 파일 권장:
+
+- GoogleGeminiProviderAdapter.kt
+
+필수 함수 후보:
+
+execute(
+    request: ConversationRequest,
+    prompt: String,
+    providerProfile: ProviderProfile,
+    modelProfile: ConversationModelProfile,
+    apiKey: String
+): ConversationProviderResult
+
+또는 프로젝트 기존 스타일에 맞춰 간단히:
+
+callGemini(
+    prompt: String,
+    modelName: String,
+    apiKey: String
+): Result<String>
+
+반환값에 포함할 정보:
+- success
+- rawText
+- latencySec
+- errorType
+- errorMessage
+- providerName
+- modelName
+
+--------------------------------------------------
+4. ConversationEngine 연결
+--------------------------------------------------
+
+ConversationEngine.execute(request)에서:
+
+1. selected provider/model 확인
+2. providerType == GOOGLE이면 GoogleGeminiProviderAdapter 호출
+3. API Key 없으면 기존 API_KEY_MISSING 경로 유지
+4. 성공 시:
+   - status = SUCCESS
+   - rawText = Gemini 응답 text
+   - blocks = TEXT_BLOCK(rawText)
+5. 실패 시:
+   - status = FAILED
+   - blocks = ERROR_BLOCK
+   - errorType 기록
+
+주의:
+- DUMMY provider 흐름은 유지
+- searchEnabled/RagContext 흐름 유지
+- ConversationViewModel이 직접 API 호출하지 않음
+
+--------------------------------------------------
+5. 응답 파싱
+--------------------------------------------------
+
+OpenAI-compatible 응답에서 아래 경로 기준으로 text 추출:
+
+choices[0].message.content
+
+주의:
+- content가 없거나 choices가 비어 있으면 UNKNOWN 또는 INVALID_RESPONSE 처리
+- raw error body 전체를 사용자 본문에 길게 노출하지 말 것
+- 실행정보 TRACE에 짧은 error summary만 기록
+
+--------------------------------------------------
+6. 오류 처리
+--------------------------------------------------
+
+errorType 매핑:
+
+- API_KEY_MISSING
+- RATE_LIMIT
+- TIMEOUT
+- SERVER_ERROR
+- INVALID_REQUEST
+- INVALID_RESPONSE
+- UNKNOWN
+
+HTTP 기준 예:
+- 400 → INVALID_REQUEST
+- 401/403 → API_KEY_MISSING 또는 INVALID_REQUEST
+- 408 / timeout → TIMEOUT
+- 429 → RATE_LIMIT
+- 500 이상 → SERVER_ERROR
+
+필수:
+- 앱 크래시 금지
+- 실패해도 세션에 ERROR_BLOCK 저장
+- 실행정보 status = FAILED
+
+--------------------------------------------------
+7. 네트워크 / 비동기
+--------------------------------------------------
+
+필수:
+- HTTP 호출은 Dispatchers.IO
+- UI thread block 금지
+- timeout 설정
+- 요청 중 전송 버튼 상태 기존 정책 유지
+
+HTTP client:
+- 프로젝트 기존 의존성 우선 사용
+- 이미 okhttp가 있으면 OkHttp 사용
+- 새 외부 라이브러리 추가는 가능하면 금지
+- 필요한 경우 최소 의존성만 추가하고 보고서에 명시
+
+--------------------------------------------------
+8. 실행정보 기록
+--------------------------------------------------
+
+성공 시 기록:
+- providerName = Google Gemini
+- modelName = rawModelName
+- latencySec
+- status = COMPLETED
+- promptLength
+- responseLength
+- ragEnabled
+- ragResultCount
+- ragFallback
+
+실패 시 기록:
+- status = FAILED
+- errorType
+- latencySec
+- providerName
+- modelName
+- retryCount = 0
+
+Worker 표시:
+- 기존 Orchestrator / Main / Synthesis 유지
+- 실제 호출 결과는 Main에 매핑
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- DUMMY provider 흐름
+- API_KEY_MISSING dry-run
+- RAG context 생성
+- 실행정보 RAG 섹션
+- 참조 컨텍스트 보기
+- 메시지 저장/복구
+- 자동 스크롤
+- SAF 백업/복원
+- RAG 검색/인덱싱
+- Provider 관리
+- Model 관리
+- 작업모드 기능
+
+--------------------------------------------------
+10. 테스트 기준
+--------------------------------------------------
+
+테스트 A:
+- DUMMY provider 선택 → 기존 더미 응답 유지
+
+테스트 B:
+- GOOGLE provider 선택 + API Key 없음 → API_KEY_MISSING ERROR_BLOCK
+
+테스트 C:
+- GOOGLE provider 선택 + API Key 있음 + rawModelName 있음 → 실제 Gemini 응답 표시
+
+테스트 D:
+- 검색 ON 상태에서 Gemini 호출 → RAG 섹션 유지 / 응답 정상
+
+테스트 E:
+- 잘못된 모델명 → ERROR_BLOCK / INVALID_REQUEST 또는 UNKNOWN
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ API Key 하드코딩 금지
+❌ streaming 구현 금지
+❌ tool calling 구현 금지
+❌ multimodal 구현 금지
+❌ model list API 구현 금지
+❌ ConversationViewModel 직접 API 호출 금지
+❌ 작업모드 Provider 구조 수정 금지
+❌ RAG 검색 로직 수정 금지
+❌ OutputBlock 대규모 변경 금지
+
+--------------------------------------------------
+완료 기준:
+- GoogleGeminiProviderAdapter 추가
+- 실제 Gemini HTTP 호출 성공
+- Gemini 응답이 ASSISTANT TEXT_BLOCK으로 표시
+- API Key 없음/오류 응답 ERROR_BLOCK 표시
+- 실행정보 provider/model/latency/errorType 표시
+- RAG 검색 ON/OFF 기존 기능 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Gemini 호출 UX 보정 또는 모델 목록 조회 설계
+
+==============================
 [2026-05-02 12:18] Google Gemini Provider 실제 호출 구조 설계
 ==============================
 
