@@ -53,6 +53,11 @@ fun ProviderManagementScreen(
     var editingProvider by remember { mutableStateOf<ProviderProfile?>(null) }
     var isAddDialogOpen by remember { mutableStateOf(false) }
     var providerToDelete by remember { mutableStateOf<ProviderProfile?>(null) }
+    var providerSearchQuery by remember { mutableStateOf("") }
+    var selectedProviderTypeFilter by remember { mutableStateOf<ProviderType?>(null) }
+    var showOnlyEnabledProviders by remember { mutableStateOf(false) }
+    var showOnlyApiKeyConfigured by remember { mutableStateOf(false) }
+    var showOnlyMissingBaseUrl by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val googleModelListFetcher = remember { GoogleModelListFetcher() }
@@ -153,6 +158,42 @@ fun ProviderManagementScreen(
         reloadProviders()
     }
 
+    val normalizedSearchQuery = providerSearchQuery.trim().lowercase()
+    val filteredProviders = providers
+        .filter { provider ->
+            val matchesSearch = normalizedSearchQuery.isBlank() || listOf(
+                provider.displayName,
+                provider.providerType.name,
+                provider.baseUrl,
+                provider.modelListEndpoint.orEmpty(),
+                provider.providerId
+            ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+
+            val matchesProviderType = selectedProviderTypeFilter == null ||
+                    provider.providerType == selectedProviderTypeFilter
+            val matchesEnabled = !showOnlyEnabledProviders || provider.isEnabled
+            val matchesApiKey = !showOnlyApiKeyConfigured || providerApiKeyStates[provider.providerId] == true
+            val matchesMissingBaseUrl = !showOnlyMissingBaseUrl || provider.baseUrl.isBlank()
+
+            matchesSearch && matchesProviderType && matchesEnabled && matchesApiKey && matchesMissingBaseUrl
+        }
+        .sortedWith(
+            compareByDescending<ProviderProfile> { if (it.isEnabled) 1 else 0 }
+                .thenBy { it.providerType.ordinal }
+                .thenByDescending { if (providerApiKeyStates[it.providerId] == true) 1 else 0 }
+                .thenByDescending { if (it.baseUrl.isNotBlank()) 1 else 0 }
+                .thenBy { it.displayName.lowercase() }
+        )
+
+    val enabledProviderCount = providers.count { it.isEnabled }
+    val apiKeyConfiguredCount = providers.count { providerApiKeyStates[it.providerId] == true }
+    val missingBaseUrlCount = providers.count { it.baseUrl.isBlank() }
+    val isFilterApplied = providerSearchQuery.isNotBlank() ||
+            selectedProviderTypeFilter != null ||
+            showOnlyEnabledProviders ||
+            showOnlyApiKeyConfigured ||
+            showOnlyMissingBaseUrl
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -189,6 +230,25 @@ fun ProviderManagementScreen(
             }
         }
 
+        ProviderListControlPanel(
+            searchQuery = providerSearchQuery,
+            onSearchQueryChange = { providerSearchQuery = it },
+            selectedProviderType = selectedProviderTypeFilter,
+            onProviderTypeSelected = { selectedProviderTypeFilter = it },
+            showOnlyEnabled = showOnlyEnabledProviders,
+            onShowOnlyEnabledChange = { showOnlyEnabledProviders = it },
+            showOnlyApiKeyConfigured = showOnlyApiKeyConfigured,
+            onShowOnlyApiKeyConfiguredChange = { showOnlyApiKeyConfigured = it },
+            showOnlyMissingBaseUrl = showOnlyMissingBaseUrl,
+            onShowOnlyMissingBaseUrlChange = { showOnlyMissingBaseUrl = it },
+            totalCount = providers.size,
+            visibleCount = filteredProviders.size,
+            enabledCount = enabledProviderCount,
+            apiKeyConfiguredCount = apiKeyConfiguredCount,
+            missingBaseUrlCount = missingBaseUrlCount,
+            isFilterApplied = isFilterApplied
+        )
+
         if (providers.isEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(
@@ -202,8 +262,21 @@ fun ProviderManagementScreen(
                     color = Color(0xFFD0D3DA)
                 )
             }
+        } else if (filteredProviders.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF252A33)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "현재 검색/필터 조건에 맞는 Provider가 없습니다.",
+                    modifier = Modifier.padding(18.dp),
+                    color = Color(0xFFD0D3DA)
+                )
+            }
         } else {
-            providers.forEach { provider ->
+            filteredProviders.forEach { provider ->
                 ProviderProfileCard(
                     provider = provider,
                     hasApiKey = providerApiKeyStates[provider.providerId] == true,
@@ -316,6 +389,178 @@ fun ProviderManagementScreen(
 }
 
 @Composable
+private fun ProviderListControlPanel(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    selectedProviderType: ProviderType?,
+    onProviderTypeSelected: (ProviderType?) -> Unit,
+    showOnlyEnabled: Boolean,
+    onShowOnlyEnabledChange: (Boolean) -> Unit,
+    showOnlyApiKeyConfigured: Boolean,
+    onShowOnlyApiKeyConfiguredChange: (Boolean) -> Unit,
+    showOnlyMissingBaseUrl: Boolean,
+    onShowOnlyMissingBaseUrlChange: (Boolean) -> Unit,
+    totalCount: Int,
+    visibleCount: Int,
+    enabledCount: Int,
+    apiKeyConfiguredCount: Int,
+    missingBaseUrlCount: Int,
+    isFilterApplied: Boolean
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF252A33)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Provider 목록 정리",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = buildString {
+                    append("전체 Provider ").append(totalCount).append("개 · 표시 ").append(visibleCount).append("개")
+                    append(" · 활성 ").append(enabledCount).append("개")
+                    append(" · API Key 설정 ").append(apiKeyConfiguredCount).append("개")
+                    append(" · Base URL 미설정 ").append(missingBaseUrlCount).append("개")
+                    if (isFilterApplied) append(" · 필터 적용 중")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                label = { Text(text = "Provider 검색") },
+                placeholder = { Text(text = "이름, ProviderType, Base URL, Endpoint, Provider ID") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "API Key 원문은 검색하거나 표시하지 않습니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFB8BCC6)
+            )
+
+            Text(
+                text = "ProviderType 필터",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProviderFilterButton(
+                    text = "전체",
+                    selected = selectedProviderType == null,
+                    onClick = { onProviderTypeSelected(null) }
+                )
+                ProviderFilterButton(
+                    text = ProviderType.GOOGLE.name,
+                    selected = selectedProviderType == ProviderType.GOOGLE,
+                    onClick = { onProviderTypeSelected(ProviderType.GOOGLE) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProviderFilterButton(
+                    text = ProviderType.OPENAI_COMPATIBLE.name,
+                    selected = selectedProviderType == ProviderType.OPENAI_COMPATIBLE,
+                    onClick = { onProviderTypeSelected(ProviderType.OPENAI_COMPATIBLE) }
+                )
+                ProviderFilterButton(
+                    text = ProviderType.NVIDIA.name,
+                    selected = selectedProviderType == ProviderType.NVIDIA,
+                    onClick = { onProviderTypeSelected(ProviderType.NVIDIA) }
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ProviderFilterButton(
+                    text = ProviderType.LOCAL.name,
+                    selected = selectedProviderType == ProviderType.LOCAL,
+                    onClick = { onProviderTypeSelected(ProviderType.LOCAL) }
+                )
+                ProviderFilterButton(
+                    text = ProviderType.CUSTOM.name,
+                    selected = selectedProviderType == ProviderType.CUSTOM,
+                    onClick = { onProviderTypeSelected(ProviderType.CUSTOM) }
+                )
+            }
+
+            ProviderBooleanFilterRow(
+                label = "활성 Provider만",
+                checked = showOnlyEnabled,
+                onCheckedChange = onShowOnlyEnabledChange
+            )
+            ProviderBooleanFilterRow(
+                label = "API Key 설정됨만",
+                checked = showOnlyApiKeyConfigured,
+                onCheckedChange = onShowOnlyApiKeyConfiguredChange
+            )
+            ProviderBooleanFilterRow(
+                label = "Base URL 미설정만",
+                checked = showOnlyMissingBaseUrl,
+                onCheckedChange = onShowOnlyMissingBaseUrlChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProviderFilterButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val buttonText = if (selected) "✓ $text" else text
+    if (selected) {
+        Button(onClick = onClick) {
+            Text(text = buttonText)
+        }
+    } else {
+        TextButton(onClick = onClick) {
+            Text(text = buttonText)
+        }
+    }
+}
+
+@Composable
+private fun ProviderBooleanFilterRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFFD0D3DA)
+        )
+    }
+}
+
+@Composable
 private fun ProviderProfileCard(
     provider: ProviderProfile,
     hasApiKey: Boolean,
@@ -367,6 +612,10 @@ private fun ProviderProfileCard(
             ProviderInfoRow(
                 label = "호출 방식",
                 value = providerCallStyleLabel(provider.providerType)
+            )
+            ProviderInfoRow(
+                label = "등록 구분",
+                value = if (isDefaultSeedProvider(provider)) "기본 seed Provider" else "사용자 추가 Provider"
             )
             ProviderInfoRow(
                 label = "Base URL",
@@ -571,6 +820,14 @@ private fun ProviderInfoRow(
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+private fun isDefaultSeedProvider(provider: ProviderProfile): Boolean {
+    return provider.providerId in setOf(
+        "provider_google_gemini_openai",
+        "provider_groq_openai",
+        "provider_openrouter_openai"
+    )
 }
 
 private fun providerCallStyleLabel(providerType: ProviderType): String {
