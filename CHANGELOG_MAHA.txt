@@ -1,4 +1,337 @@
 ==============================
+[2026-05-02 21:09] GeminiNativeProviderAdapter 실제 HTTP 호출 1차 구현
+==============================
+
+[작업]
+- GeminiNativeProviderAdapter generateContent HTTP POST 구현
+- x-goog-api-key 인증 header 적용
+- enableGoogleSearch=true일 때 google_search tool 포함
+- candidates/content/parts 응답 파싱 구현
+- answer text와 thought part 분리
+- groundingMetadata webSearchQueries / groundingChunks 1차 파싱
+- GeminiNativeResult에 finishReason / answerPartCount / thoughtPartCount 반영
+- 오류 응답 mapping 구현
+- ConversationEngine native 분기 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- GeminiNativeProviderAdapter에 generateContent HTTP POST 1차 구현
+- x-goog-api-key header 인증 적용
+- enableGoogleSearch=true일 때 tools.google_search 요청 body 포함
+- candidates[0].content.parts[]에서 answer/thought part 분리
+- groundingMetadata.webSearchQueries / groundingChunks / groundingSupports 1차 파싱 추가
+
+[Native Adapter 구현 테스트]
+- endpoint 구성: GeminiNativeProviderAdapter.kt 열기 → buildGenerateContentEndpoint()에서 /v1beta/models/{model}:generateContent 구성 확인
+- API Key header: execute() 확인 → setRequestProperty("x-goog-api-key", apiKey) 확인
+- google_search tools: buildRequestBody() 확인 → enableGoogleSearch=true일 때 tools 배열에 google_search 포함 확인
+- answer/thought 분리: parseGenerateContentResponse() 확인 → isThoughtPart(part) true면 answerParts에 넣지 않는지 확인
+- groundingMetadata 파싱: parseGroundingMetadata() 확인 → webSearchQueries / groundingChunks / groundingSupports 처리 확인
+- 오류 mapping: mapHttpStatusToErrorType() 확인 → 400/401/403/408/429/500+ 분기 확인
+
+[기존 기능 영향]
+- Gemini 기존 호출: 기존 GoogleGeminiProviderAdapter 수정 없음
+- OpenAI-compatible 호출: 기존 OpenAiCompatibleProviderAdapter 수정 없음
+- Web Search placeholder: ConversationEngine 연결 없음, 기존 WEB_SEARCH_GROUNDING 동작 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- GeminiNativeModels.kt
+- GeminiNativeProviderAdapter.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+GeminiNativeProviderAdapter 실제 HTTP 호출 1차 구현
+
+목표:
+- GeminiNativeProviderAdapter에서 Gemini native generateContent 실제 HTTP POST 호출을 구현한다.
+- enableGoogleSearch=true일 때 Google Search grounding tool을 요청 body에 포함한다.
+- candidates/content/parts를 파싱해 answer text와 thought part를 분리한다.
+- groundingMetadata에서 citations/searchQueries를 1차 추출한다.
+- 아직 ConversationEngine native 분기 연결은 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ GeminiNativeProviderAdapter 실제 HTTP POST 구현
+✔ generateContent endpoint 구성
+✔ x-goog-api-key 또는 query key 방식 중 하나 적용
+✔ enableGoogleSearch=true일 때 tools.google_search 추가
+✔ candidates[0].content.parts[] 파싱
+✔ thought part 제외
+✔ answer text 추출
+✔ groundingMetadata.webSearchQueries 추출
+✔ groundingMetadata.groundingChunks 1차 citation 추출
+✔ GeminiNativeResult에 finishReason / answerPartCount / thoughtPartCount 추가 필요 시 반영
+✔ 오류 응답 mapping
+
+이번 단계에서 금지:
+
+❌ ConversationEngine native adapter 실제 분기 연결
+❌ nativeGroundingAvailable=true 전환
+❌ Citation UX 구현
+❌ Web Search 토글 동작 변경
+❌ streaming 구현
+❌ tool execution 구현
+❌ RAG 로직 변경
+❌ 기존 GoogleGeminiProviderAdapter 대체
+
+--------------------------------------------------
+2. Endpoint / 인증
+--------------------------------------------------
+
+Endpoint:
+
+POST https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent
+
+modelName 처리:
+- rawModelName이 "models/" prefix를 포함하면 제거하거나 endpoint 중복을 방지한다.
+- 예:
+  - "gemini-2.5-flash" → models/gemini-2.5-flash:generateContent
+  - "models/gemini-2.5-flash" → models/gemini-2.5-flash:generateContent
+
+인증:
+- 우선 x-goog-api-key: {apiKey} header 사용
+- API Key 하드코딩 금지
+- API Key 로그 출력 금지
+
+Header:
+- Content-Type: application/json
+- x-goog-api-key: {apiKey}
+
+--------------------------------------------------
+3. Request body
+--------------------------------------------------
+
+enableGoogleSearch=false:
+
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "{prompt}"
+        }
+      ]
+    }
+  ]
+}
+
+enableGoogleSearch=true:
+
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "{prompt}"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "google_search": {}
+    }
+  ]
+}
+
+주의:
+- 실제 필드명이 google_search인지 googleSearch인지 현재 공식 문서 기준으로 구현한다.
+- 구현 중 오류가 나면 alternative field name은 후속 보정으로 분리한다.
+- systemInstruction / safetySettings / thinkingConfig는 이번 단계에서 제외 가능.
+
+--------------------------------------------------
+4. Response parsing
+--------------------------------------------------
+
+대상 구조:
+
+- candidates[]
+- candidates[0].content.parts[]
+- candidates[0].finishReason
+- candidates[0].groundingMetadata
+- error
+
+parts 파싱 정책:
+- part.text가 있고 thought flag가 없으면 answer text 후보
+- part.thought == true 이거나 thought 성격이면 answer에서 제외
+- thought text는 본문에 저장하지 않음
+- thinkingSummary에는 원문 전체가 아니라 preview/summary만 저장
+- answer text part들을 "\n\n"로 결합
+
+주의:
+- 첫 번째 part를 무조건 답변으로 취급하지 말 것
+- answer text가 비어 있고 thought만 있으면 INVALID_RESPONSE
+
+--------------------------------------------------
+5. Grounding metadata parsing
+--------------------------------------------------
+
+추출 후보:
+
+- groundingMetadata.webSearchQueries
+- groundingMetadata.groundingChunks
+- groundingMetadata.groundingSupports
+
+1차 citation 추출:
+- groundingChunks[].web.title
+- groundingChunks[].web.uri
+- snippet은 groundingSupports[].segment.text가 있으면 사용
+- sourceIndex는 groundingChunks index
+
+GroundingCitation:
+- title
+- url
+- snippet
+- sourceIndex
+
+정책:
+- citations는 GeminiNativeResult.citations에 넣음
+- raw grounding metadata 전체는 본문에 표시하지 않음
+- rawMetadataSummary에는 count/keys 중심 요약만 저장
+
+--------------------------------------------------
+6. GeminiNativeResult 확장
+--------------------------------------------------
+
+필요 시 GeminiNativeResult에 필드 추가:
+
+- finishReason: String?
+- answerPartCount: Int
+- thoughtPartCount: Int
+
+또는 rawMetadataSummary에 포함 가능.
+
+권장:
+- 명시 필드 추가
+- backward compatibility 유지
+
+NOT_IMPLEMENTED result는 유지 가능하되 실제 execute에서는 사용하지 않음.
+
+--------------------------------------------------
+7. 오류 처리
+--------------------------------------------------
+
+API Key 없음:
+- API_KEY_MISSING
+
+HTTP 오류:
+- 400 → INVALID_REQUEST
+- 401/403 → API_KEY_MISSING 또는 AUTH_FAILED
+- 408 / timeout → TIMEOUT
+- 429 → RATE_LIMIT
+- 500+ → SERVER_ERROR
+- 기타 → UNKNOWN
+
+응답 오류:
+- error.message/status/code가 있으면 errorMessage에 짧게 저장
+- raw error body 전체 노출 금지
+
+파싱 오류:
+- candidates 없음 → INVALID_RESPONSE
+- parts 없음 → INVALID_RESPONSE
+- answer text 없음 → INVALID_RESPONSE
+
+Grounding 관련:
+- enableGoogleSearch=true인데 groundingMetadata 없음 + text 있음:
+  - success=true
+  - groundingUsed=false
+  - rawMetadataSummary에 "groundingMetadata missing" 기록
+- enableGoogleSearch=true인데 API가 tool unsupported 오류:
+  - MODEL_UNSUPPORTED_TOOL 또는 INVALID_REQUEST
+
+--------------------------------------------------
+8. 네트워크 / 비동기
+--------------------------------------------------
+
+필수:
+- HTTP 호출은 Dispatchers.IO 또는 adapter 내부 blocking 호출을 Engine 연결 전 단계로만 제한
+- timeout 설정
+- 앱 크래시 금지
+
+HTTP client:
+- 기존 GoogleGeminiProviderAdapter / OpenAiCompatibleProviderAdapter와 동일한 HTTP client 사용
+- 새 외부 라이브러리 추가 금지
+
+--------------------------------------------------
+9. 테스트 방법
+--------------------------------------------------
+
+이번 단계는 ConversationEngine에 연결하지 않으므로 앱 UI에서 직접 테스트하기 어려울 수 있다.
+
+허용 테스트:
+- 빌드 성공
+- Adapter 단위 호출용 임시 테스트 함수는 만들지 말 것
+- 필요 시 Android Studio에서 compile 확인
+- 후속 단계에서 ConversationEngine native 분기 연결 후 실제 UI 테스트
+
+가능하면 개발자용 내부 로그/간단 호출은 만들지 않는다.
+
+--------------------------------------------------
+10. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 기존 GoogleGeminiProviderAdapter 호출
+- OpenAiCompatibleProviderAdapter 호출
+- Web Search placeholder
+- Web Search 토글
+- RAG
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ ConversationEngine native 분기 연결 금지
+❌ nativeGroundingAvailable=true 전환 금지
+❌ citation UI 구현 금지
+❌ Web Search placeholder 동작 변경 금지
+❌ streaming 구현 금지
+❌ tool execution 구현 금지
+❌ 기존 Gemini/OpenAI-compatible Adapter 대체 금지
+❌ API Key 로그 출력 금지
+
+--------------------------------------------------
+완료 기준:
+- GeminiNativeProviderAdapter 실제 HTTP POST 코드 작성
+- enableGoogleSearch에 따라 tools.google_search 포함
+- answer/thought part 분리 파서 구현
+- groundingMetadata 1차 파서 구현
+- 오류 mapping 구현
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationEngine Gemini native grounding 분기 연결
+
+==============================
 [2026-05-02 21:02] Gemini native generateContent 실제 호출 설계
 ==============================
 
