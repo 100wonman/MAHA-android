@@ -1,4 +1,243 @@
 ==============================
+[2026-05-02 11:57] LOCAL Provider / Model UI 보강
+==============================
+
+[작업]
+- Provider 관리 화면에서 LOCAL Provider 설명 보강
+- LOCAL Provider API Key optional 안내 추가
+- LOCAL Provider 카드 badge 표시
+- Model 관리 화면에서 LOCAL 모델 입력 UX 보강
+- LOCAL 모델 capability 기본값 보정
+- Local Server dry-run skeleton 추가
+- 실제 HTTP 호출 / on-device runtime 구현은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Provider 관리에서 LOCAL 선택 시 Local Server 방식 안내 추가
+- LOCAL Provider 카드에 LOCAL / Local Server badge와 API Key optional 상태 표시 추가
+- Model 관리에서 LOCAL Provider 선택 시 로컬 모델 입력 안내 추가
+- LOCAL 모델 기본 capability를 text/code=true, 나머지 false 기준으로 보정
+- LocalServerProviderAdapter dry-run skeleton 추가
+
+[LOCAL Provider UI 테스트]
+- LOCAL 설명 표시: Provider 추가/수정 → Type LOCAL 선택 → Local Server 안내 문구 확인
+- API Key optional 안내: LOCAL 선택 → API Key label/카드 상태가 optional로 표시되는지 확인
+- Provider 카드 badge: LOCAL Provider 저장 → 카드에 LOCAL · Local Server 표시 확인
+- baseUrl 안내: LOCAL Provider Dialog에서 Base URL 입력 영역과 안내 문구 확인
+- 기존 Provider 영향: Google/GROQ/OpenRouter Provider 수정/삭제/토글 기존 동작 확인
+
+[LOCAL Model UI 테스트]
+- LOCAL 모델 안내: Model 추가/수정 → LOCAL Provider 선택 → LOCAL 모델 안내 문구 확인
+- rawModelName 입력: LOCAL Provider 선택 → local model 예시 placeholder 확인 후 저장 확인
+- capability 기본값: LOCAL Provider로 새 모델 추가 → text/code=true, 나머지 false 기본값 확인
+- 즐겨찾기/기본 모델: LOCAL 모델 카드에서 ★/기본 지정 동작 확인
+- 기존 모델 영향: LOCAL이 아닌 Provider 모델 추가/수정 기존 동작 확인
+
+[Dry-run skeleton]
+- LocalServerProviderAdapter: 신규 파일 존재 및 Build 성공으로 참조 가능 확인
+- baseUrl 검증: validateConfig에서 baseUrl blank 여부를 missingBaseUrl로 반환
+- rawModelName 검증: validateConfig에서 rawModelName blank 여부를 missingModelName으로 반환
+- 네트워크 호출 없음: 코드상 HTTP/API 호출 없이 값 검증만 수행
+
+[기존 기능 영향]
+- Provider 관리: 추가/수정/삭제/활성 토글 확인
+- Model 관리: 추가/수정/삭제/즐겨찾기/기본 모델 확인
+- ConversationEngine dry-run: 대화방 메시지 전송 → 기존 Dummy/ERROR dry-run 흐름 확인
+- RAG 검색/인덱싱: 저장소 관리 → 검색/선택 세션 인덱싱 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[문제]
+- 없음
+또는
+- 발생한 문제 내용
+
+[변경 파일]
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- LocalServerProviderAdapter.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+[구현 모드]
+
+작업명:
+LOCAL Provider / Model UI 보강
+
+목표:
+- Provider 관리와 Model 관리 화면에서 LOCAL Provider / LOCAL Model을 더 명확하게 설정할 수 있도록 UX를 보강한다.
+- Local Server 방식과 On-device Runtime 방식을 사용자에게 구분해서 보여준다.
+- 이번 단계에서는 실제 Local Server HTTP 호출이나 on-device 추론은 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ProviderType.LOCAL 설명 보강
+✔ LOCAL Provider 추가/수정 시 API Key optional 안내
+✔ LOCAL Provider 추가/수정 시 Local Server 방식 설명 표시
+✔ LOCAL Provider 카드에 Local Provider 표시 badge 추가
+✔ Model 관리에서 LOCAL Provider 선택 시 로컬 모델 입력 UX 보강
+✔ LOCAL 모델 capability 기본값 보정
+✔ Local Server dry-run skeleton 추가
+
+이번 단계에서 금지:
+
+❌ 실제 Local Server HTTP 호출
+❌ 실제 on-device runtime 구현
+❌ GGUF/Q4 모델 파일 로드
+❌ native library 연동
+❌ 스트리밍 출력
+❌ 모델 파일 관리 화면 구현
+❌ ConversationEngine 실제 Provider 호출 전환
+
+--------------------------------------------------
+2. Provider 관리 UI 보강
+--------------------------------------------------
+
+Provider 추가/수정 Dialog에서 providerType = LOCAL 선택 시:
+
+표시 안내:
+
+- “LOCAL Provider는 현재 Local Server 방식 설정용입니다.”
+- “예: LM Studio, Ollama Gateway, OpenAI-compatible local server”
+- “API Key는 서버 설정에 따라 선택 사항입니다.”
+- “On-device 모델 직접 실행은 후속 단계에서 지원 예정입니다.”
+
+입력 정책:
+- baseUrl 입력 권장
+- API Key optional
+- modelListEndpoint optional
+
+카드 표시:
+- Provider Type: LOCAL
+- Runtime: Local Server 예정
+- API Key: 선택 사항 / 설정됨 / 미설정
+
+--------------------------------------------------
+3. Model 관리 UI 보강
+--------------------------------------------------
+
+Model 추가/수정 Dialog에서 LOCAL Provider 선택 시:
+
+표시 안내:
+
+- rawModelName은 Local Server에서 사용하는 모델명 또는 로컬 모델 파일명 후보
+- 예: gemma-4-e2b-q4, llama-3.2-3b-instruct, local-model
+- contextWindow는 사용자가 직접 입력 가능
+- capability는 사용자 지정값으로 관리
+
+LOCAL 모델 기본 capability:
+
+- text = true
+- code = true
+- vision = false
+- audio = false
+- video = false
+- toolCalling = false
+- functionCalling = false
+- webSearch = false
+- jsonMode = false
+- imageGeneration = false
+- structuredOutput = false
+
+주의:
+- 기존 모델 capability 수동 수정 기능 유지
+- LOCAL이 아닌 Provider의 기존 동작 유지
+
+--------------------------------------------------
+4. Local Server dry-run skeleton
+--------------------------------------------------
+
+신규 또는 기존 구조에 최소 skeleton 추가 가능:
+
+- LocalServerProviderAdapter.kt
+
+역할:
+- 아직 실제 HTTP 호출하지 않음
+- baseUrl / rawModelName 존재 여부만 검증하는 dry-run 함수 제공 가능
+
+예:
+validateConfig(providerProfile, modelProfile)
+
+반환:
+- success
+- missingBaseUrl
+- missingModelName
+
+주의:
+- 네트워크 호출 금지
+- ConversationEngine에 실제 호출 연결 금지
+- UI에서 “설정 확인” 정도로만 사용할 수 있음
+
+--------------------------------------------------
+5. 오류/안내 정책
+--------------------------------------------------
+
+LOCAL Provider에서 baseUrl이 비어 있으면:
+
+- UI에서 안내 표시
+- 저장 자체는 허용 가능
+- 실제 호출 단계에서는 ERROR_BLOCK 대상
+
+LOCAL Model에서 rawModelName이 비어 있으면:
+
+- 저장 버튼 비활성 또는 안내 표시 권장
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Provider 추가/수정/삭제
+- Provider 활성/비활성
+- Model 추가/수정/삭제
+- 모델 즐겨찾기
+- 기본 모델 지정
+- provider_profiles.json 저장/로드
+- model_profiles.json 저장/로드
+- ConversationEngine dry-run
+- RAG 검색/인덱싱
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+7. 금지 사항
+--------------------------------------------------
+
+❌ 실제 HTTP 호출 금지
+❌ 실제 API 연결 테스트 금지
+❌ on-device runtime 구현 금지
+❌ 모델 파일 복사/로드 구현 금지
+❌ ConversationEngine 실제 Provider 호출 변경 금지
+❌ 작업모드 Provider 구조 수정 금지
+❌ 외부 라이브러리 추가 금지
+
+--------------------------------------------------
+완료 기준:
+- LOCAL Provider 선택 시 설명/안내 표시
+- LOCAL Provider API Key optional 안내 표시
+- LOCAL Provider 카드 badge 표시
+- LOCAL Provider 선택 모델 추가 시 로컬 모델 안내 표시
+- LOCAL 모델 기본 capability 보정
+- Local Server dry-run skeleton 추가 또는 설정 확인 로직 준비
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+통합 모델 선택 UX 보정 또는 ConversationEngine 모델 선택 연결
+
+==============================
 [2026-05-02 11:51] 로컬 LLM Provider 구조 설계
 ==============================
 

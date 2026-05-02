@@ -217,6 +217,13 @@ private fun ProviderProfileCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFD0D3DA)
                     )
+                    if (provider.providerType == ProviderType.LOCAL) {
+                        Text(
+                            text = "LOCAL · Local Server",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF9FE3B1)
+                        )
+                    }
                 }
                 Switch(
                     checked = provider.isEnabled,
@@ -227,8 +234,18 @@ private fun ProviderProfileCard(
             ProviderInfoRow(label = "Base URL", value = provider.baseUrl.ifBlank { "미설정" })
             ProviderInfoRow(
                 label = "API Key",
-                value = if (provider.apiKeyAlias.isNullOrBlank()) "미설정" else "설정됨"
+                value = when {
+                    provider.providerType == ProviderType.LOCAL && provider.apiKeyAlias.isNullOrBlank() -> "선택 사항 / 미설정"
+                    provider.apiKeyAlias.isNullOrBlank() -> "미설정"
+                    else -> "설정됨"
+                }
             )
+            if (provider.providerType == ProviderType.LOCAL) {
+                ProviderInfoRow(
+                    label = "Runtime",
+                    value = "Local Server 방식 준비 중"
+                )
+            }
             ProviderInfoRow(
                 label = "Model List Endpoint",
                 value = provider.modelListEndpoint?.takeIf { it.isNotBlank() } ?: "미설정"
@@ -267,6 +284,36 @@ private fun ProviderInfoRow(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun LocalProviderGuideCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "LOCAL Provider 안내",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF9FE3B1)
+            )
+            Text(
+                text = "현재 LOCAL은 Local Server 방식 설정용입니다. 예: LM Studio, Ollama Gateway, OpenAI-compatible local server",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+            Text(
+                text = "API Key는 서버 설정에 따라 선택 사항입니다. On-device 모델 직접 실행은 후속 단계에서 지원 예정입니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+        }
     }
 }
 
@@ -331,6 +378,10 @@ private fun ProviderProfileEditDialog(
 
                 Divider()
 
+                if (providerType == ProviderType.LOCAL) {
+                    LocalProviderGuideCard()
+                }
+
                 OutlinedTextField(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },
@@ -342,7 +393,7 @@ private fun ProviderProfileEditDialog(
                 OutlinedTextField(
                     value = apiKeyInput,
                     onValueChange = { apiKeyInput = it },
-                    label = { Text(text = "API Key") },
+                    label = { Text(text = if (providerType == ProviderType.LOCAL) "API Key (optional)" else "API Key") },
                     placeholder = {
                         Text(
                             text = if (initialProvider?.apiKeyAlias.isNullOrBlank()) {

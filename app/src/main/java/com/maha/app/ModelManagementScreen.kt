@@ -148,10 +148,11 @@ fun ModelManagementScreen(
             }
         } else {
             models.forEach { model ->
+                val provider = providers.firstOrNull { it.providerId == model.providerId }
                 ModelProfileCard(
                     model = model,
-                    providerName = providers.firstOrNull { it.providerId == model.providerId }?.displayName
-                        ?: "Provider 없음 (${model.providerId})",
+                    providerName = provider?.displayName ?: "Provider 없음 (${model.providerId})",
+                    isLocalModel = provider?.providerType == ProviderType.LOCAL,
                     onEditClick = { editingModel = model },
                     onDeleteClick = { modelToDelete = model },
                     onFavoriteClick = {
@@ -221,6 +222,7 @@ fun ModelManagementScreen(
 private fun ModelProfileCard(
     model: ConversationModelProfile,
     providerName: String,
+    isLocalModel: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onFavoriteClick: () -> Unit,
@@ -258,6 +260,13 @@ private fun ModelProfileCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFD0D3DA)
                     )
+                    if (isLocalModel) {
+                        Text(
+                            text = "LOCAL 모델 · 사용자 지정 capability",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF9FE3B1)
+                        )
+                    }
                 }
                 Switch(
                     checked = model.enabled,
@@ -359,6 +368,25 @@ private fun ModelProfileEditDialog(
     var imageGenerationCap by remember(initialModel) { mutableStateOf(initialModel?.capabilities?.imageGeneration ?: false) }
     var structuredOutputCap by remember(initialModel) { mutableStateOf(initialModel?.capabilities?.structuredOutput ?: false) }
 
+    val selectedProvider = providers.firstOrNull { it.providerId == providerId }
+    val isLocalProvider = selectedProvider?.providerType == ProviderType.LOCAL
+
+    fun applyLocalDefaults() {
+        textCap = true
+        codeCap = true
+        visionCap = false
+        audioCap = false
+        videoCap = false
+        toolCallingCap = false
+        functionCallingCap = false
+        webSearchCap = false
+        jsonModeCap = false
+        imageGenerationCap = false
+        structuredOutputCap = false
+        inputModalitiesText = "text"
+        outputModalitiesText = "text"
+    }
+
     val canSave = displayName.trim().isNotEmpty() && rawModelName.trim().isNotEmpty() && providerId.isNotBlank()
 
     AlertDialog(
@@ -387,7 +415,12 @@ private fun ModelProfileEditDialog(
                     ) {
                         RadioButton(
                             selected = providerId == provider.providerId,
-                            onClick = { providerId = provider.providerId }
+                            onClick = {
+                                providerId = provider.providerId
+                                if (provider.providerType == ProviderType.LOCAL && initialModel == null) {
+                                    applyLocalDefaults()
+                                }
+                            }
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Column {
@@ -401,10 +434,19 @@ private fun ModelProfileEditDialog(
                     }
                 }
 
+                if (isLocalProvider) {
+                    LocalModelGuideCard()
+                }
+
                 OutlinedTextField(
                     value = rawModelName,
                     onValueChange = { rawModelName = it },
-                    label = { Text(text = "Raw Model Name") },
+                    label = { Text(text = if (isLocalProvider) "Local Model Name / File Name" else "Raw Model Name") },
+                    placeholder = {
+                        if (isLocalProvider) {
+                            Text(text = "gemma-4-e2b-q4, llama-3.2-3b-instruct, local-model")
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -499,6 +541,36 @@ private fun ModelProfileEditDialog(
             }
         }
     )
+}
+
+@Composable
+private fun LocalModelGuideCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "LOCAL 모델 안내",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF9FE3B1)
+            )
+            Text(
+                text = "rawModelName은 Local Server에서 사용하는 모델명 또는 후속 로컬 모델 파일명 후보입니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+            Text(
+                text = "LOCAL 기본 capability는 text/code=true, 나머지는 false입니다. 필요하면 직접 수정하세요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD0D3DA)
+            )
+        }
+    }
 }
 
 @Composable
