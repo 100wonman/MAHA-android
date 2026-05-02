@@ -1,4 +1,312 @@
 ==============================
+[2026-05-02 23:12] Web Search fallback 옵션 설계
+==============================
+
+[작업]
+- Web Search grounding 실패 시 fallback 정책 설계
+- fallback 기본값 OFF 정책 확정
+- fallback 허용/금지 errorType 설계
+- 대화방 빠른 설정 fallback UI 위치 설계
+- native 실패 → 일반 Gemini 답변 fallback 실행 경로 설계
+- WEB_SEARCH_GROUNDING fallback 실행정보 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- fallback 기본값은 OFF로 유지
+- fallback은 사용자가 명시적으로 켠 경우에만 실행
+- fallback은 GOOGLE Provider의 기존 일반 Gemini 호출로만 수행
+- fallback 성공 시 본문에는 일반 답변만 표시
+- 실패/성공 여부는 실행정보에서만 구분
+
+[fallback 정책]
+- 기본값: OFF
+- 허용 오류: GROUNDING_FAILED, MODEL_UNSUPPORTED_TOOL, WEB_SEARCH_NOT_SUPPORTED, TIMEOUT, SERVER_ERROR
+- 금지 오류: API_KEY_MISSING, MODEL_MISSING, PROVIDER_MISSING, RATE_LIMIT, SAFETY_BLOCKED
+- 답변 본문: fallback 성공 시 일반 답변만 표시, fallback 안내 문구는 본문에 삽입하지 않음
+
+[UI 정책]
+- 위치: 대화방 빠른 설정의 Web Search 토글 아래 하위 옵션
+- Web Search OFF 상태: fallback 옵션 숨김 또는 비활성
+- 안내 문구: “검색 실패 시 일반 답변으로 계속. 최신정보 질문에서는 부정확할 수 있습니다.”
+
+[실행 경로]
+- native 실패: errorType 확인 후 fallback 허용 여부 판단
+- fallback 호출: 허용 오류 + fallback ON이면 기존 GoogleGeminiProviderAdapter로 일반 답변 호출
+- fallback 실패: ERROR_BLOCK 표시
+- finalAnswerSource: GROUNDING / FALLBACK_GENERAL / ERROR
+
+[실행정보 정책]
+- WEB_SEARCH_GROUNDING: fallbackAllowed, fallbackAttempted, fallbackSucceeded, groundingErrorType, fallbackErrorType, finalAnswerSource 추가
+- PROVIDER_RESPONSE_SUMMARY: native summary 유지, fallback 실행 시 fallback adapter summary 추가
+- 저장/복구: final answer와 fallback metadata 저장, citation/source는 fallback 일반 답변에는 없음
+
+[1차 구현 범위]
+- ConversationRequest에 webSearchFallbackEnabled 추가
+- ConversationViewModel에 webSearchFallbackEnabled 상태 추가
+- ConversationRoomScreen 빠른 설정에 fallback 토글 추가
+- ConversationEngine native 실패 시 fallback 정책 적용
+- WEB_SEARCH_GROUNDING 실행정보에 fallback 필드 추가
+
+[보류 항목]
+- fallback 기본 ON 전환
+- OpenAI-compatible Provider fallback
+- RATE_LIMIT fallback
+- SAFETY_BLOCKED fallback
+- 답변 본문 내 fallback 안내 문구 표시
+
+[문제]
+- 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Web Search fallback 옵션 설계
+
+목표:
+- Web Search native grounding 실패 시 일반 답변으로 fallback할 수 있는 정책을 설계한다.
+- fallback 사용 여부를 사용자가 제어할 수 있게 한다.
+- 실행정보에서 grounding 실패와 fallback 여부를 명확히 구분한다.
+- 이번 단계는 설계만 수행한다. 실제 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료:
+- Web Search 토글
+- WebSearchUsagePolicy
+- GeminiNativeProviderAdapter 실제 호출
+- ConversationEngine native grounding 분기
+- WEB_SEARCH_GROUNDING 실행정보 섹션
+- Grounding citation UX
+- Web Search ON 실패 시 ERROR_BLOCK 처리
+
+현재 문제:
+- Web Search ON 상태에서 grounding 실패 시 답변이 중단됨
+- 사용자가 “검색 실패해도 일반 답변은 받고 싶다”고 느낄 수 있음
+- 반대로 최신정보 질문에서는 fallback 일반 답변이 부정확할 수 있음
+
+--------------------------------------------------
+2. 핵심 결정 대상
+--------------------------------------------------
+
+확정할 것:
+
+1. fallback 기본값
+2. 사용자가 제어할 UI 위치
+3. 어떤 오류에서 fallback 허용할지
+4. 어떤 오류에서 fallback 금지할지
+5. fallback 실행 시 실행정보 표시 정책
+6. fallback 응답 본문 표시 정책
+7. 1차 구현 범위
+
+--------------------------------------------------
+3. fallback 기본 정책
+--------------------------------------------------
+
+후보 A:
+- 기본 OFF
+- Web Search 실패 시 ERROR_BLOCK
+- 사용자가 명시적으로 fallback ON해야 일반 답변으로 계속
+
+후보 B:
+- 기본 ON
+- Web Search 실패 시 일반 Gemini 답변으로 자동 계속
+- 실행정보에 fallback=true 표시
+
+권장:
+- 기본 OFF
+
+이유:
+- Web Search를 켠 질문은 최신정보/외부정보 의존 가능성이 큼
+- fallback 일반 답변은 틀릴 가능성이 있음
+- 사용자에게 명시적으로 선택권을 주는 것이 안전
+
+--------------------------------------------------
+4. UI 위치
+--------------------------------------------------
+
+대화방 빠른 설정에 추가 후보:
+
+- Web Search
+- Web Search 실패 시 일반 답변으로 계속
+
+또는 Web Search 토글 하위 옵션:
+
+Web Search: ON/OFF
+Fallback: OFF/ON
+
+권장:
+- Web Search 토글 아래 하위 스위치
+- Web Search OFF일 때 fallback 옵션은 비활성 또는 숨김
+
+문구:
+- “검색 실패 시 일반 답변으로 계속”
+- 설명:
+  “외부 검색 grounding에 실패하면 검색 없이 일반 모델 답변을 생성합니다. 최신정보 질문에서는 부정확할 수 있습니다.”
+
+--------------------------------------------------
+5. fallback 허용 오류
+--------------------------------------------------
+
+허용 후보:
+- GROUNDING_FAILED
+- MODEL_UNSUPPORTED_TOOL
+- WEB_SEARCH_NOT_SUPPORTED
+- INVALID_RESPONSE
+- SERVER_ERROR
+- TIMEOUT
+
+금지 후보:
+- API_KEY_MISSING
+- MODEL_MISSING
+- PROVIDER_MISSING
+- RATE_LIMIT
+- SAFETY_BLOCKED
+
+권장:
+허용:
+- GROUNDING_FAILED
+- MODEL_UNSUPPORTED_TOOL
+- WEB_SEARCH_NOT_SUPPORTED
+- TIMEOUT
+- SERVER_ERROR
+
+금지:
+- API_KEY_MISSING
+- MODEL_MISSING
+- PROVIDER_MISSING
+- RATE_LIMIT
+- SAFETY_BLOCKED
+
+주의:
+- RATE_LIMIT fallback은 사용자가 의도하지 않은 우회처럼 보일 수 있어 보류
+- SAFETY_BLOCKED는 fallback 금지
+
+--------------------------------------------------
+6. fallback 실행 경로
+--------------------------------------------------
+
+Web Search ON + native grounding 실패 + fallbackAllowed=true:
+
+1. native 호출 실패
+2. errorType 확인
+3. fallback 허용 오류인지 확인
+4. 기존 GoogleGeminiProviderAdapter로 일반 답변 호출
+5. fallback 성공 시:
+   - ASSISTANT 본문에는 일반 답변 표시
+   - 실행정보에 webSearchFallback=true
+   - originalGroundingError=...
+   - fallbackProvider=GoogleGeminiProviderAdapter
+6. fallback도 실패하면:
+   - ERROR_BLOCK
+   - grounding error + fallback error 요약
+
+--------------------------------------------------
+7. 실행정보 정책
+--------------------------------------------------
+
+[WEB_SEARCH_GROUNDING]
+- requested=true
+- groundingExecuted=true
+- groundingUsed=false
+- groundingErrorType
+- fallbackAllowed
+- fallbackAttempted
+- fallbackSucceeded
+- fallbackErrorType
+- finalAnswerSource
+  - GROUNDING
+  - FALLBACK_GENERAL
+  - ERROR
+
+[PROVIDER_RESPONSE_SUMMARY]
+- native adapter summary
+- fallback adapter summary가 있으면 별도 표시
+
+주의:
+- source/citations는 fallback 일반 답변에서는 없음
+- citationCount=0 유지
+
+--------------------------------------------------
+8. 답변 본문 정책
+--------------------------------------------------
+
+fallback 성공 시:
+- 일반 답변만 표시
+- 답변 하단에 짧은 주의 문구를 넣을지 결정 필요
+
+후보:
+- 본문에는 넣지 않음
+- 실행정보에만 표시
+
+권장:
+- 본문에는 넣지 않음
+- 실행정보에서 fallback 여부 확인
+
+이유:
+- 답변 본문 가독성 유지
+- 디버그/실행정보에 이미 정보 있음
+
+--------------------------------------------------
+9. 저장 정책
+--------------------------------------------------
+
+저장되는 ASSISTANT 메시지:
+- fallback 성공 시 final answer만 저장
+- 실행정보에는 fallback metadata 저장
+- citation/source 없음
+
+주의:
+- 나중에 세션 복구 시 fallback 여부가 실행정보에서 확인 가능해야 함
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- ConversationRequest에 webSearchFallbackEnabled 추가
+- ConversationViewModel에 webSearchFallbackEnabled 상태 추가
+- ConversationRoomScreen 빠른 설정에 fallback 토글 추가
+- ConversationEngine에서 native 실패 시 fallback 정책 적용
+- 실행정보 WEB_SEARCH_GROUNDING에 fallback 필드 추가
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ fallback 실제 구현
+❌ Web Search 기본 ON 변경
+❌ fallback 기본 ON 변경
+❌ safety block fallback 허용
+❌ RAG fallback과 혼동
+❌ OpenAI-compatible Provider fallback 연결
+
+--------------------------------------------------
+완료 기준:
+- fallback 기본값 확정
+- UI 위치 확정
+- 허용/금지 errorType 확정
+- fallback 실행 경로 확정
+- 실행정보 표시 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+Web Search fallback 옵션 구현
+
+==============================
 [2026-05-02 22:25] Grounding citation UX 구현
 ==============================
 
