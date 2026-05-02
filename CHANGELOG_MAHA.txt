@@ -1,4 +1,331 @@
 ==============================
+[2026-05-02 12:10] 로컬 모델 / Hugging Face / Local Runtime 구조 재설계
+==============================
+
+[작업]
+- Hugging Face를 Provider가 아닌 모델 다운로드 소스로 재정의
+- Remote Provider / Local Model / Local Runtime 구조 분리
+- MAHA/local_models/ 저장 구조 설계
+- LocalModelProfile / LocalRuntimeProfile 구조 설계
+- 모델/API 설정 화면 내 로컬 모델 관리 / 로컬 런타임 설정 구조 설계
+- ConversationEngine의 Remote Model / Local Model 연결 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- Remote Provider, Hugging Face, Local Model, Local Runtime을 분리하는 구조로 확정
+- Hugging Face는 Provider가 아니라 모델 검색/다운로드 소스로 정의
+- 다운로드된 모델은 LocalModelProfile로 관리하고 Local Runtime이 실행하는 구조로 설계
+- 기존 ProviderProfile은 원격 API Provider 중심으로 유지
+- 1차 구현은 저장 구조와 UI skeleton까지만 진행 :contentReference[oaicite:0]{index=0}
+
+[구조 분리]
+- Remote Provider: Google, Groq, OpenRouter, OpenAI-compatible, Custom API 같은 원격 호출 통로
+- Hugging Face: 모델 검색, 상세 조회, 파일 목록 확인, 다운로드 후보 제공 역할
+- Local Model: MAHA/local_models/에 저장된 다운로드 또는 수동 가져오기 모델 파일
+- Local Runtime: LLAMA_CPP, MEDIAPIPE_LLM, ONNX_RUNTIME, CUSTOM_RUNTIME 같은 실제 추론 실행 엔진 후보
+
+[저장 구조]
+- local_models: MAHA/local_models/model_{modelId}/ 아래에 모델별 파일 저장
+- model.json: modelId, displayName, sourceType, sourceRepoId, localPath, mainFileName, fileSizeBytes, quantization, parameterSize, contextWindow, capabilities, downloadedAt, lastUsedAt, enabled 저장
+- local_models.json: 로컬 모델 목록 인덱스 및 상태 관리용 파일
+- runtime_profiles: LocalRuntimeProfile 목록으로 runtimeId, runtimeType, displayName, isAvailable, supportedFormats, maxContextWindow, supportsStreaming, supportsGpu, notes 저장
+
+[UI 구조]
+- 원격 Provider 관리: 기존 Provider 관리 화면은 원격 API Provider 중심으로 유지
+- 로컬 모델 관리: Hugging Face 검색, 다운로드 모델 목록, 직접 가져오기, 삭제 화면으로 분리
+- 로컬 런타임 설정: Runtime 후보 목록, 지원 포맷, 사용 가능 상태 표시
+- 모델 선택: 원격/로컬 모델을 통합 표시하되 modelSource로 REMOTE/LOCAL 구분
+
+[ConversationEngine 연결]
+- Remote Model: ConversationEngine → Remote Provider Adapter → API 호출
+- Local Model: ConversationEngine → LocalRuntimeAdapter → local model inference
+- ConversationModelProfile 확장: modelSource, providerId?, localModelId?, runtimeId? 후보를 후속 단계에서 최소 추가
+
+[1차 구현 범위]
+- LocalModelProfile data class 추가
+- LocalRuntimeProfile data class 추가
+- LocalModelStore 추가
+- MAHA/local_models/ 폴더 및 local_models.json 생성
+- 로컬 모델 관리 / 로컬 런타임 설정 화면 skeleton 추가
+
+[보류 항목]
+- Hugging Face API 호출
+- 모델 다운로드
+- GGUF / safetensors / ONNX 파일 로드
+- native runtime 연동
+- 실제 로컬 추론
+
+[문제]
+- 없음
+
+--------------------------------------------------
+[설계 모드]
+
+작업명:
+로컬 모델 / Hugging Face / Local Runtime 구조 재설계
+
+목표:
+- 로컬 LLM 사용 구조를 Provider 중심이 아니라 “모델 소스 / 로컬 모델 / 로컬 런타임” 구조로 재정의한다.
+- Hugging Face는 Provider가 아니라 모델 다운로드 소스로 분리한다.
+- 다운로드된 모델은 Local Runtime이 실행하는 구조로 설계한다.
+- 이번 단계는 설계만 수행한다. 실제 Hugging Face 연결, 모델 다운로드, 로컬 추론 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 기존 방향 보정
+--------------------------------------------------
+
+기존 오해:
+- LOCAL Provider = 로컬 LLM 실행 통로
+
+수정:
+- Hugging Face = 모델 소스 / 모델 저장소
+- Local Model = 다운로드된 모델 파일
+- Local Runtime = 모델을 실제 실행하는 추론 엔진
+- Remote Provider = Google / Groq / OpenRouter / OpenAI-compatible 등 API 호출 통로
+
+정책:
+- Provider 관리 화면은 원격 API Provider 중심으로 유지
+- 로컬 모델은 별도 “로컬 모델 관리” 화면으로 분리
+- Local Runtime은 별도 설정 항목으로 분리
+
+--------------------------------------------------
+2. 최종 설정 구조
+--------------------------------------------------
+
+대화모드 전역 설정
+→ 모델 / API 설정
+
+하위 구조:
+
+1. 원격 Provider 관리
+   - Google
+   - Groq
+   - OpenRouter
+   - OpenAI-compatible
+   - Custom API
+
+2. 모델 관리
+   - 원격 모델 목록
+   - 즐겨찾기
+   - 기본 모델 지정
+
+3. 로컬 모델 관리
+   - Hugging Face 모델 검색
+   - 모델 다운로드
+   - 다운로드된 모델 목록
+   - 모델 파일 삭제
+   - 모델 파일 상태 확인
+
+4. 로컬 런타임 설정
+   - llama.cpp 후보
+   - MediaPipe LLM 후보
+   - ONNX Runtime 후보
+   - 기타 runtime 후보
+
+--------------------------------------------------
+3. Hugging Face 역할
+--------------------------------------------------
+
+Hugging Face는 Provider가 아니다.
+
+역할:
+- 모델 검색
+- 모델 상세 조회
+- 모델 파일 목록 확인
+- GGUF / safetensors / tokenizer / config 파일 다운로드 후보 제공
+- 다운로드 진행률 관리
+- 다운로드된 파일을 MAHA/local_models/에 저장
+
+주의:
+- Hugging Face Inference API는 별도 Remote Provider로 볼 수 있으나,
+  이번 로컬 모델 설계에서는 “모델 다운로드 소스”로만 취급한다.
+
+--------------------------------------------------
+4. 로컬 모델 저장 구조
+--------------------------------------------------
+
+앱 전용 저장소 기준:
+
+MAHA/
+└─ local_models/
+   └─ model_{modelId}/
+      ├─ model.json
+      ├─ files/
+      │  ├─ model.gguf
+      │  ├─ tokenizer.model
+      │  └─ config.json
+      └─ download_state.json
+
+model.json 필드 후보:
+- modelId
+- displayName
+- sourceType
+  - HUGGING_FACE
+  - MANUAL_IMPORT
+- sourceRepoId
+- localPath
+- mainFileName
+- fileSizeBytes
+- quantization
+- parameterSize
+- contextWindow
+- capabilities
+- downloadedAt
+- lastUsedAt
+- enabled
+
+--------------------------------------------------
+5. Local Runtime 역할
+--------------------------------------------------
+
+Local Runtime은 다운로드된 모델을 실제 실행한다.
+
+후보:
+- LLAMA_CPP
+- MEDIAPIPE_LLM
+- ONNX_RUNTIME
+- CUSTOM_RUNTIME
+
+LocalRuntimeProfile 필드 후보:
+- runtimeId
+- runtimeType
+- displayName
+- isAvailable
+- supportedFormats
+  - GGUF
+  - SAFETENSORS
+  - ONNX
+- maxContextWindow
+- supportsStreaming
+- supportsGpu
+- notes
+
+주의:
+- 이번 단계에서 native library 연동 금지
+- 실제 모델 로드 금지
+- 실행 가능 여부는 후속 단계에서 판단
+
+--------------------------------------------------
+6. ConversationEngine 연결 정책
+--------------------------------------------------
+
+대화모드 모델 선택 시 모델 source를 구분한다.
+
+Remote Model:
+ConversationEngine
+→ Remote Provider Adapter
+→ API 호출
+
+Local Model:
+ConversationEngine
+→ LocalRuntimeAdapter
+→ local model inference
+
+이번 단계에서는 연결 정책만 설계한다.
+
+ConversationModelProfile 확장 후보:
+- modelSource
+  - REMOTE
+  - LOCAL
+- providerId optional
+- localModelId optional
+- runtimeId optional
+
+주의:
+- 기존 ConversationModelProfile을 즉시 대규모 변경하지 말고,
+  후속 구현에서 필요한 필드만 최소 추가한다.
+
+--------------------------------------------------
+7. UI 정책
+--------------------------------------------------
+
+모델 / API 설정 화면:
+
+[원격 Provider 관리]
+- API Provider 관리
+
+[Model 관리]
+- 원격/로컬 모델 통합 선택
+- 즐겨찾기
+- 기본 모델 지정
+
+[로컬 모델 관리]
+- Hugging Face 검색
+- 다운로드 모델 목록
+- 직접 가져오기
+- 삭제
+
+[로컬 런타임 설정]
+- Runtime 후보 목록
+- Runtime 상태
+- 지원 포맷 안내
+
+--------------------------------------------------
+8. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계는 UI/저장 구조 skeleton까지만 진행한다.
+
+권장 1차:
+- LocalModelProfile data class
+- LocalRuntimeProfile data class
+- LocalModelStore
+- MAHA/local_models/ 폴더 생성
+- local_models.json 저장/로드
+- 로컬 모델 관리 화면 skeleton
+- 로컬 런타임 설정 화면 skeleton
+
+금지:
+- Hugging Face 실제 API 연결
+- 모델 다운로드
+- native runtime
+- 실제 로컬 추론
+
+--------------------------------------------------
+9. 기존 Provider 구조와 관계
+--------------------------------------------------
+
+ProviderProfile은 원격 API Provider 중심으로 유지한다.
+
+LOCAL Provider 사용 정책:
+- 기존 ProviderType.LOCAL은 “Local Server API” 용도로만 제한하거나 후속 제거 검토
+- Hugging Face 다운로드 모델은 ProviderProfile로 관리하지 않는다.
+- 로컬 모델은 LocalModelProfile로 관리한다.
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ Hugging Face API 호출
+❌ 모델 다운로드 구현
+❌ GGUF 로드
+❌ native library 연동
+❌ 실제 로컬 추론
+❌ ConversationEngine 실제 호출 변경
+❌ 기존 Provider 관리 UI 대규모 수정
+
+--------------------------------------------------
+완료 기준:
+- Hugging Face 역할 재정의
+- Local Model 구조 확정
+- Local Runtime 구조 확정
+- Remote Provider와 Local Model 분리 정책 확정
+- 설정 화면 구조 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+Local Model / Runtime 저장소 skeleton 구현
+
+==============================
 [2026-05-02 11:57] LOCAL Provider / Model UI 보강
 ==============================
 
