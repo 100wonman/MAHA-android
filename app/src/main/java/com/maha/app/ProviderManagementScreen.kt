@@ -120,6 +120,7 @@ fun ProviderManagementScreen(
             .take(48)
             .ifBlank { "google_model" }
 
+        val metadataCapability = createGoogleMetadataCapabilityV2()
         val profile = ConversationModelProfile(
             modelId = "model_${provider.providerId}_${safeIdPart}_$now",
             providerId = provider.providerId,
@@ -129,14 +130,19 @@ fun ProviderManagementScreen(
             inputModalities = listOf("text"),
             outputModalities = listOf("text"),
             capabilities = ConversationModelCapability(
-                text = true,
-                code = true,
-                jsonMode = true
+                text = true
             ),
             isFavorite = false,
             isDefaultForConversation = false,
             lastUsedAt = null,
-            enabled = true
+            enabled = true,
+            capabilitiesV2 = metadataCapability,
+            capabilitySource = "METADATA",
+            supportedGenerationMethods = item.supportedGenerationMethods,
+            inputTokenLimit = item.inputTokenLimit,
+            outputTokenLimit = item.outputTokenLimit,
+            metadataRawSummary = buildGoogleMetadataSummary(item),
+            lastMetadataFetchedAt = now
         )
         store.addModelProfile(profile)
         googleModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
@@ -764,3 +770,49 @@ private fun ProviderProfileEditDialog(
         }
     )
 }
+
+
+private fun createGoogleMetadataCapabilityV2(): ModelCapabilityV2 {
+    return ModelCapabilityV2(
+        input = ModelInputCapability(
+            text = CapabilityStatus.SUPPORTED,
+            image = CapabilityStatus.UNKNOWN,
+            audio = CapabilityStatus.UNKNOWN,
+            video = CapabilityStatus.UNKNOWN,
+            file = CapabilityStatus.UNKNOWN
+        ),
+        output = ModelOutputCapability(
+            text = CapabilityStatus.SUPPORTED,
+            code = CapabilityStatus.UNKNOWN,
+            json = CapabilityStatus.UNKNOWN,
+            image = CapabilityStatus.UNKNOWN,
+            audio = CapabilityStatus.UNKNOWN,
+            video = CapabilityStatus.UNKNOWN
+        ),
+        tools = ModelToolCapability(
+            functionCalling = CapabilityStatus.UNKNOWN,
+            webSearch = CapabilityStatus.UNKNOWN,
+            codeExecution = CapabilityStatus.UNKNOWN,
+            structuredOutput = CapabilityStatus.UNKNOWN
+        ),
+        reasoning = ModelReasoningCapability(
+            thinking = CapabilityStatus.UNKNOWN,
+            thinkingSummary = CapabilityStatus.UNKNOWN,
+            chainOfThoughtRawAllowed = CapabilityStatus.UNSUPPORTED
+        )
+    )
+}
+
+private fun buildGoogleMetadataSummary(item: GoogleModelListItem): String {
+    return buildString {
+        append("name=").append(item.name)
+        append("\ndisplayName=").append(item.displayName)
+        if (item.description.isNotBlank()) {
+            append("\ndescription=").append(item.description.take(300))
+        }
+        append("\nsupportedGenerationMethods=").append(item.supportedGenerationMethods.joinToString())
+        append("\ninputTokenLimit=").append(item.inputTokenLimit ?: "unknown")
+        append("\noutputTokenLimit=").append(item.outputTokenLimit ?: "unknown")
+    }
+}
+

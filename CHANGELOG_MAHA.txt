@@ -1,3 +1,313 @@
+
+
+==============================
+[2026-05-02 17:22] ModelCapability V2 및 metadata 표시 1차 구현
+==============================
+
+[작업]
+- CapabilityStatus enum 추가
+- ModelCapabilityV2 및 input/output/tools/reasoning capability 구조 추가
+- 기존 ConversationModelCapability → ModelCapabilityV2 변환 함수 추가
+- ConversationModelProfile에 metadata 관련 필드 추가
+- Google 모델 조회 결과의 supportedGenerationMethods / token limit / metadata summary 저장
+- Model 관리 카드에 capability group badge 표시
+- 기존 Boolean capability 구조 및 기존 모델 저장 호환 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- CapabilityStatus enum 추가
+- ModelCapabilityV2 / input / output / tools / reasoning capability 구조 추가
+- 기존 ConversationModelCapability → ModelCapabilityV2 변환 함수 추가
+- Google 모델 목록 조회 결과의 supportedGenerationMethods / token limit / metadataRawSummary 저장 추가
+- ProviderManagementScreen.kt의 buildGoogleMetadataSummary 문자열 개행 문법 오류 보정
+
+[Capability V2 테스트]
+- CapabilityStatus: Build > Make Project 성공 → enum 참조 정상 확인
+- ModelCapabilityV2: Model 관리 진입 → 모델 카드에 입력/출력/도구/추론 그룹 표시 확인
+- 기존 capability 변환: 기존 수동 모델 열기 → 기존 checkbox 값이 V2 badge로 반영되는지 확인
+- 기존 model_profiles 호환: 기존 모델 목록이 크래시 없이 로드되는지 확인
+- metadata 저장: Google 모델 목록에서 모델 추가 → model_profiles.json에 supportedGenerationMethods/inputTokenLimit/outputTokenLimit/metadataRawSummary 확인
+
+[Model UI 테스트]
+- 입력 badge: Model 관리 카드 → 입력 Text/Image?/Audio?/Video?/File? 표시 확인
+- 출력 badge: Model 관리 카드 → 출력 Text/Code?/JSON?/Image? 표시 확인
+- 도구 badge: Model 관리 카드 → Function?/Web Search?/Code Exec?/Structured? 표시 확인
+- 추론 badge: Model 관리 카드 → Thinking?/Summary? 표시 확인
+- 기존 수정 Dialog: 모델 수정 → 기존 capability checkbox 수정/저장 동작 확인
+
+[기존 기능 영향]
+- Google 모델 목록 조회: Provider 관리 → Google 모델 목록 불러오기 → 모델 추가 확인
+- Gemini 대화 호출: 기존 Google Provider + 기본 모델로 메시지 전송 확인
+- Provider 관리: Provider 추가/수정/삭제/토글 확인
+- Model 관리: 모델 추가/수정/삭제/즐겨찾기/기본 지정 확인
+- RAG: 검색 ON/OFF, RAG 섹션, 참조 컨텍스트 보기 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[수정된 문제]
+- ProviderManagementScreen.kt:809 부근 Syntax error: Expecting '"' 해결
+- append(" 실제개행 displayName=") 형태를 append("\\ndisplayName=") 형식으로 보정
+- 동일 패턴의 description / supportedGenerationMethods / inputTokenLimit / outputTokenLimit 줄 모두 보정
+
+[추가요청]
+1. 대화모드 설정>모델/api설정>Model 관리>모델카드 내 수정 버튼>캐파빌리티스 하단의 체크박스 옆 메타데이터 표기를 text->text, text->code, .... <-- 직관적으로 표기 요청
+
+[변경 파일]
+- ProviderSettingsModels.kt
+- ProviderSettingsStore.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ModelCapability V2 및 metadata 표시 1차 구현
+
+목표:
+- 모델 capability를 input/output/tools/reasoning 그룹으로 표시할 수 있는 V2 구조를 추가한다.
+- Google 모델 목록 조회 결과의 metadata를 ModelProfile에 저장한다.
+- Model 관리 카드에서 capability badge를 그룹별로 표시한다.
+- 기존 Boolean 기반 ConversationModelCapability 구조는 즉시 제거하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ CapabilityStatus enum 추가
+✔ ModelCapabilityV2 data class 추가
+✔ Capability group 구조 추가
+✔ 기존 ConversationModelCapability → ModelCapabilityV2 변환 함수 추가
+✔ Google 모델 조회 결과 metadata 저장 필드 추가
+✔ supportedGenerationMethods 저장
+✔ inputTokenLimit / outputTokenLimit 저장 또는 기존 contextWindow와 병행 저장
+✔ metadataRawSummary 저장
+✔ Model 관리 카드에 input/output/tools/reasoning badge 표시
+
+이번 단계에서 금지:
+
+❌ 기존 ConversationModelCapability 삭제
+❌ Model 관리 UI 대규모 재작성
+❌ 실제 tool calling 구현
+❌ 실제 webSearch 구현
+❌ streaming thinking 구현
+❌ 모델명 기반 capability 하드코딩
+❌ ConversationEngine 호출 구조 변경
+
+--------------------------------------------------
+2. CapabilityStatus enum
+--------------------------------------------------
+
+추가:
+
+- SUPPORTED
+- UNSUPPORTED
+- UNKNOWN
+- USER_ENABLED
+- USER_DISABLED
+
+의미:
+- SUPPORTED: metadata 또는 신뢰 가능한 정보로 지원 확인
+- UNSUPPORTED: 지원하지 않음 확인
+- UNKNOWN: 확인 불가
+- USER_ENABLED: 사용자가 지원으로 지정
+- USER_DISABLED: 사용자가 비지원으로 지정
+
+--------------------------------------------------
+3. ModelCapabilityV2 구조
+--------------------------------------------------
+
+권장 구조:
+
+ModelCapabilityV2:
+- input: ModelInputCapability
+- output: ModelOutputCapability
+- tools: ModelToolCapability
+- reasoning: ModelReasoningCapability
+
+ModelInputCapability:
+- text: CapabilityStatus
+- image: CapabilityStatus
+- audio: CapabilityStatus
+- video: CapabilityStatus
+- file: CapabilityStatus
+
+ModelOutputCapability:
+- text: CapabilityStatus
+- code: CapabilityStatus
+- json: CapabilityStatus
+- image: CapabilityStatus
+- audio: CapabilityStatus
+- video: CapabilityStatus
+
+ModelToolCapability:
+- functionCalling: CapabilityStatus
+- webSearch: CapabilityStatus
+- codeExecution: CapabilityStatus
+- structuredOutput: CapabilityStatus
+
+ModelReasoningCapability:
+- thinking: CapabilityStatus
+- thinkingSummary: CapabilityStatus
+- chainOfThoughtRawAllowed: CapabilityStatus 또는 Boolean false 고정
+
+기본값:
+- input.text = SUPPORTED
+- output.text = SUPPORTED
+- output.code = UNKNOWN 또는 기존 code Boolean 기준 변환
+- output.json = UNKNOWN 또는 기존 jsonMode Boolean 기준 변환
+- 나머지 = UNKNOWN
+
+--------------------------------------------------
+4. 기존 capability 변환
+--------------------------------------------------
+
+기존 ConversationModelCapability → ModelCapabilityV2 변환 함수 추가.
+
+정책:
+- text=true → input.text SUPPORTED, output.text SUPPORTED
+- code=true → output.code SUPPORTED
+- vision=true → input.image SUPPORTED
+- audio=true → input.audio UNKNOWN 또는 SUPPORTED는 신중히 처리
+- video=true → input.video UNKNOWN 또는 SUPPORTED는 신중히 처리
+- functionCalling=true → tools.functionCalling USER_ENABLED 또는 SUPPORTED
+- webSearch=true → tools.webSearch USER_ENABLED 또는 SUPPORTED
+- jsonMode=true → output.json SUPPORTED
+- imageGeneration=true → output.image SUPPORTED
+- structuredOutput=true → tools.structuredOutput SUPPORTED
+
+false인 값은 기본적으로 UNSUPPORTED로 단정하지 말고 UNKNOWN 또는 USER_DISABLED 정책을 검토한다.
+1차 권장:
+- 기존 false → UNKNOWN
+
+--------------------------------------------------
+5. ConversationModelProfile 확장
+--------------------------------------------------
+
+ProviderSettingsModels.kt의 ConversationModelProfile에 필드 추가 후보:
+
+- capabilitiesV2: ModelCapabilityV2?
+- capabilitySource: String
+  - METADATA
+  - USER
+  - OVERRIDE
+  - MIXED
+- supportedGenerationMethods: List<String>
+- inputTokenLimit: Int?
+- outputTokenLimit: Int?
+- metadataRawSummary: String?
+- lastMetadataFetchedAt: Long?
+
+주의:
+- 기존 저장된 model_profiles.json 파싱이 깨지지 않게 기본값을 제공한다.
+- backward compatibility 유지.
+
+--------------------------------------------------
+6. Google 모델 목록 조회 결과 저장
+--------------------------------------------------
+
+Google models endpoint 결과를 ConversationModelProfile로 저장할 때:
+
+- supportedGenerationMethods 저장
+- inputTokenLimit 저장
+- outputTokenLimit 저장
+- metadataRawSummary 저장
+  - name/displayName/description 일부/supportedGenerationMethods 요약
+- capabilitiesV2 생성
+  - input.text SUPPORTED
+  - output.text SUPPORTED
+  - output.json UNKNOWN 또는 supported method 기반 추정 가능
+  - tools/reasoning은 UNKNOWN
+- capabilitySource = METADATA
+
+주의:
+- 모델명 기반 if/else 하드코딩 금지
+- description 기반 추정은 과도하게 하지 말 것
+
+--------------------------------------------------
+7. Model 관리 카드 badge 표시
+--------------------------------------------------
+
+ModelManagementScreen에서 카드 표시 보강.
+
+표시 그룹:
+
+[입력]
+Text / Image? / Audio? / Video? / File?
+
+[출력]
+Text / Code? / JSON? / Image?
+
+[도구]
+Function? / Web Search? / Code Exec? / Structured?
+
+[추론]
+Thinking? / Summary?
+
+표시 규칙:
+- SUPPORTED: 일반 표시
+- UNKNOWN: “?” 표시
+- USER_ENABLED: “사용자” 또는 강조 표시
+- USER_DISABLED: 비활성/취소선 또는 흐린 표시
+
+주의:
+- 화면이 너무 복잡하면 접힘/간단 표시 가능
+- 기존 capability checkbox 수정 Dialog는 유지
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Model 관리 수동 추가/수정/삭제
+- 즐겨찾기
+- 기본 모델 지정
+- Google 모델 목록 조회
+- Gemini 실제 호출
+- Provider 관리
+- RAG 기능
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 모델명 기반 capability 하드코딩 금지
+❌ 기존 Boolean capability 삭제 금지
+❌ 실제 tool 호출 구현 금지
+❌ webSearch 호출 구현 금지
+❌ streaming thinking 구현 금지
+❌ ConversationEngine 호출 구조 변경 금지
+❌ GoogleGeminiProviderAdapter 변경 금지
+❌ 작업모드 Provider 구조 변경 금지
+
+--------------------------------------------------
+완료 기준:
+- CapabilityStatus 추가
+- ModelCapabilityV2 추가
+- 기존 capability → V2 변환 가능
+- Google 조회 모델 metadata가 ModelProfile에 저장됨
+- Model 관리 카드에 그룹별 badge 표시
+- 기존 저장된 모델 파일과 호환 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Gemini 호출 UX 보정 또는 OpenAI-compatible Adapter 일반화 설계
+
 ==============================
 [2026-05-02 17:04] Google 모델 metadata / capability 표시 정책 설계
 ==============================

@@ -429,6 +429,11 @@ class ProviderSettingsStore(
     }
 
     private fun JSONObject.toConversationModelProfile(): ConversationModelProfile {
+        val legacyCapabilities = optJSONObject("capabilities")?.toConversationModelCapability()
+            ?: ConversationModelCapability()
+        val parsedCapabilitiesV2 = optJSONObject("capabilitiesV2")?.toModelCapabilityV2()
+            ?: legacyCapabilities.toModelCapabilityV2()
+
         return ConversationModelProfile(
             modelId = optString("modelId"),
             providerId = optString("providerId"),
@@ -437,11 +442,18 @@ class ProviderSettingsStore(
             contextWindow = optNullableInt("contextWindow"),
             inputModalities = optStringList("inputModalities"),
             outputModalities = optStringList("outputModalities"),
-            capabilities = optJSONObject("capabilities")?.toConversationModelCapability() ?: ConversationModelCapability(),
+            capabilities = legacyCapabilities,
             isFavorite = optBoolean("isFavorite", false),
             isDefaultForConversation = optBoolean("isDefaultForConversation", false),
             lastUsedAt = optNullableLong("lastUsedAt"),
-            enabled = optBoolean("enabled", true)
+            enabled = optBoolean("enabled", true),
+            capabilitiesV2 = parsedCapabilitiesV2,
+            capabilitySource = optString("capabilitySource", "USER").ifBlank { "USER" },
+            supportedGenerationMethods = optStringList("supportedGenerationMethods"),
+            inputTokenLimit = optNullableInt("inputTokenLimit"),
+            outputTokenLimit = optNullableInt("outputTokenLimit"),
+            metadataRawSummary = optNullableString("metadataRawSummary"),
+            lastMetadataFetchedAt = optNullableLong("lastMetadataFetchedAt")
         )
     }
 
@@ -455,6 +467,13 @@ class ProviderSettingsStore(
             .put("inputModalities", inputModalities.toJsonArray())
             .put("outputModalities", outputModalities.toJsonArray())
             .put("capabilities", capabilities.toJsonObject())
+            .put("capabilitiesV2", (capabilitiesV2 ?: capabilities.toModelCapabilityV2()).toJsonObject())
+            .put("capabilitySource", capabilitySource)
+            .put("supportedGenerationMethods", supportedGenerationMethods.toJsonArray())
+            .put("inputTokenLimit", inputTokenLimit)
+            .put("outputTokenLimit", outputTokenLimit)
+            .put("metadataRawSummary", metadataRawSummary)
+            .put("lastMetadataFetchedAt", lastMetadataFetchedAt)
             .put("isFavorite", isFavorite)
             .put("isDefaultForConversation", isDefaultForConversation)
             .put("lastUsedAt", lastUsedAt)
@@ -490,6 +509,103 @@ class ProviderSettingsStore(
             .put("jsonMode", jsonMode)
             .put("imageGeneration", imageGeneration)
             .put("structuredOutput", structuredOutput)
+    }
+
+    private fun JSONObject.toModelCapabilityV2(): ModelCapabilityV2 {
+        return ModelCapabilityV2(
+            input = optJSONObject("input")?.toModelInputCapability() ?: ModelInputCapability(),
+            output = optJSONObject("output")?.toModelOutputCapability() ?: ModelOutputCapability(),
+            tools = optJSONObject("tools")?.toModelToolCapability() ?: ModelToolCapability(),
+            reasoning = optJSONObject("reasoning")?.toModelReasoningCapability() ?: ModelReasoningCapability()
+        )
+    }
+
+    private fun JSONObject.toModelInputCapability(): ModelInputCapability {
+        return ModelInputCapability(
+            text = optCapabilityStatus("text", CapabilityStatus.SUPPORTED),
+            image = optCapabilityStatus("image", CapabilityStatus.UNKNOWN),
+            audio = optCapabilityStatus("audio", CapabilityStatus.UNKNOWN),
+            video = optCapabilityStatus("video", CapabilityStatus.UNKNOWN),
+            file = optCapabilityStatus("file", CapabilityStatus.UNKNOWN)
+        )
+    }
+
+    private fun JSONObject.toModelOutputCapability(): ModelOutputCapability {
+        return ModelOutputCapability(
+            text = optCapabilityStatus("text", CapabilityStatus.SUPPORTED),
+            code = optCapabilityStatus("code", CapabilityStatus.UNKNOWN),
+            json = optCapabilityStatus("json", CapabilityStatus.UNKNOWN),
+            image = optCapabilityStatus("image", CapabilityStatus.UNKNOWN),
+            audio = optCapabilityStatus("audio", CapabilityStatus.UNKNOWN),
+            video = optCapabilityStatus("video", CapabilityStatus.UNKNOWN)
+        )
+    }
+
+    private fun JSONObject.toModelToolCapability(): ModelToolCapability {
+        return ModelToolCapability(
+            functionCalling = optCapabilityStatus("functionCalling", CapabilityStatus.UNKNOWN),
+            webSearch = optCapabilityStatus("webSearch", CapabilityStatus.UNKNOWN),
+            codeExecution = optCapabilityStatus("codeExecution", CapabilityStatus.UNKNOWN),
+            structuredOutput = optCapabilityStatus("structuredOutput", CapabilityStatus.UNKNOWN)
+        )
+    }
+
+    private fun JSONObject.toModelReasoningCapability(): ModelReasoningCapability {
+        return ModelReasoningCapability(
+            thinking = optCapabilityStatus("thinking", CapabilityStatus.UNKNOWN),
+            thinkingSummary = optCapabilityStatus("thinkingSummary", CapabilityStatus.UNKNOWN),
+            chainOfThoughtRawAllowed = optCapabilityStatus("chainOfThoughtRawAllowed", CapabilityStatus.UNSUPPORTED)
+        )
+    }
+
+    private fun ModelCapabilityV2.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("input", input.toJsonObject())
+            .put("output", output.toJsonObject())
+            .put("tools", tools.toJsonObject())
+            .put("reasoning", reasoning.toJsonObject())
+    }
+
+    private fun ModelInputCapability.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("text", text.name)
+            .put("image", image.name)
+            .put("audio", audio.name)
+            .put("video", video.name)
+            .put("file", file.name)
+    }
+
+    private fun ModelOutputCapability.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("text", text.name)
+            .put("code", code.name)
+            .put("json", json.name)
+            .put("image", image.name)
+            .put("audio", audio.name)
+            .put("video", video.name)
+    }
+
+    private fun ModelToolCapability.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("functionCalling", functionCalling.name)
+            .put("webSearch", webSearch.name)
+            .put("codeExecution", codeExecution.name)
+            .put("structuredOutput", structuredOutput.name)
+    }
+
+    private fun ModelReasoningCapability.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("thinking", thinking.name)
+            .put("thinkingSummary", thinkingSummary.name)
+            .put("chainOfThoughtRawAllowed", chainOfThoughtRawAllowed.name)
+    }
+
+    private fun JSONObject.optCapabilityStatus(
+        key: String,
+        defaultValue: CapabilityStatus
+    ): CapabilityStatus {
+        val rawValue = optString(key).takeIf { it.isNotBlank() } ?: return defaultValue
+        return runCatching { CapabilityStatus.valueOf(rawValue) }.getOrDefault(defaultValue)
     }
 
     private fun List<String>.toJsonArray(): JSONArray {

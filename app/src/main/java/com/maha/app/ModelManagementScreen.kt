@@ -229,7 +229,7 @@ private fun ModelProfileCard(
     onDefaultClick: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
-    val capabilityText = buildCapabilitySummary(model.capabilities)
+    val capabilityV2 = model.capabilitiesV2 ?: model.capabilities.toModelCapabilityV2()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
@@ -279,7 +279,22 @@ private fun ModelProfileCard(
             ModelInfoRow(label = "Context Window", value = model.contextWindow?.toString() ?: "미설정")
             ModelInfoRow(label = "Input", value = model.inputModalities.joinToString().ifBlank { "미설정" })
             ModelInfoRow(label = "Output", value = model.outputModalities.joinToString().ifBlank { "미설정" })
-            ModelInfoRow(label = "Capabilities", value = capabilityText.ifBlank { "text" })
+            CapabilityV2Section(
+                capability = capabilityV2,
+                capabilitySource = model.capabilitySource
+            )
+            if (model.supportedGenerationMethods.isNotEmpty()) {
+                ModelInfoRow(
+                    label = "Generation Methods",
+                    value = model.supportedGenerationMethods.joinToString()
+                )
+            }
+            if (!model.metadataRawSummary.isNullOrBlank()) {
+                ModelInfoRow(
+                    label = "Metadata",
+                    value = model.metadataRawSummary.take(180)
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -526,7 +541,26 @@ private fun ModelProfileEditDialog(
                             isFavorite = isFavorite,
                             isDefaultForConversation = isDefaultForConversation,
                             lastUsedAt = initialModel?.lastUsedAt,
-                            enabled = enabled
+                            enabled = enabled,
+                            capabilitiesV2 = ConversationModelCapability(
+                                text = textCap,
+                                code = codeCap,
+                                vision = visionCap,
+                                audio = audioCap,
+                                video = videoCap,
+                                toolCalling = toolCallingCap,
+                                functionCalling = functionCallingCap,
+                                webSearch = webSearchCap,
+                                jsonMode = jsonModeCap,
+                                imageGeneration = imageGenerationCap,
+                                structuredOutput = structuredOutputCap
+                            ).toModelCapabilityV2(),
+                            capabilitySource = "USER",
+                            supportedGenerationMethods = initialModel?.supportedGenerationMethods ?: emptyList(),
+                            inputTokenLimit = initialModel?.inputTokenLimit,
+                            outputTokenLimit = initialModel?.outputTokenLimit,
+                            metadataRawSummary = initialModel?.metadataRawSummary,
+                            lastMetadataFetchedAt = initialModel?.lastMetadataFetchedAt
                         )
                     )
                 },
@@ -602,6 +636,118 @@ private fun ToggleRow(
         Text(text = label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+@Composable
+private fun CapabilityV2Section(
+    capability: ModelCapabilityV2,
+    capabilitySource: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Capability V2 · $capabilitySource",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFFB8BCC6)
+        )
+        CapabilityBadgeGroup(
+            title = "입력",
+            items = listOf(
+                "Text" to capability.input.text,
+                "Image" to capability.input.image,
+                "Audio" to capability.input.audio,
+                "Video" to capability.input.video,
+                "File" to capability.input.file
+            )
+        )
+        CapabilityBadgeGroup(
+            title = "출력",
+            items = listOf(
+                "Text" to capability.output.text,
+                "Code" to capability.output.code,
+                "JSON" to capability.output.json,
+                "Image" to capability.output.image,
+                "Audio" to capability.output.audio,
+                "Video" to capability.output.video
+            )
+        )
+        CapabilityBadgeGroup(
+            title = "도구",
+            items = listOf(
+                "Function" to capability.tools.functionCalling,
+                "Web Search" to capability.tools.webSearch,
+                "Code Exec" to capability.tools.codeExecution,
+                "Structured" to capability.tools.structuredOutput
+            )
+        )
+        CapabilityBadgeGroup(
+            title = "추론",
+            items = listOf(
+                "Thinking" to capability.reasoning.thinking,
+                "Summary" to capability.reasoning.thinkingSummary
+            )
+        )
+    }
+}
+
+@Composable
+private fun CapabilityBadgeGroup(
+    title: String,
+    items: List<Pair<String, CapabilityStatus>>
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFFB8BCC6)
+        )
+        items.chunked(3).forEach { rowItems ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                rowItems.forEach { (label, status) ->
+                    CapabilityStatusBadge(label = label, status = status)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityStatusBadge(
+    label: String,
+    status: CapabilityStatus
+) {
+    val displayText = when (status) {
+        CapabilityStatus.SUPPORTED -> label
+        CapabilityStatus.UNSUPPORTED -> "$label off"
+        CapabilityStatus.UNKNOWN -> "$label?"
+        CapabilityStatus.USER_ENABLED -> "$label · 사용자"
+        CapabilityStatus.USER_DISABLED -> "$label off · 사용자"
+    }
+    val backgroundColor = when (status) {
+        CapabilityStatus.SUPPORTED -> Color(0xFF1E4D36)
+        CapabilityStatus.USER_ENABLED -> Color(0xFF1E3F66)
+        CapabilityStatus.UNKNOWN -> Color(0xFF3B414D)
+        CapabilityStatus.UNSUPPORTED,
+        CapabilityStatus.USER_DISABLED -> Color(0xFF2C3038)
+    }
+    val textColor = when (status) {
+        CapabilityStatus.SUPPORTED -> Color(0xFFB7F7CB)
+        CapabilityStatus.USER_ENABLED -> Color(0xFFB7D7FF)
+        CapabilityStatus.UNKNOWN -> Color(0xFFD0D3DA)
+        CapabilityStatus.UNSUPPORTED,
+        CapabilityStatus.USER_DISABLED -> Color(0xFF8E94A1)
+    }
+
+    Text(
+        text = displayText,
+        style = MaterialTheme.typography.labelSmall,
+        color = textColor,
+        modifier = Modifier
+            .background(backgroundColor)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
 }
 
 private fun buildCapabilitySummary(capability: ConversationModelCapability): String {
