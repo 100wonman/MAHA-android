@@ -480,12 +480,18 @@ private fun ConversationRunSummaryPanelReadable(
         .mapNotNull { block -> block.content.takeIf { it.isNotBlank() } }
         .joinToString(separator = "\n\n")
     val ragInfo = parseRagRunInfo(rawTraceText)
+    val webSearchGroundingInfo = parseWebSearchGroundingInfo(rawTraceText)
     val webSearchSourcesInfo = parseWebSearchSourcesInfo(rawTraceText)
+    val providerResponseSummaryText = extractTraceSection(rawTraceText, "[PROVIDER_RESPONSE_SUMMARY]")
+    val fallbackProviderResponseSummaryText = extractTraceSection(rawTraceText, "[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
     val executionTraceText = cleanExecutionTraceText(rawTraceText)
 
     val summaryCopyText = buildRunSummaryCopyText(run)
     val ragCopyText = buildRagRunCopyText(ragInfo)
+    val webSearchGroundingCopyText = buildWebSearchGroundingCopyText(webSearchGroundingInfo)
     val webSearchSourcesCopyText = buildWebSearchSourcesCopyText(webSearchSourcesInfo)
+    val providerResponseSummaryCopyText = buildProviderSummaryCopyText("Provider 응답", providerResponseSummaryText)
+    val fallbackProviderResponseSummaryCopyText = buildProviderSummaryCopyText("Fallback 응답", fallbackProviderResponseSummaryText)
     val traceCopyText = executionTraceText.ifBlank { "실행과정 없음" }
     val workerCopyTexts = run.workerResults.mapIndexed { index, worker ->
         buildWorkerCopyText(index, worker)
@@ -499,9 +505,24 @@ private fun ConversationRunSummaryPanelReadable(
             appendLine(ragCopyText)
         }
 
+        if (webSearchGroundingInfo.present) {
+            appendLine()
+            appendLine(webSearchGroundingCopyText)
+        }
+
         if (webSearchSourcesInfo.shouldDisplay) {
             appendLine()
             appendLine(webSearchSourcesCopyText)
+        }
+
+        if (providerResponseSummaryText.isNotBlank()) {
+            appendLine()
+            appendLine(providerResponseSummaryCopyText)
+        }
+
+        if (fallbackProviderResponseSummaryText.isNotBlank()) {
+            appendLine()
+            appendLine(fallbackProviderResponseSummaryCopyText)
         }
 
         if (executionTraceText.isNotBlank()) {
@@ -612,11 +633,36 @@ private fun ConversationRunSummaryPanelReadable(
                     }
                 }
 
+                if (webSearchGroundingInfo.present) {
+                    RunFlatSection(
+                        title = "Web Search Grounding",
+                        copyText = webSearchGroundingCopyText
+                    ) {
+                        RunWebSearchGroundingSection(info = webSearchGroundingInfo)
+                    }
+                }
+
                 if (webSearchSourcesInfo.shouldDisplay) {
                     RunCollapsibleFlatTextSection(
                         title = "Web Search 참조 출처 보기",
                         copyText = webSearchSourcesCopyText,
                         text = webSearchSourcesCopyText
+                    )
+                }
+
+                if (providerResponseSummaryText.isNotBlank()) {
+                    RunCollapsibleFlatTextSection(
+                        title = "Provider 응답: GeminiNativeProviderAdapter",
+                        copyText = providerResponseSummaryCopyText,
+                        text = providerResponseSummaryText
+                    )
+                }
+
+                if (fallbackProviderResponseSummaryText.isNotBlank()) {
+                    RunCollapsibleFlatTextSection(
+                        title = "Fallback 응답: GoogleGeminiProviderAdapter",
+                        copyText = fallbackProviderResponseSummaryCopyText,
+                        text = fallbackProviderResponseSummaryText
                     )
                 }
 
@@ -729,6 +775,40 @@ private data class WebSearchSourceDisplayInfo(
     val snippet: String
 )
 
+private data class WebSearchGroundingDisplayInfo(
+    val present: Boolean,
+    val requested: Boolean,
+    val groundingExecuted: Boolean,
+    val groundingUsed: Boolean,
+    val citationCount: Int,
+    val searchQueryCount: Int,
+    val fallbackAllowed: Boolean,
+    val fallbackAttempted: Boolean,
+    val fallbackSucceeded: Boolean,
+    val groundingErrorType: String,
+    val fallbackErrorType: String,
+    val finalAnswerSource: String
+) {
+    val requestedLabel: String
+        get() = if (requested) "ON" else "OFF"
+
+    val executionLabel: String
+        get() = when {
+            !requested -> "미요청"
+            !groundingExecuted -> "미실행"
+            finalAnswerSource == "GROUNDING" -> "성공"
+            else -> "실패"
+        }
+
+    val finalAnswerSourceLabel: String
+        get() = when (finalAnswerSource) {
+            "GROUNDING" -> "Web Search grounding"
+            "FALLBACK_GENERAL" -> "일반 Gemini fallback"
+            "ERROR" -> "오류"
+            else -> finalAnswerSource.ifBlank { "알 수 없음" }
+        }
+}
+
 private data class WebSearchSourcesDisplayInfo(
     val present: Boolean,
     val requested: Boolean,
@@ -779,6 +859,46 @@ private fun findTraceValue(
         ?.substringAfter(":")
         ?.trim()
         .orEmpty()
+}
+
+private fun parseWebSearchGroundingInfo(traceText: String): WebSearchGroundingDisplayInfo {
+    val sectionText = extractTraceSection(traceText, "[WEB_SEARCH_GROUNDING]")
+    if (sectionText.isBlank()) {
+        return WebSearchGroundingDisplayInfo(
+            present = false,
+            requested = false,
+            groundingExecuted = false,
+            groundingUsed = false,
+            citationCount = 0,
+            searchQueryCount = 0,
+            fallbackAllowed = false,
+            fallbackAttempted = false,
+            fallbackSucceeded = false,
+            groundingErrorType = "NONE",
+            fallbackErrorType = "NONE",
+            finalAnswerSource = "ERROR"
+        )
+    }
+
+    val lines = sectionText.lines().map { line -> line.trim() }
+    val finalAnswerSource = findTraceValue(lines, "finalAnswerSource").ifBlank {
+        if (findTraceValue(lines, "groundingUsed").equals("true", ignoreCase = true)) "GROUNDING" else "ERROR"
+    }
+
+    return WebSearchGroundingDisplayInfo(
+        present = true,
+        requested = findTraceValue(lines, "requested").equals("true", ignoreCase = true),
+        groundingExecuted = findTraceValue(lines, "groundingExecuted").equals("true", ignoreCase = true),
+        groundingUsed = findTraceValue(lines, "groundingUsed").equals("true", ignoreCase = true),
+        citationCount = findTraceValue(lines, "citationCount").toIntOrNull() ?: 0,
+        searchQueryCount = findTraceValue(lines, "searchQueryCount").toIntOrNull() ?: 0,
+        fallbackAllowed = findTraceValue(lines, "fallbackAllowed").equals("true", ignoreCase = true),
+        fallbackAttempted = findTraceValue(lines, "fallbackAttempted").equals("true", ignoreCase = true),
+        fallbackSucceeded = findTraceValue(lines, "fallbackSucceeded").equals("true", ignoreCase = true),
+        groundingErrorType = findTraceValue(lines, "groundingErrorType").ifBlank { "NONE" },
+        fallbackErrorType = findTraceValue(lines, "fallbackErrorType").ifBlank { "NONE" },
+        finalAnswerSource = finalAnswerSource
+    )
 }
 
 private fun parseWebSearchSourcesInfo(traceText: String): WebSearchSourcesDisplayInfo {
@@ -876,6 +996,39 @@ private fun normalizeSourceField(
     }
 }
 
+private fun buildWebSearchGroundingCopyText(info: WebSearchGroundingDisplayInfo): String {
+    if (!info.present) return "[Web Search Grounding]\n요청: OFF"
+
+    return buildString {
+        appendLine("[Web Search Grounding]")
+        appendLine("요청: ${info.requestedLabel}")
+        appendLine("실행: ${info.executionLabel}")
+        appendLine("Grounding 사용: ${info.groundingUsed}")
+        appendLine("출처 수: ${info.citationCount}")
+        appendLine("검색 쿼리 수: ${info.searchQueryCount}")
+        appendLine("Fallback 허용: ${info.fallbackAllowed}")
+        appendLine("Fallback 실행: ${info.fallbackAttempted}")
+        appendLine("Fallback 성공: ${info.fallbackSucceeded}")
+        appendLine("Grounding 오류: ${normalizeNoneValue(info.groundingErrorType)}")
+        appendLine("Fallback 오류: ${normalizeNoneValue(info.fallbackErrorType)}")
+        appendLine("최종 답변 출처: ${info.finalAnswerSourceLabel}")
+    }.trim()
+}
+
+private fun buildProviderSummaryCopyText(
+    title: String,
+    summaryText: String
+): String {
+    return buildString {
+        appendLine("[$title]")
+        appendLine(summaryText.ifBlank { "내용 없음" })
+    }.trim()
+}
+
+private fun normalizeNoneValue(value: String): String {
+    return if (value.isBlank() || value.equals("NONE", ignoreCase = true)) "없음" else value
+}
+
 private fun buildWebSearchSourcesCopyText(info: WebSearchSourcesDisplayInfo): String {
     if (!info.shouldDisplay) return "[Web Search Sources]\n참조 출처 없음"
 
@@ -920,6 +1073,23 @@ private fun cleanExecutionTraceText(traceText: String): String {
                     trimmed.startsWith("maxContextChars:", ignoreCase = true) ||
                     trimmed.startsWith("fallback:", ignoreCase = true) ||
                     trimmed.startsWith("fallbackReason:", ignoreCase = true) ||
+                    trimmed.startsWith("requested:", ignoreCase = true) ||
+                    trimmed.startsWith("providerType:", ignoreCase = true) ||
+                    trimmed.startsWith("modelWebSearchStatus:", ignoreCase = true) ||
+                    trimmed.startsWith("nativeGroundingAvailable:", ignoreCase = true) ||
+                    trimmed.startsWith("canAttemptGrounding:", ignoreCase = true) ||
+                    trimmed.startsWith("groundingExecuted:", ignoreCase = true) ||
+                    trimmed.startsWith("groundingUsed:", ignoreCase = true) ||
+                    trimmed.startsWith("citationCount:", ignoreCase = true) ||
+                    trimmed.startsWith("searchQueryCount:", ignoreCase = true) ||
+                    trimmed.startsWith("modelSupportsWebSearch:", ignoreCase = true) ||
+                    trimmed.startsWith("fallbackAllowed:", ignoreCase = true) ||
+                    trimmed.startsWith("fallbackAttempted:", ignoreCase = true) ||
+                    trimmed.startsWith("fallbackSucceeded:", ignoreCase = true) ||
+                    trimmed.startsWith("groundingErrorType:", ignoreCase = true) ||
+                    trimmed.startsWith("fallbackErrorType:", ignoreCase = true) ||
+                    trimmed.startsWith("finalAnswerSource:", ignoreCase = true) ||
+                    trimmed.startsWith("searchQueries:", ignoreCase = true) ||
                     trimmed.equals("results:", ignoreCase = true) ||
                     trimmed.equals("sources:", ignoreCase = true) ||
                     trimmed.startsWith("url=", ignoreCase = true) ||
@@ -969,6 +1139,58 @@ private fun buildRagRunCopyText(ragInfo: RagRunDisplayInfo): String {
         appendLine("fallback: ${ragInfo.fallback}")
         appendLine("fallbackReason: ${ragInfo.fallbackReason ?: "없음"}")
     }.trim()
+}
+
+@Composable
+private fun RunWebSearchGroundingSection(info: WebSearchGroundingDisplayInfo) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "요청: ${info.requestedLabel} · 실행: ${info.executionLabel}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = when (info.finalAnswerSource) {
+                "GROUNDING" -> MaterialTheme.colorScheme.primary
+                "FALLBACK_GENERAL" -> MaterialTheme.colorScheme.tertiary
+                "ERROR" -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurface
+            }
+        )
+
+        Text(
+            text = "최종 답변 출처: ${info.finalAnswerSourceLabel}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f)
+        )
+
+        Text(
+            text = "Grounding 사용: ${info.groundingUsed} · 출처 수: ${info.citationCount} · 검색 쿼리 수: ${info.searchQueryCount}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+        )
+
+        Text(
+            text = "Fallback 허용: ${info.fallbackAllowed} · 실행: ${info.fallbackAttempted} · 성공: ${info.fallbackSucceeded}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (info.fallbackAttempted) {
+                if (info.fallbackSucceeded) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
+            }
+        )
+
+        Text(
+            text = "Grounding 오류: ${normalizeNoneValue(info.groundingErrorType)} · Fallback 오류: ${normalizeNoneValue(info.fallbackErrorType)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (info.groundingErrorType.equals("NONE", ignoreCase = true) && info.fallbackErrorType.equals("NONE", ignoreCase = true)) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+            } else {
+                MaterialTheme.colorScheme.error
+            }
+        )
+    }
 }
 
 @Composable
@@ -1746,6 +1968,20 @@ private fun parseTableRows(text: String): List<List<String>> {
         .filter { cells -> cells.isNotEmpty() }
 }
 
+private fun buildQuickSettingsSummary(
+    modeLabel: String,
+    searchEnabled: Boolean,
+    webSearchEnabled: Boolean,
+    webSearchFallbackEnabled: Boolean
+): String {
+    val webLabel = if (webSearchEnabled) {
+        "Web ON · Fallback ${if (webSearchFallbackEnabled) "ON" else "OFF"}"
+    } else {
+        "Web OFF"
+    }
+    return "모드 $modeLabel · RAG ${if (searchEnabled) "ON" else "OFF"} · $webLabel"
+}
+
 @Composable
 private fun ConversationInputPanel(
     inputText: String,
@@ -1801,7 +2037,12 @@ private fun ConversationInputPanel(
                     )
 
                     Text(
-                        text = "모드 $modeLabel · RAG ${if (searchEnabled) "ON" else "OFF"} · Web ${if (webSearchEnabled) "ON" else "OFF"}${if (webSearchEnabled) " · Fallback ${if (webSearchFallbackEnabled) "ON" else "OFF"}" else ""}",
+                        text = buildQuickSettingsSummary(
+                            modeLabel = modeLabel,
+                            searchEnabled = searchEnabled,
+                            webSearchEnabled = webSearchEnabled,
+                            webSearchFallbackEnabled = webSearchFallbackEnabled
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 1
@@ -1915,9 +2156,9 @@ private fun ConversationInputPanel(
 
                             Text(
                                 text = if (webSearchEnabled) {
-                                    "외부 웹 검색 grounding 요청 ON · 실제 검색 호출은 후속 지원"
+                                    "외부 Web Search grounding 요청 ON"
                                 } else {
-                                    "외부 웹 검색 grounding 요청 OFF"
+                                    "외부 Web Search grounding 요청 OFF"
                                 },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
@@ -1943,13 +2184,13 @@ private fun ConversationInputPanel(
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
-                                    text = "검색 실패 시 일반 답변으로 계속",
+                                    text = "검색 실패 시 일반 답변",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
                                 )
 
                                 Text(
-                                    text = "외부 검색 grounding에 실패하면 검색 없이 일반 모델 답변을 생성합니다. 최신정보 질문에서는 부정확할 수 있습니다.",
+                                    text = "Web Search grounding 실패 시 검색 없이 일반 Gemini 답변을 시도합니다. 최신정보 질문에서는 부정확할 수 있습니다.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
                                 )

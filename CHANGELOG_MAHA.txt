@@ -1,4 +1,252 @@
 ==============================
+[2026-05-03 00:20] Web Search fallback UX 보정
+==============================
+
+[작업]
+- 빠른 설정 Web Search / Fallback 표시 문구 보정
+- Web Search ON/OFF와 fallback ON/OFF 요약 표시 보정
+- WEB_SEARCH_GROUNDING 실행정보 fallback 필드 표시 정리
+- finalAnswerSource 표시 문구 정리
+- Fallback 성공/실패 상태 표시 보정
+- native provider summary와 fallback provider summary 구분 표시
+- fallback 실행 로직은 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 빠른 설정 Web/Fallback 요약 문구 보정
+- fallback 토글 라벨과 안내 문구 보정
+- WEB_SEARCH_GROUNDING 실행정보를 읽기 쉬운 섹션으로 분리 표시
+- finalAnswerSource를 사용자 문구로 표시
+- PROVIDER_RESPONSE_SUMMARY와 FALLBACK_PROVIDER_RESPONSE_SUMMARY를 별도 섹션으로 표시
+
+[Fallback UX 테스트]
+- Web OFF 표시: 확인
+- Web ON 표시: 확인
+- fallback OFF: 확인
+- fallback ON: 확인
+- 안내 문구: 확인
+
+[실행정보 표시 테스트]
+- fallbackAllowed: 확인
+- fallbackAttempted: 확인
+- fallbackSucceeded: 확인
+- finalAnswerSource: 확인
+- fallback summary: 확인
+
+[기존 기능 영향]
+- Web Search grounding: 유지
+- fallback 동작: 로직 변경 없음
+- citation UX: 유지
+- Gemini 기존 호출: 유지
+- OpenAI-compatible 호출: 유지
+- RAG: 유지
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Web Search fallback UX 보정
+
+목표:
+- Web Search fallback 옵션의 표시와 실행정보를 더 직관적으로 정리한다.
+- fallback ON/OFF 상태, fallback 실행 여부, 최종 답변 출처를 사용자가 쉽게 확인할 수 있게 한다.
+- fallback 로직 자체는 변경하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 빠른 설정 fallback 토글 문구 보정
+✔ Web Search ON/OFF와 fallback ON/OFF 요약 표시 보정
+✔ 실행정보 WEB_SEARCH_GROUNDING 섹션의 fallback 필드 표시 정리
+✔ finalAnswerSource 표시 문구 정리
+✔ fallback 성공/실패 상태 badge 또는 텍스트 보정
+✔ fallback 실행 시 PROVIDER_RESPONSE_SUMMARY와 FALLBACK_PROVIDER_RESPONSE_SUMMARY 구분 표시 보정
+
+이번 단계에서 금지:
+
+❌ fallback 실행 로직 변경
+❌ 허용/금지 errorType 변경
+❌ fallback 기본값 ON 변경
+❌ Gemini native 호출 로직 변경
+❌ GoogleGeminiProviderAdapter 변경
+❌ RAG 로직 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 빠른 설정 UX 보정
+--------------------------------------------------
+
+현재:
+- Web Search 토글
+- fallback 토글
+
+보정:
+- Web Search OFF:
+  - fallback 토글 숨김 또는 disabled 유지
+- Web Search ON:
+  - fallback 토글 표시
+  - 라벨:
+    “검색 실패 시 일반 답변”
+  - 설명:
+    “Web Search grounding 실패 시 검색 없이 일반 Gemini 답변을 시도합니다. 최신정보 질문에서는 부정확할 수 있습니다.”
+
+상단 요약:
+- Web OFF
+- Web ON
+- Web ON · Fallback OFF
+- Web ON · Fallback ON
+
+주의:
+- RAG 요약과 혼동되지 않게 분리
+- 기존 RAG 검색 표시 유지
+
+--------------------------------------------------
+3. 실행정보 WEB_SEARCH_GROUNDING 표시 보정
+--------------------------------------------------
+
+표시 항목을 읽기 쉽게 정리:
+
+[WEB_SEARCH_GROUNDING]
+- 요청: ON/OFF
+- 실행: 성공/실패/미실행
+- Grounding 사용: true/false
+- 출처 수: n
+- 검색 쿼리 수: n
+- Fallback 허용: true/false
+- Fallback 실행: true/false
+- Fallback 성공: true/false
+- Grounding 오류: errorType 또는 없음
+- Fallback 오류: errorType 또는 없음
+- 최종 답변 출처:
+  - GROUNDING → Web Search grounding
+  - FALLBACK_GENERAL → 일반 Gemini fallback
+  - ERROR → 오류
+
+주의:
+- raw key=value trace는 유지하되, 화면 표시를 더 읽기 쉽게 할 수 있으면 보정
+- 기존 marker 파싱이 있으면 깨지지 않게 유지
+
+--------------------------------------------------
+4. Provider Response Summary 구분
+--------------------------------------------------
+
+native 호출과 fallback 호출이 모두 있을 때:
+
+표시:
+- Provider 응답: GeminiNativeProviderAdapter
+- Fallback 응답: GoogleGeminiProviderAdapter
+
+또는 marker:
+- [PROVIDER_RESPONSE_SUMMARY]
+- [FALLBACK_PROVIDER_RESPONSE_SUMMARY]
+
+보정:
+- 실행정보에서 둘을 혼동하지 않도록 제목 표시
+- fallback이 없으면 fallback summary 숨김
+
+--------------------------------------------------
+5. 본문 표시 정책 유지
+--------------------------------------------------
+
+fallback 성공 시:
+- ASSISTANT 본문에는 일반 답변만 표시
+- fallback 안내 문구 삽입 금지
+
+grounding 성공 시:
+- ASSISTANT 본문에는 grounding 답변만 표시
+- citations는 본문 삽입 금지
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Web Search fallback 실제 동작
+- fallback 허용/금지 오류 정책
+- Web Search citation UX
+- Web Search OFF 기존 Gemini 호출
+- OpenAI-compatible 호출
+- RAG 검색/인덱싱
+- RAG 참조 컨텍스트
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 빠른 설정
+- Web Search OFF → fallback 숨김/비활성
+- Web Search ON → fallback 표시
+- fallback ON/OFF 요약 확인
+
+B. fallback OFF + grounding 실패
+- ERROR_BLOCK
+- 실행정보 finalAnswerSource=ERROR
+- fallbackAttempted=false
+
+C. fallback ON + grounding 실패 + fallback 성공
+- 본문 일반 답변
+- 실행정보 finalAnswerSource=FALLBACK_GENERAL
+- fallbackAttempted=true
+- fallbackSucceeded=true
+- fallback summary 표시
+
+D. grounding 성공
+- finalAnswerSource=GROUNDING
+- citation UX 유지
+- fallbackAttempted=false
+
+E. 기존 기능 영향 없음
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ fallback 정책 변경 금지
+❌ fallback 본문 안내 삽입 금지
+❌ citation 본문 삽입 금지
+❌ Gemini native request 변경 금지
+❌ Provider 호출 경로 변경 금지
+❌ RAG와 Web Search 통합 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- fallback UI 문구가 명확해짐
+- 빠른 설정 요약에서 Web/Fallback 상태 확인 가능
+- 실행정보에서 fallback 상태와 finalAnswerSource가 명확히 표시됨
+- fallback summary가 native summary와 구분됨
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+모델 목록 UX 고도화 또는 Web Search grounding 안정화 점검
+
+==============================
 [2026-05-02 21:39] Web Search fallback 옵션 구현
 ==============================
 
