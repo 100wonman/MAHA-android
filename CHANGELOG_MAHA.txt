@@ -1,4 +1,303 @@
 ==============================
+[2026-05-02 19:00] OpenAI-compatible Provider UX 보정
+==============================
+
+[작업]
+- ProviderType별 설정 안내 문구 추가
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM baseUrl 예시 표시
+- API Key 필수/선택 상태 표시 보정
+- Provider 카드 호출 방식 / baseUrl 상태 badge 추가
+- Model 관리 rawModelName 입력 안내 보강
+- BASE_URL_MISSING / API_KEY_MISSING / NETWORK 오류 문구 보정
+- 기존 Adapter 호출 로직 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Provider 관리 UI에 OPENAI_COMPATIBLE / LOCAL / CUSTOM별 안내 문구 추가 유지
+- Provider 카드에 호출 방식, API Key 필수/선택, Base URL 상태 표시 유지
+- Model 관리 Dialog에 ProviderType별 rawModelName 안내와 예시 표시 유지
+- 기본 모델 카드에 Provider Type 표시 강화 유지
+- ModelManagementScreen.kt의 Unresolved reference 'provider' 컴파일 오류 보정
+
+[Provider UX 테스트]
+- OPENAI_COMPATIBLE 안내: Provider 추가/수정 → OPENAI_COMPATIBLE 선택 → /chat/completions 안내와 Groq/OpenRouter 예시 확인
+- LOCAL 안내: Provider 추가/수정 → LOCAL 선택 → LM Studio/Ollama 및 LAN IP 안내 확인
+- CUSTOM 안내: Provider 추가/수정 → CUSTOM 선택 → 사용자 지정 OpenAI-compatible 서버 안내 확인
+- API Key 필수/선택 표시: Provider 카드에서 OPENAI_COMPATIBLE은 필수, LOCAL/CUSTOM은 선택 표시 확인
+- Base URL 상태 표시: baseUrl 비움 → 카드에 “Base URL 미설정” 경고 확인
+
+[Model UX 테스트]
+- GOOGLE rawModelName 안내: Model 추가/수정 → GOOGLE Provider 선택 → gemini/gemma 예시 확인
+- OPENAI_COMPATIBLE rawModelName 안내: OPENAI_COMPATIBLE Provider 선택 → llama/openrouter 예시 확인
+- LOCAL rawModelName 안내: LOCAL Provider 선택 → LM Studio 모델 ID / llama3.2 / gemma3 예시 확인
+- CUSTOM rawModelName 안내: CUSTOM Provider 선택 → 서버가 요구하는 model id 안내 확인
+- 기존 저장/수정: 모델 추가/수정 저장 후 rawModelName과 capability 값 유지 확인
+
+[오류 문구 테스트]
+- BASE_URL_MISSING: OPENAI_COMPATIBLE/LOCAL/CUSTOM Provider baseUrl 비움 → “Provider Base URL이 설정되지 않았습니다...” 확인
+- API_KEY_MISSING: OPENAI_COMPATIBLE Provider API Key 없음 → “이 Provider는 API Key가 필요합니다...” 확인
+- NETWORK/TIMEOUT: LOCAL/CUSTOM baseUrl은 있으나 서버 없음 → 네트워크/방화벽/서버 실행 상태 안내 확인
+
+[기존 기능 영향]
+- Google Gemini 호출: Google Provider + 기본 모델 → 기존 Gemini 응답 확인
+- OpenAI-compatible 호출: OPENAI_COMPATIBLE/LOCAL/CUSTOM 기본 모델 지정 → Adapter 분기 도달 확인
+- Provider 관리: Provider 추가/수정/삭제/토글 확인
+- Model 관리: 모델 추가/수정/삭제/즐겨찾기/기본 지정 확인
+- RAG: 검색 ON/OFF, RAG 섹션, 참조 컨텍스트 보기 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[수정된 문제]
+- ModelProfileCard 내부에서 스코프 밖 변수 provider를 참조하던 문제 수정
+- ModelProfileCard 파라미터에 providerType을 추가하고 호출부에서 provider?.providerType을 전달
+- Provider Type 표시가 providerType?.name ?: "UNKNOWN" 기준으로 동작하도록 보정
+
+[변경 파일]
+- ModelManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+OpenAI-compatible Provider UX 보정
+
+목표:
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM Provider를 설정할 때 사용자가 필요한 입력값을 명확히 이해할 수 있게 한다.
+- baseUrl / API Key / rawModelName 관련 오류를 사전에 줄인다.
+- Adapter 호출 로직은 유지하고, UI 안내와 검증 중심으로 보정한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ Provider 관리 UI에서 OPENAI_COMPATIBLE / LOCAL / CUSTOM별 안내 문구 추가
+✔ baseUrl 입력 예시 표시
+✔ API Key required / optional 표시
+✔ Provider 카드에 호출 방식 badge 표시
+✔ baseUrl 비어 있음 사전 경고
+✔ Model 관리에서 ProviderType별 rawModelName 안내 표시
+✔ 기본 모델 카드에 ProviderType 표시 강화
+✔ ERROR_BLOCK 문구 일부 보정 가능
+
+이번 단계에서 금지:
+
+❌ OpenAiCompatibleProviderAdapter 호출 방식 변경
+❌ GoogleGeminiProviderAdapter 변경
+❌ 실제 모델 목록 조회 추가 구현
+❌ tool calling 구현
+❌ streaming 구현
+❌ multimodal 구현
+❌ 작업모드 Provider 구조 수정
+
+--------------------------------------------------
+2. Provider 관리 UI 보정
+--------------------------------------------------
+
+Provider 추가/수정 Dialog에서 providerType별 안내를 표시한다.
+
+OPENAI_COMPATIBLE:
+- API Key: 필수
+- baseUrl 예:
+  - https://api.groq.com/openai/v1
+  - https://openrouter.ai/api/v1
+- 설명:
+  “OpenAI-compatible /chat/completions 엔드포인트를 사용하는 Provider입니다.”
+
+LOCAL:
+- API Key: 선택
+- baseUrl 예:
+  - http://192.168.0.25:1234/v1
+  - http://192.168.0.25:11434/v1
+- 설명:
+  “LM Studio, Ollama OpenAI-compatible 서버 등에 연결합니다. 휴대폰에서 PC 서버에 접속할 때는 127.0.0.1 대신 PC의 LAN IP를 사용하세요.”
+
+CUSTOM:
+- API Key: 선택
+- baseUrl 예:
+  - https://your-server.example.com/v1
+- 설명:
+  “OpenAI-compatible 응답 형식을 따르는 사용자 지정 서버입니다.”
+
+GOOGLE:
+- 기존 안내 유지
+- Gemini 호출에 사용됨 문구 유지 가능
+
+--------------------------------------------------
+3. Provider 카드 표시 보정
+--------------------------------------------------
+
+Provider 카드에 추가 표시:
+
+- Provider Type
+- 호출 방식:
+  - Google Gemini
+  - OpenAI-compatible
+  - Local OpenAI-compatible
+  - Custom OpenAI-compatible
+- API Key:
+  - 필수 / 선택
+  - 설정됨 / 미설정
+- baseUrl:
+  - 설정됨 / 미설정
+  - 미설정이면 경고 badge
+
+예:
+- “API Key 필수 · 설정됨”
+- “API Key 선택 · 미설정”
+- “Base URL 미설정”
+
+--------------------------------------------------
+4. baseUrl 검증
+--------------------------------------------------
+
+Provider 저장 시 최소 검증:
+
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM에서 baseUrl blank이면 경고 표시
+- 저장 자체는 허용 가능하되 명확히 안내
+- 권장:
+  - 저장은 허용
+  - 카드에 “Base URL 미설정” 표시
+  - 호출 시 BASE_URL_MISSING 유지
+
+금지:
+- 네트워크 연결 테스트 금지
+- URL 실제 접속 금지
+
+--------------------------------------------------
+5. Model 관리 UI 보정
+--------------------------------------------------
+
+모델 추가/수정 Dialog에서 선택된 ProviderType에 따라 rawModelName 안내 표시.
+
+OPENAI_COMPATIBLE:
+- 예:
+  - llama-3.1-8b-instant
+  - llama-3.3-70b-versatile
+  - openrouter/free
+
+LOCAL:
+- 예:
+  - LM Studio에 로드된 모델 ID
+  - llama3.2
+  - gemma3
+  - qwen2.5
+
+CUSTOM:
+- 예:
+  - 서버가 요구하는 model id
+
+GOOGLE:
+- 예:
+  - gemini-2.5-flash
+  - gemma-4-31b-it
+
+주의:
+- 모델명을 하드코딩된 후보로 저장하지 말 것
+- 안내 예시 텍스트로만 표시
+
+--------------------------------------------------
+6. ERROR_BLOCK 문구 보정
+--------------------------------------------------
+
+필요 시 문구 보정:
+
+BASE_URL_MISSING:
+- “Provider Base URL이 설정되지 않았습니다. Provider 관리에서 Base URL을 입력하세요.”
+
+API_KEY_MISSING:
+- OPENAI_COMPATIBLE:
+  “이 Provider는 API Key가 필요합니다. Provider 관리에서 API Key를 입력하세요.”
+- GOOGLE:
+  “Google API Key가 설정되지 않았습니다. Provider 관리에서 API Key를 입력하세요.”
+
+MODEL_MISSING:
+- 기존 유지
+
+NETWORK_ERROR / TIMEOUT:
+- “Provider 서버에 연결하지 못했습니다. Base URL, 네트워크, 방화벽, 서버 실행 상태를 확인하세요.”
+
+주의:
+- Adapter 로직 대규모 변경 금지
+- 문구/분기 표시만 최소 보정
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google Gemini 호출
+- OpenAI-compatible 호출 분기
+- Provider 추가/수정/삭제
+- Model 추가/수정/삭제
+- 기본 모델 지정
+- RAG 검색/인덱싱
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+8. 테스트 기준
+--------------------------------------------------
+
+A. OPENAI_COMPATIBLE Provider 추가/수정
+- baseUrl 예시 표시
+- API Key 필수 표시
+- 저장 후 카드 badge 확인
+
+B. LOCAL Provider 추가/수정
+- LAN IP 안내 표시
+- API Key 선택 표시
+- baseUrl 예시 표시
+
+C. CUSTOM Provider 추가/수정
+- API Key 선택 표시
+- OpenAI-compatible 형식 안내 표시
+
+D. Model 관리
+- ProviderType별 rawModelName 안내 표시
+- 기존 모델 저장/수정 영향 없음
+
+E. 오류 문구
+- BASE_URL_MISSING
+- API_KEY_MISSING
+- NETWORK/TIMEOUT
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 네트워크 테스트 구현 금지
+❌ 모델 목록 조회 추가 금지
+❌ Adapter endpoint 변경 금지
+❌ API Key 하드코딩 금지
+❌ 모델명 자동 삽입 금지
+❌ 작업모드 코드 수정 금지
+❌ RAG 로직 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- ProviderType별 안내 문구 표시
+- Provider 카드 호출 방식/API Key/baseUrl 상태 표시
+- Model 관리 rawModelName 안내 표시
+- 주요 오류 문구가 사용자 이해 가능하게 보정
+- 기존 호출 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+도구 호출 정책 설계 또는 OpenAI-compatible 모델 목록 조회 설계
+
+==============================
 [2026-05-02 18:00] OpenAI-compatible Adapter 1차 구현
 ==============================
 

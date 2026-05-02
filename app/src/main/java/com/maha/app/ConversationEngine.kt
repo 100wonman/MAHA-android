@@ -895,7 +895,7 @@ class ConversationEngine(
         fallbackMessage: String
     ): String {
         return when (errorType) {
-            "API_KEY_MISSING" -> "API Key가 설정되지 않았습니다. Provider 관리에서 API Key를 입력하세요."
+            "API_KEY_MISSING" -> "이 Provider는 API Key가 필요합니다. Provider 관리에서 API Key를 입력하세요."
             "PROVIDER_MISSING" -> "Provider 설정을 찾지 못했습니다. Provider 관리에서 Provider를 확인하세요."
             "BASE_URL_MISSING" -> "Provider Base URL이 설정되지 않았습니다. Provider 관리에서 Base URL을 입력하세요."
             "MODEL_MISSING" -> "대화모드 기본 모델이 설정되지 않았습니다. Model 관리에서 기본 모델을 지정하세요."
@@ -905,8 +905,8 @@ class ConversationEngine(
             "RATE_LIMIT" -> "요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."
             "SERVER_ERROR" -> "Provider 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
             "AUTH_FAILED" -> "Provider 인증에 실패했습니다. API Key와 Provider 설정을 확인하세요."
-            "NETWORK_ERROR" -> "Provider 서버에 연결하지 못했습니다. Base URL과 네트워크 상태를 확인하세요."
-            "TIMEOUT" -> "요청 시간이 초과되었습니다. 잠시 후 다시 시도하세요."
+            "NETWORK_ERROR" -> "Provider 서버에 연결하지 못했습니다. Base URL, 네트워크, 방화벽, 서버 실행 상태를 확인하세요."
+            "TIMEOUT" -> "Provider 서버 응답 시간이 초과되었습니다. Base URL, 네트워크, 서버 실행 상태를 확인하세요."
             else -> fallbackMessage.takeIf { it.isNotBlank() } ?: "알 수 없는 오류가 발생했습니다. 실행정보를 확인하세요."
         }
     }

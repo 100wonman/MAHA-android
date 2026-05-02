@@ -352,13 +352,11 @@ private fun ProviderProfileCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFFD0D3DA)
                     )
-                    if (provider.providerType == ProviderType.LOCAL) {
-                        Text(
-                            text = "LOCAL · Local Server",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFF9FE3B1)
-                        )
-                    }
+                    Text(
+                        text = providerCallStyleLabel(provider.providerType),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = providerCallStyleColor(provider.providerType)
+                    )
                 }
                 Switch(
                     checked = provider.isEnabled,
@@ -366,19 +364,31 @@ private fun ProviderProfileCard(
                 )
             }
 
-            ProviderInfoRow(label = "Base URL", value = provider.baseUrl.ifBlank { "미설정" })
             ProviderInfoRow(
-                label = "API Key",
-                value = when {
-                    hasApiKey -> "설정됨"
-                    provider.providerType == ProviderType.LOCAL -> "선택 사항 / 미설정"
-                    else -> "미설정"
+                label = "호출 방식",
+                value = providerCallStyleLabel(provider.providerType)
+            )
+            ProviderInfoRow(
+                label = "Base URL",
+                value = if (provider.baseUrl.isBlank()) {
+                    "미설정${if (isBaseUrlRecommended(provider.providerType)) " · 호출 전 입력 필요" else ""}"
+                } else {
+                    provider.baseUrl
                 }
             )
-            if (provider.providerType == ProviderType.LOCAL) {
-                ProviderInfoRow(
-                    label = "Runtime",
-                    value = "Local Server 방식 준비 중"
+            ProviderInfoRow(
+                label = "API Key",
+                value = buildString {
+                    append(apiKeyRequirementLabel(provider.providerType))
+                    append(" · ")
+                    append(if (hasApiKey) "설정됨" else "미설정")
+                }
+            )
+            if (provider.baseUrl.isBlank() && isBaseUrlRecommended(provider.providerType)) {
+                Text(
+                    text = "Base URL 미설정 · 호출 시 BASE_URL_MISSING으로 실패합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFFFD08A)
                 )
             }
             ProviderInfoRow(
@@ -406,17 +416,11 @@ private fun ProviderProfileCard(
                 }
             }
 
-            if (provider.providerType == ProviderType.GOOGLE) {
-                Text(
-                    text = if (hasApiKey) {
-                        "이 API Key는 대화모드 Gemini 호출에 사용됩니다."
-                    } else {
-                        "모델 목록 조회와 Gemini 호출은 API Key 저장 후 사용할 수 있습니다."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (hasApiKey) Color(0xFF9FE3B1) else Color(0xFFFFD08A)
-                )
-            }
+            Text(
+                text = providerCardGuideText(provider.providerType, hasApiKey),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (hasApiKey || !isApiKeyRequiredForProvider(provider.providerType)) Color(0xFF9FE3B1) else Color(0xFFFFD08A)
+            )
         }
     }
 }
@@ -569,8 +573,72 @@ private fun ProviderInfoRow(
     }
 }
 
+private fun providerCallStyleLabel(providerType: ProviderType): String {
+    return when (providerType) {
+        ProviderType.GOOGLE -> "Google Gemini"
+        ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible"
+        ProviderType.NVIDIA -> "NVIDIA API"
+        ProviderType.LOCAL -> "Local OpenAI-compatible"
+        ProviderType.CUSTOM -> "Custom OpenAI-compatible"
+    }
+}
+
+private fun providerCallStyleColor(providerType: ProviderType): Color {
+    return when (providerType) {
+        ProviderType.GOOGLE -> Color(0xFF9EC7FF)
+        ProviderType.OPENAI_COMPATIBLE -> Color(0xFFB7D7FF)
+        ProviderType.LOCAL -> Color(0xFF9FE3B1)
+        ProviderType.CUSTOM -> Color(0xFFFFD08A)
+        ProviderType.NVIDIA -> Color(0xFF9FE3B1)
+    }
+}
+
+private fun isApiKeyRequiredForProvider(providerType: ProviderType): Boolean {
+    return when (providerType) {
+        ProviderType.OPENAI_COMPATIBLE,
+        ProviderType.NVIDIA,
+        ProviderType.GOOGLE -> true
+        ProviderType.LOCAL,
+        ProviderType.CUSTOM -> false
+    }
+}
+
+private fun apiKeyRequirementLabel(providerType: ProviderType): String {
+    return if (isApiKeyRequiredForProvider(providerType)) "필수" else "선택"
+}
+
+private fun isBaseUrlRecommended(providerType: ProviderType): Boolean {
+    return providerType == ProviderType.OPENAI_COMPATIBLE ||
+            providerType == ProviderType.LOCAL ||
+            providerType == ProviderType.CUSTOM
+}
+
+private fun baseUrlPlaceholder(providerType: ProviderType): String {
+    return when (providerType) {
+        ProviderType.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/openai/"
+        ProviderType.OPENAI_COMPATIBLE -> "https://api.groq.com/openai/v1 또는 https://openrouter.ai/api/v1"
+        ProviderType.LOCAL -> "http://192.168.0.25:1234/v1 또는 http://192.168.0.25:11434/v1"
+        ProviderType.CUSTOM -> "https://your-server.example.com/v1"
+        ProviderType.NVIDIA -> "NVIDIA compatible base URL"
+    }
+}
+
+private fun providerCardGuideText(providerType: ProviderType, hasApiKey: Boolean): String {
+    return when (providerType) {
+        ProviderType.GOOGLE -> if (hasApiKey) {
+            "이 API Key는 대화모드 Gemini 호출과 모델 목록 조회에 사용됩니다."
+        } else {
+            "모델 목록 조회와 Gemini 호출은 API Key 저장 후 사용할 수 있습니다."
+        }
+        ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible /chat/completions 엔드포인트를 사용합니다. API Key는 필수입니다."
+        ProviderType.LOCAL -> "LM Studio, Ollama OpenAI-compatible 서버 등에 연결합니다. 휴대폰에서는 127.0.0.1 대신 PC의 LAN IP를 사용하세요."
+        ProviderType.CUSTOM -> "OpenAI-compatible 응답 형식을 따르는 사용자 지정 서버입니다. API Key는 선택입니다."
+        ProviderType.NVIDIA -> "NVIDIA API 연결 후보입니다. 현재 대화모드 실제 호출 일반화는 후속 단계에서 확정합니다."
+    }
+}
+
 @Composable
-private fun LocalProviderGuideCard() {
+private fun ProviderTypeGuideCard(providerType: ProviderType) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
         modifier = Modifier.fillMaxWidth()
@@ -580,21 +648,28 @@ private fun LocalProviderGuideCard() {
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "LOCAL Provider 안내",
+                text = "${providerType.name} 안내",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF9FE3B1)
+                color = providerCallStyleColor(providerType)
             )
             Text(
-                text = "현재 LOCAL은 Local Server 방식 설정용입니다. 예: LM Studio, Ollama Gateway, OpenAI-compatible local server",
+                text = providerCardGuideText(providerType, hasApiKey = false),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFD0D3DA)
             )
             Text(
-                text = "API Key는 서버 설정에 따라 선택 사항입니다. On-device 모델 직접 실행은 후속 단계에서 지원 예정입니다.",
+                text = "API Key: ${apiKeyRequirementLabel(providerType)} · Base URL 예: ${baseUrlPlaceholder(providerType)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFD0D3DA)
             )
+            if (providerType == ProviderType.LOCAL) {
+                Text(
+                    text = "On-device 모델 직접 실행은 로컬 모델/런타임 단계에서 별도 지원 예정입니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA)
+                )
+            }
         }
     }
 }
@@ -661,14 +736,21 @@ private fun ProviderProfileEditDialog(
 
                 Divider()
 
-                if (providerType == ProviderType.LOCAL) {
-                    LocalProviderGuideCard()
+                ProviderTypeGuideCard(providerType)
+
+                if (baseUrl.isBlank() && isBaseUrlRecommended(providerType)) {
+                    Text(
+                        text = "Base URL이 비어 있습니다. 저장은 가능하지만 호출 시 BASE_URL_MISSING으로 실패합니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFFFD08A)
+                    )
                 }
 
                 OutlinedTextField(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },
-                    label = { Text(text = "Base URL") },
+                    label = { Text(text = if (isBaseUrlRecommended(providerType)) "Base URL" else "Base URL (optional)") },
+                    placeholder = { Text(text = baseUrlPlaceholder(providerType)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -679,7 +761,7 @@ private fun ProviderProfileEditDialog(
                         apiKeyInput = it
                         if (it.isNotBlank()) shouldDeleteApiKey = false
                     },
-                    label = { Text(text = if (providerType == ProviderType.LOCAL) "API Key (optional)" else "API Key") },
+                    label = { Text(text = "API Key (${apiKeyRequirementLabel(providerType)})") },
                     placeholder = {
                         Text(
                             text = if (initialProvider?.apiKeyAlias.isNullOrBlank()) {

@@ -176,6 +176,7 @@ fun ModelManagementScreen(
                 ModelProfileCard(
                     model = model,
                     providerName = provider?.displayName ?: "Provider 없음 (${model.providerId})",
+                    providerType = provider?.providerType,
                     isLocalModel = provider?.providerType == ProviderType.LOCAL,
                     onEditClick = { editingModel = model },
                     onDeleteClick = { modelToDelete = model },
@@ -246,6 +247,7 @@ fun ModelManagementScreen(
 private fun ModelProfileCard(
     model: ConversationModelProfile,
     providerName: String,
+    providerType: ProviderType?,
     isLocalModel: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
@@ -308,6 +310,7 @@ private fun ModelProfileCard(
             }
 
             ModelInfoRow(label = "Provider", value = providerName)
+            ModelInfoRow(label = "Provider Type", value = providerType?.name ?: "UNKNOWN")
             ModelInfoRow(label = "Raw Model", value = model.rawModelName.ifBlank { "미설정" })
             ModelInfoRow(label = "Context Window", value = model.contextWindow?.toString() ?: "미설정")
             ModelInfoRow(label = "Input", value = model.inputModalities.joinToString().ifBlank { "미설정" })
@@ -482,19 +485,15 @@ private fun ModelProfileEditDialog(
                     }
                 }
 
-                if (isLocalProvider) {
-                    LocalModelGuideCard()
+                selectedProvider?.let { provider ->
+                    ModelRawNameGuideCard(provider.providerType)
                 }
 
                 OutlinedTextField(
                     value = rawModelName,
                     onValueChange = { rawModelName = it },
-                    label = { Text(text = if (isLocalProvider) "Local Model Name / File Name" else "Raw Model Name") },
-                    placeholder = {
-                        if (isLocalProvider) {
-                            Text(text = "gemma-4-e2b-q4, llama-3.2-3b-instruct, local-model")
-                        }
-                    },
+                    label = { Text(text = rawModelNameLabel(selectedProvider?.providerType)) },
+                    placeholder = { Text(text = rawModelNamePlaceholder(selectedProvider?.providerType)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -625,8 +624,40 @@ private fun ModelProfileEditDialog(
     )
 }
 
+private fun rawModelNameLabel(providerType: ProviderType?): String {
+    return when (providerType) {
+        ProviderType.LOCAL -> "Local Server Model ID"
+        ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible Model ID"
+        ProviderType.CUSTOM -> "Custom Server Model ID"
+        ProviderType.GOOGLE -> "Google Gemini Model ID"
+        else -> "Raw Model Name"
+    }
+}
+
+private fun rawModelNamePlaceholder(providerType: ProviderType?): String {
+    return when (providerType) {
+        ProviderType.GOOGLE -> "gemini-2.5-flash 또는 gemma-4-31b-it"
+        ProviderType.OPENAI_COMPATIBLE -> "llama-3.1-8b-instant, llama-3.3-70b-versatile, openrouter/free"
+        ProviderType.LOCAL -> "LM Studio 모델 ID, llama3.2, gemma3, qwen2.5"
+        ProviderType.CUSTOM -> "서버가 요구하는 model id"
+        ProviderType.NVIDIA -> "NVIDIA model id"
+        null -> "model id"
+    }
+}
+
+private fun rawModelNameGuideText(providerType: ProviderType?): String {
+    return when (providerType) {
+        ProviderType.GOOGLE -> "Google 모델 목록에서 추가한 모델은 rawModelName이 자동 저장됩니다. 수동 입력 시 Gemini 호출에 사용할 모델 ID를 입력하세요."
+        ProviderType.OPENAI_COMPATIBLE -> "Groq, OpenRouter 등 OpenAI-compatible 서버가 요구하는 model id를 입력합니다. 예시는 안내용이며 자동 저장되지 않습니다."
+        ProviderType.LOCAL -> "Local Server에 실제 로드된 모델 ID를 입력합니다. 휴대폰에서 PC 서버를 사용할 경우 Provider의 Base URL은 PC LAN IP를 사용해야 합니다."
+        ProviderType.CUSTOM -> "사용자 지정 서버가 요구하는 model id를 입력합니다. 서버별 규칙을 확인하세요."
+        ProviderType.NVIDIA -> "NVIDIA 모델 ID 후보입니다. 실제 지원 여부는 Provider 정책에 따라 달라질 수 있습니다."
+        null -> "Provider를 먼저 선택하면 rawModelName 안내가 표시됩니다."
+    }
+}
+
 @Composable
-private fun LocalModelGuideCard() {
+private fun ModelRawNameGuideCard(providerType: ProviderType) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
         modifier = Modifier.fillMaxWidth()
@@ -636,25 +667,31 @@ private fun LocalModelGuideCard() {
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "LOCAL 모델 안내",
+                text = "${providerType.name} 모델명 안내",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF9FE3B1)
+                color = if (providerType == ProviderType.LOCAL) Color(0xFF9FE3B1) else Color(0xFFB7D7FF)
             )
             Text(
-                text = "rawModelName은 Local Server에서 사용하는 모델명 또는 후속 로컬 모델 파일명 후보입니다.",
+                text = rawModelNameGuideText(providerType),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFD0D3DA)
             )
             Text(
-                text = "LOCAL 기본 capability는 text/code=true, 나머지는 false입니다. 필요하면 직접 수정하세요.",
+                text = "예: ${rawModelNamePlaceholder(providerType)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFD0D3DA)
             )
+            if (providerType == ProviderType.LOCAL) {
+                Text(
+                    text = "LOCAL 기본 capability는 text/code=true, 나머지는 false입니다. 필요하면 직접 수정하세요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA)
+                )
+            }
         }
     }
 }
-
 
 @Composable
 private fun CapabilityGroupHeader(text: String) {
