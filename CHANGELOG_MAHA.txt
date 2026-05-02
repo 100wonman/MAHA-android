@@ -1,4 +1,279 @@
 ==============================
+[2026-05-02 20:31] ToolSupportPolicy 및 tool_calls 표시 보강 구현
+==============================
+
+[작업]
+- ToolSupportPolicy / ToolSupportStatus 추가
+- ProviderType별 tool 지원 상태 summary 생성
+- ConversationEngine 실행정보에 TOOL_SUPPORT_SUMMARY 기록
+- tool_calls/function_call 감지 시 toolCallCount/toolNames 요약 보강
+- TOOL_CALL_NOT_SUPPORTED 표시 문구 정리
+- Model 관리 capability 안내 문구 보강
+- 실제 tool/webSearch/codeExecution 구현은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationEngine에서 Provider rawText의 <thought>/<thinking>/<thoughts> 태그 블록 분리 처리 추가
+- ASSISTANT 본문과 저장 rawText에는 thinking 태그 제거 후 final answer만 저장/표시
+- THINKING_SUMMARY 섹션을 기존 TRACE/rawOutput 실행정보에 추가
+- thinking 태그 제거 후 표시 가능한 본문이 없으면 ERROR_BLOCK 처리
+- 기존 TOOL_SUPPORT_SUMMARY / PROVIDER_RESPONSE_SUMMARY / RAG TRACE 유지
+
+[Thinking 분리 테스트]
+- thought 태그 제거: <thought>, <thinking>, <thoughts> 닫힘 태그 블록 제거 처리 추가
+- final answer 표시: 제거 후 남은 finalText만 TEXT_BLOCK과 ConversationResponse.rawText에 반영
+- thinking summary 실행정보 표시: [THINKING_SUMMARY] 섹션에 THINKING_SUMMARY_DETECTED, thinkingSummaryLength, thinkingSummaryPreview 표시
+- thought 없는 일반 응답: 기존 rawText.trim() 그대로 표시, THINKING_SUMMARY_DETECTED=false 표시
+- 저장/복구 후 재노출 여부: 저장 대상 rawText가 finalText로 변경되어 thought 태그 재노출 방지
+
+[ToolSupport 유지 테스트]
+- TOOL_SUPPORT_SUMMARY: 기존 ToolSupportPolicy 연결 유지
+- toolCallDetected: 기존 Provider response summary 경로 유지
+- TOOL_CALL_NOT_SUPPORTED: 기존 ERROR_BLOCK 문구 유지
+- Provider response summary: 기존 [PROVIDER_RESPONSE_SUMMARY] 유지
+
+[기존 기능 영향]
+- Gemini 호출: 호출 경로 변경 없음, 응답 표시 직전 thinking 태그만 분리
+- OpenAI-compatible 호출: 호출 경로 변경 없음, 응답 표시 직전 thinking 태그만 분리
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- RAG: 검색/인덱싱/컨텍스트 생성 로직 변경 없음, 기존 RAG TRACE 유지
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 전체 Android 프로젝트가 첨부되지 않아 이 세션에서 Gradle/Android Studio 빌드는 실행하지 못함
+- 정적 검증은 괄호/중괄호 균형 기준으로만 확인함
+
+[변경 파일]
+- ConversationEngine.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ToolSupportPolicy 및 tool_calls 표시 보강 구현
+
+목표:
+- ProviderType별 tool 지원 정책을 코드로 표현한다.
+- ConversationEngine 실행정보에 tool support summary를 기록한다.
+- tool_calls/function_call 응답이 감지될 때 tool name/count 요약을 더 명확히 표시한다.
+- 실제 tool 실행은 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ToolSupportPolicy 또는 ToolSupportResolver 추가
+✔ ProviderType별 tool 지원 상태 반환
+✔ ConversationEngine 실행정보 TRACE에 toolSupportSummary 기록
+✔ tool_calls 감지 시 toolCallCount 기록
+✔ tool_calls 감지 시 toolNames 요약 기록
+✔ TOOL_CALL_NOT_SUPPORTED ERROR_BLOCK 문구 유지/보강
+✔ Model 관리 capability 안내 문구 보강
+
+이번 단계에서 금지:
+
+❌ 실제 webSearch 호출
+❌ Google Search grounding 구현
+❌ function execution 구현
+❌ code execution 구현
+❌ Gemini native API 전환
+❌ streaming thinking 구현
+❌ RAG 검색 알고리즘 변경
+❌ Adapter 호출 방식 대규모 변경
+
+--------------------------------------------------
+2. ToolSupportPolicy 구조
+--------------------------------------------------
+
+신규 파일 후보:
+
+- ToolSupportPolicy.kt
+
+권장 구조:
+
+ToolSupportPolicy:
+- providerType
+- supportsFunctionCalling
+- supportsWebSearch
+- supportsCodeExecution
+- supportsStructuredOutput
+- supportsThinkingSummary
+- requestToolCallsEnabled
+- notes
+
+상태값은 Boolean보다 아래 enum 사용 권장:
+
+ToolSupportStatus:
+- SUPPORTED
+- UNSUPPORTED
+- UNKNOWN
+- NOT_IMPLEMENTED
+
+1차 정책:
+- GOOGLE:
+  - functionCalling = NOT_IMPLEMENTED
+  - webSearch = NOT_IMPLEMENTED
+  - codeExecution = NOT_IMPLEMENTED
+  - structuredOutput = UNKNOWN
+  - thinkingSummary = NOT_IMPLEMENTED
+- OPENAI_COMPATIBLE:
+  - functionCalling = NOT_IMPLEMENTED
+  - webSearch = UNKNOWN
+  - codeExecution = UNKNOWN
+  - structuredOutput = UNKNOWN
+  - thinkingSummary = UNKNOWN
+- LOCAL:
+  - 전부 UNKNOWN 또는 NOT_IMPLEMENTED
+- CUSTOM:
+  - 전부 UNKNOWN 또는 NOT_IMPLEMENTED
+
+주의:
+- capability 체크값과 실제 support policy를 혼동하지 말 것
+- 1차에서는 requestToolCallsEnabled=false 고정
+
+--------------------------------------------------
+3. ConversationEngine 실행정보 보강
+--------------------------------------------------
+
+실행정보 TRACE 또는 rawOutput에 추가:
+
+TOOL_SUPPORT_SUMMARY:
+- providerType
+- requestToolCallsEnabled
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+- thinkingSummary
+
+예:
+
+TOOL_SUPPORT_SUMMARY
+providerType=OPENAI_COMPATIBLE
+requestToolCallsEnabled=false
+functionCalling=NOT_IMPLEMENTED
+webSearch=UNKNOWN
+codeExecution=UNKNOWN
+structuredOutput=UNKNOWN
+thinkingSummary=UNKNOWN
+
+주의:
+- 실행정보 블록 구조를 대규모 변경하지 말 것
+- 기존 RAG 섹션 유지
+- 기존 Provider 호출 정보 유지
+
+--------------------------------------------------
+4. tool_calls 감지 보강
+--------------------------------------------------
+
+GoogleGeminiProviderAdapter / OpenAiCompatibleProviderAdapter에서 tool_calls 또는 function_call 감지 시:
+
+기록:
+- toolCallDetected=true
+- toolCallCount=n
+- toolNames=[...]
+- finishReason
+- errorType=TOOL_CALL_NOT_SUPPORTED
+
+ERROR_BLOCK 문구:
+“모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다.”
+
+주의:
+- tool 실행 금지
+- function arguments 전체를 본문에 노출하지 말 것
+- 필요 시 실행정보 TRACE에 tool name만 제한 표시
+
+--------------------------------------------------
+5. Model 관리 capability 안내 문구 보강
+--------------------------------------------------
+
+Model 추가/수정 Dialog capability 섹션 안내 문구를 보강한다.
+
+권장 문구:
+“Capability 체크는 모델 기능 표시 및 향후 호출 정책 참고값입니다. 실제 도구 실행 가능 여부는 Provider와 Adapter 지원 상태에 따라 달라집니다.”
+
+또는:
+“현재 대화모드는 tool/webSearch/codeExecution을 실제 실행하지 않으며, tool_call 응답은 미지원 안내로 처리됩니다.”
+
+주의:
+- 저장 로직 변경 금지
+- checkbox 구조 변경 금지
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Gemini 호출
+- OpenAI-compatible 호출
+- Provider 관리
+- Model 관리
+- RAG 검색/인덱싱
+- 실행정보 RAG 섹션
+- 저장/복구
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 일반 Gemini 텍스트 호출
+- 정상 응답
+- 실행정보에 TOOL_SUPPORT_SUMMARY 표시
+
+B. OpenAI-compatible 호출
+- 실행정보에 ProviderType별 TOOL_SUPPORT_SUMMARY 표시
+
+C. tool_call 성격 응답
+- TOOL_CALL_NOT_SUPPORTED 처리
+- toolCallCount/toolNames 요약 표시
+
+D. Model 관리 Dialog
+- capability 안내 문구 보강 확인
+
+E. 기존 RAG/Provider/Model 기능 영향 없음
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 tool 실행 금지
+❌ 외부 검색 호출 금지
+❌ native Gemini tool API 전환 금지
+❌ streaming 구현 금지
+❌ capability 저장 구조 변경 금지
+❌ ConversationEngine 대규모 리팩토링 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- ToolSupportPolicy 추가
+- ProviderType별 support summary 생성
+- 실행정보에 tool support summary 표시
+- tool_calls 감지 시 count/name 요약 표시
+- Model capability 안내 문구 보강
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Gemini native API / webSearch grounding 설계 또는 모델 목록 UX 고도화
+
+==============================
 [2026-05-02 19:10] 도구 호출 정책 설계
 ==============================
 

@@ -101,6 +101,23 @@ class OpenAiCompatibleProviderAdapter(
                 endpoint = endpoint
             )
 
+            if (parsed.hasToolCall) {
+                return@withContext OpenAiCompatibleProviderResult.failure(
+                    providerName = providerName,
+                    modelName = modelName,
+                    latencySec = elapsedSec(startedAt),
+                    errorType = "TOOL_CALL_NOT_SUPPORTED",
+                    errorMessage = "모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다.",
+                    httpStatusCode = statusCode,
+                    rawBody = responseText,
+                    responseSummary = parsed.summary,
+                    toolCallDetected = true,
+                    toolCallCount = parsed.toolCallCount,
+                    toolNames = parsed.toolNames,
+                    finishReason = parsed.finishReason
+                )
+            }
+
             if (parsed.content.isNotBlank()) {
                 return@withContext OpenAiCompatibleProviderResult(
                     success = true,
@@ -112,20 +129,11 @@ class OpenAiCompatibleProviderAdapter(
                     modelName = modelName,
                     httpStatusCode = statusCode,
                     rawBody = responseText,
-                    responseSummary = parsed.summary
-                )
-            }
-
-            if (parsed.hasToolCall) {
-                return@withContext OpenAiCompatibleProviderResult.failure(
-                    providerName = providerName,
-                    modelName = modelName,
-                    latencySec = elapsedSec(startedAt),
-                    errorType = "TOOL_CALL_NOT_SUPPORTED",
-                    errorMessage = "이 응답은 도구 호출이 필요하지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다.",
-                    httpStatusCode = statusCode,
-                    rawBody = responseText,
-                    responseSummary = parsed.summary
+                    responseSummary = parsed.summary,
+                    toolCallDetected = false,
+                    toolCallCount = parsed.toolCallCount,
+                    toolNames = parsed.toolNames,
+                    finishReason = parsed.finishReason
                 )
             }
 
@@ -202,6 +210,7 @@ class OpenAiCompatibleProviderAdapter(
                     hasToolCall = false,
                     finishReason = null,
                     toolCallCount = 0,
+                    toolNames = emptyList(),
                     summary = buildString {
                         appendLine("providerType: ${providerProfile.providerType}")
                         appendLine("providerId: ${providerProfile.providerId}")
@@ -220,6 +229,7 @@ class OpenAiCompatibleProviderAdapter(
                     hasToolCall = false,
                     finishReason = null,
                     toolCallCount = 0,
+                    toolNames = emptyList(),
                     summary = buildString {
                         appendLine("providerType: ${providerProfile.providerType}")
                         appendLine("providerId: ${providerProfile.providerId}")
@@ -241,6 +251,7 @@ class OpenAiCompatibleProviderAdapter(
                     hasToolCall = finishReason?.contains("tool", ignoreCase = true) == true,
                     finishReason = finishReason,
                     toolCallCount = 0,
+                    toolNames = emptyList(),
                     summary = buildString {
                         appendLine("providerType: ${providerProfile.providerType}")
                         appendLine("providerId: ${providerProfile.providerId}")
@@ -256,15 +267,19 @@ class OpenAiCompatibleProviderAdapter(
             val content = extractMessageContent(message)
             val toolCalls = message.optJSONArray("tool_calls")
             val toolCallCount = toolCalls?.length() ?: 0
+            val functionCall = message.optJSONObject("function_call")
             val hasFunctionCall = message.has("function_call") && !message.isNull("function_call")
             val hasToolLikeFinishReason = finishReason?.contains("tool", ignoreCase = true) == true ||
                     finishReason?.contains("function", ignoreCase = true) == true
+            val finalToolCallCount = toolCallCount + if (hasFunctionCall) 1 else 0
+            val toolNames = extractToolNames(toolCalls, functionCall)
 
             OpenAiCompatibleParseResult(
                 content = content,
-                hasToolCall = toolCallCount > 0 || hasFunctionCall || hasToolLikeFinishReason,
+                hasToolCall = finalToolCallCount > 0 || hasToolLikeFinishReason,
                 finishReason = finishReason,
-                toolCallCount = toolCallCount + if (hasFunctionCall) 1 else 0,
+                toolCallCount = finalToolCallCount,
+                toolNames = toolNames,
                 summary = buildString {
                     appendLine("providerType: ${providerProfile.providerType}")
                     appendLine("providerId: ${providerProfile.providerId}")
@@ -272,6 +287,9 @@ class OpenAiCompatibleProviderAdapter(
                     appendLine("endpoint: $endpoint")
                     appendLine("finish_reason: ${finishReason ?: "null"}")
                     appendLine("contentPresent: ${content.isNotBlank()}")
+                    appendLine("toolCallDetected: ${finalToolCallCount > 0 || hasToolLikeFinishReason}")
+                    appendLine("toolCallCount: $finalToolCallCount")
+                    appendLine("toolNames: ${toolNames.joinToString(prefix = "[", postfix = "]")}")
                     appendLine("tool_calls count: $toolCallCount")
                     appendLine("function_call present: $hasFunctionCall")
                     appendLine("messageKeys: ${messageKeys.joinToString(",")}")
@@ -285,6 +303,7 @@ class OpenAiCompatibleProviderAdapter(
                 hasToolCall = false,
                 finishReason = null,
                 toolCallCount = 0,
+                toolNames = emptyList(),
                 summary = "providerType=${providerProfile.providerType}\nproviderId=${providerProfile.providerId}\nparseError: ${throwable::class.java.simpleName}: ${throwable.message ?: "unknown"}"
             )
         }
@@ -322,6 +341,36 @@ class OpenAiCompatibleProviderAdapter(
             }
         }
         return parts.joinToString("\n")
+    }
+
+    private fun extractToolNames(
+        toolCalls: JSONArray?,
+        functionCall: JSONObject?
+    ): List<String> {
+        val names = linkedSetOf<String>()
+
+        if (toolCalls != null) {
+            for (index in 0 until toolCalls.length()) {
+                val toolCall = toolCalls.optJSONObject(index) ?: continue
+                val directName = toolCall.optString("name", "").takeIf { it.isNotBlank() }
+                val functionName = toolCall.optJSONObject("function")
+                    ?.optString("name", "")
+                    ?.takeIf { it.isNotBlank() }
+                val name = functionName ?: directName
+                if (!name.isNullOrBlank()) {
+                    names.add(name.take(80))
+                }
+            }
+        }
+
+        val functionName = functionCall
+            ?.optString("name", "")
+            ?.takeIf { it.isNotBlank() }
+        if (!functionName.isNullOrBlank()) {
+            names.add(functionName.take(80))
+        }
+
+        return names.toList()
     }
 
     private fun parseHttpErrorBody(
@@ -420,6 +469,7 @@ private data class OpenAiCompatibleParseResult(
     val hasToolCall: Boolean,
     val finishReason: String?,
     val toolCallCount: Int,
+    val toolNames: List<String>,
     val summary: String
 )
 
@@ -439,7 +489,11 @@ data class OpenAiCompatibleProviderResult(
     val modelName: String,
     val httpStatusCode: Int?,
     val rawBody: String?,
-    val responseSummary: String?
+    val responseSummary: String?,
+    val toolCallDetected: Boolean = false,
+    val toolCallCount: Int = 0,
+    val toolNames: List<String> = emptyList(),
+    val finishReason: String? = null
 ) {
     companion object {
         fun failure(
@@ -450,7 +504,11 @@ data class OpenAiCompatibleProviderResult(
             errorMessage: String,
             httpStatusCode: Int? = null,
             rawBody: String? = null,
-            responseSummary: String? = null
+            responseSummary: String? = null,
+            toolCallDetected: Boolean = false,
+            toolCallCount: Int = 0,
+            toolNames: List<String> = emptyList(),
+            finishReason: String? = null
         ): OpenAiCompatibleProviderResult {
             return OpenAiCompatibleProviderResult(
                 success = false,
@@ -462,7 +520,11 @@ data class OpenAiCompatibleProviderResult(
                 modelName = modelName,
                 httpStatusCode = httpStatusCode,
                 rawBody = rawBody,
-                responseSummary = responseSummary
+                responseSummary = responseSummary,
+                toolCallDetected = toolCallDetected,
+                toolCallCount = toolCallCount,
+                toolNames = toolNames,
+                finishReason = finishReason
             )
         }
     }

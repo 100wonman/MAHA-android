@@ -19,6 +19,7 @@ class ConversationEngine(
             } else {
                 providerProfileProvider(providerName)
             }
+            val toolSupportPolicy = providerProfile?.let { ToolSupportResolver.resolve(it.providerType) }
 
             if (isModelMissing(modelName)) {
                 return createModelMissingResponse(
@@ -26,7 +27,8 @@ class ConversationEngine(
                     providerName = providerName.ifBlank { "PROVIDER_UNKNOWN" },
                     modelName = modelName,
                     startedAt = startedAt,
-                    promptLength = prompt.length
+                    promptLength = prompt.length,
+                    toolSupportPolicy = toolSupportPolicy
                 )
             }
 
@@ -47,7 +49,8 @@ class ConversationEngine(
                     modelName = modelName,
                     startedAt = startedAt,
                     promptLength = prompt.length,
-                    errorType = "PROVIDER_MISSING"
+                    errorType = "PROVIDER_MISSING",
+                    toolSupportPolicy = toolSupportPolicy
                 )
             }
 
@@ -59,7 +62,8 @@ class ConversationEngine(
                         providerName = providerName,
                         modelName = modelName,
                         startedAt = startedAt,
-                        promptLength = prompt.length
+                        promptLength = prompt.length,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
 
@@ -77,7 +81,8 @@ class ConversationEngine(
                         modelName = modelName,
                         latencySec = providerResult.latencySec,
                         promptLength = prompt.length,
-                        providerResponseSummary = providerResult.responseSummary
+                        providerResponseSummary = providerResult.responseSummary,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 } else {
                     createProviderFailureResponse(
@@ -88,7 +93,8 @@ class ConversationEngine(
                         promptLength = prompt.length,
                         errorType = providerResult.errorType ?: "UNKNOWN",
                         errorMessage = providerResult.errorMessage ?: "Gemini API 호출에 실패했습니다.",
-                        responseSummary = providerResult.responseSummary
+                        responseSummary = providerResult.responseSummary,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
             }
@@ -101,7 +107,8 @@ class ConversationEngine(
                         modelName = modelName,
                         startedAt = startedAt,
                         promptLength = prompt.length,
-                        errorType = "PROVIDER_MISSING"
+                        errorType = "PROVIDER_MISSING",
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
 
@@ -112,7 +119,8 @@ class ConversationEngine(
                         modelName = modelName,
                         startedAt = startedAt,
                         promptLength = prompt.length,
-                        errorType = "BASE_URL_MISSING"
+                        errorType = "BASE_URL_MISSING",
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
 
@@ -123,7 +131,8 @@ class ConversationEngine(
                         providerName = providerName,
                         modelName = modelName,
                         startedAt = startedAt,
-                        promptLength = prompt.length
+                        promptLength = prompt.length,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
 
@@ -142,7 +151,8 @@ class ConversationEngine(
                         modelName = providerResult.modelName.ifBlank { modelName },
                         latencySec = providerResult.latencySec,
                         promptLength = prompt.length,
-                        providerResponseSummary = providerResult.responseSummary
+                        providerResponseSummary = providerResult.responseSummary,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 } else {
                     createProviderFailureResponse(
@@ -153,7 +163,8 @@ class ConversationEngine(
                         promptLength = prompt.length,
                         errorType = providerResult.errorType ?: "UNKNOWN",
                         errorMessage = providerResult.errorMessage ?: "OpenAI-compatible Provider 호출에 실패했습니다.",
-                        responseSummary = providerResult.responseSummary
+                        responseSummary = providerResult.responseSummary,
+                        toolSupportPolicy = toolSupportPolicy
                     )
                 }
             }
@@ -164,7 +175,8 @@ class ConversationEngine(
                 modelName = modelName,
                 startedAt = startedAt,
                 promptLength = prompt.length,
-                errorType = "PROVIDER_MISSING"
+                errorType = "PROVIDER_MISSING",
+                toolSupportPolicy = toolSupportPolicy
             )
         } catch (throwable: Throwable) {
             createFailureResponse(
@@ -182,20 +194,39 @@ class ConversationEngine(
         modelName: String,
         latencySec: Double,
         promptLength: Int,
-        providerResponseSummary: String? = null
+        providerResponseSummary: String? = null,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
+        val thinkingSplit = splitThinkingTaggedContent(rawText)
+        val displayText = thinkingSplit.finalText
+
+        if (displayText.isBlank()) {
+            return createThinkingOnlyResponse(
+                request = request,
+                providerName = providerName,
+                modelName = modelName,
+                latencySec = latencySec,
+                promptLength = promptLength,
+                providerResponseSummary = providerResponseSummary,
+                toolSupportPolicy = toolSupportPolicy,
+                thinkingSplit = thinkingSplit
+            )
+        }
+
         val now = System.currentTimeMillis()
         val traceText = buildTraceText(
             ragContext = request.ragContext,
             providerName = providerName,
             modelName = modelName,
             promptLength = promptLength,
-            responseLength = rawText.length,
+            responseLength = displayText.length,
             actualApiCall = true,
             errorType = null,
             providerResponseSummary = providerResponseSummary,
             status = "COMPLETED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy,
+            thinkingSplit = thinkingSplit
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -216,15 +247,22 @@ class ConversationEngine(
                         errorType = "",
                         outputSummary = "Provider 실제 호출 완료",
                         rawOutput = buildString {
-                            appendLine(rawText.take(800))
+                            appendLine(displayText.take(800))
                             appendLine()
                             appendLine("[PROVIDER_CALL]")
                             appendLine("providerName: $providerName")
                             appendLine("modelName: $modelName")
                             appendLine("promptLength: $promptLength")
-                            appendLine("responseLength: ${rawText.length}")
+                            appendLine("responseLength: ${displayText.length}")
+                            appendLine("rawResponseLength: ${rawText.length}")
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: true")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendThinkingSummaryTrace(thinkingSplit)
                             if (!providerResponseSummary.isNullOrBlank()) {
                                 appendLine()
                                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
@@ -250,7 +288,7 @@ class ConversationEngine(
                     blockId = "block_assistant_$now",
                     type = ConversationOutputBlockType.TEXT_BLOCK,
                     title = "Provider 응답",
-                    content = rawText,
+                    content = displayText,
                     collapsed = false
                 ),
                 ConversationOutputBlock(
@@ -261,11 +299,129 @@ class ConversationEngine(
                     collapsed = true
                 )
             ),
-            rawText = rawText,
+            rawText = displayText,
             providerName = providerName,
             modelName = modelName,
             latencySec = latencySec,
             errorType = null,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createThinkingOnlyResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        latencySec: Double,
+        promptLength: Int,
+        providerResponseSummary: String? = null,
+        toolSupportPolicy: ToolSupportPolicy? = null,
+        thinkingSplit: ThinkingSplitResult
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val errorType = "INVALID_RESPONSE"
+        val errorText = "표시 가능한 답변이 없습니다. 모델 응답에서 thinking/thought 태그형 내용만 감지되어 본문 표시를 중단했습니다."
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = 0,
+            actualApiCall = true,
+            errorType = errorType,
+            providerResponseSummary = providerResponseSummary,
+            status = "FAILED",
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy,
+            thinkingSplit = thinkingSplit
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Provider 응답에서 표시 가능한 본문 없음",
+                        rawOutput = buildString {
+                            appendLine(errorText)
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("rawResponseLength: ${thinkingSplit.originalLength}")
+                            appendLine("latencySec: $latencySec")
+                            appendLine("actualApiCall: true")
+                            appendLine("errorType: $errorType")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendThinkingSummaryTrace(thinkingSplit)
+                            if (!providerResponseSummary.isNullOrBlank()) {
+                                appendLine()
+                                appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                                appendLine(providerResponseSummary.take(1200))
+                            }
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Main Worker 실패로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "Provider 응답 표시 불가",
+                    content = errorText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = errorText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
+            errorType = errorType,
             runInfo = runInfo,
             createdAt = now
         )
@@ -279,7 +435,8 @@ class ConversationEngine(
         promptLength: Int,
         errorType: String,
         errorMessage: String,
-        responseSummary: String? = null
+        responseSummary: String? = null,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val safeErrorMessage = buildUserFacingErrorMessage(errorType, errorMessage)
@@ -293,7 +450,8 @@ class ConversationEngine(
             errorType = errorType,
             providerResponseSummary = responseSummary,
             status = "FAILED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -324,6 +482,10 @@ class ConversationEngine(
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: true")
                             appendLine("errorType: $errorType")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
                             if (!responseSummary.isNullOrBlank()) {
                                 appendLine()
                                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
@@ -384,7 +546,8 @@ class ConversationEngine(
         providerName: String,
         modelName: String,
         startedAt: Long,
-        promptLength: Int
+        promptLength: Int,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
@@ -399,7 +562,8 @@ class ConversationEngine(
             actualApiCall = false,
             errorType = null,
             status = "COMPLETED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -428,6 +592,10 @@ class ConversationEngine(
                             appendLine("promptLength: $promptLength")
                             appendLine("responseLength: ${rawText.length}")
                             appendLine("actualApiCall: false")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -475,7 +643,8 @@ class ConversationEngine(
         modelName: String,
         startedAt: Long,
         promptLength: Int,
-        errorType: String
+        errorType: String,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
@@ -489,7 +658,8 @@ class ConversationEngine(
             actualApiCall = false,
             errorType = errorType,
             status = "FAILED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -521,6 +691,10 @@ class ConversationEngine(
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: false")
                             appendLine("errorType: $errorType")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -575,7 +749,8 @@ class ConversationEngine(
         providerName: String,
         modelName: String,
         startedAt: Long,
-        promptLength: Int
+        promptLength: Int,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
@@ -589,7 +764,8 @@ class ConversationEngine(
             actualApiCall = false,
             errorType = "API_KEY_MISSING",
             status = "FAILED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -620,6 +796,10 @@ class ConversationEngine(
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: false")
                             appendLine("errorType: API_KEY_MISSING")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -675,7 +855,8 @@ class ConversationEngine(
         providerName: String,
         modelName: String,
         startedAt: Long,
-        promptLength: Int
+        promptLength: Int,
+        toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
@@ -689,7 +870,8 @@ class ConversationEngine(
             actualApiCall = false,
             errorType = "MODEL_MISSING",
             status = "FAILED",
-            latencySec = latencySec
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -721,6 +903,10 @@ class ConversationEngine(
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: false")
                             appendLine("errorType: MODEL_MISSING")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -836,7 +1022,9 @@ class ConversationEngine(
         errorType: String?,
         providerResponseSummary: String? = null,
         status: String = if (errorType == null) "COMPLETED" else "FAILED",
-        latencySec: Double? = null
+        latencySec: Double? = null,
+        toolSupportPolicy: ToolSupportPolicy? = null,
+        thinkingSplit: ThinkingSplitResult? = null
     ): String {
         return buildString {
             appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → 응답 생성 → 화면 갱신")
@@ -851,12 +1039,78 @@ class ConversationEngine(
             appendLine("responseLength: $responseLength")
             appendLine("latencySec: ${latencySec ?: "unknown"}")
             appendLine("errorType: ${errorType ?: "NONE"}")
+            if (toolSupportPolicy != null) {
+                appendLine()
+                appendLine(toolSupportPolicy.toTraceSummary())
+            }
+            appendLine()
+            appendThinkingSummaryTrace(thinkingSplit ?: ThinkingSplitResult.notDetected(originalLength = responseLength))
             if (!providerResponseSummary.isNullOrBlank()) {
+                appendLine()
                 appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                 appendLine(providerResponseSummary.take(1200))
             }
+            appendLine()
             append(buildRagTraceText(ragContext))
         }.trim()
+    }
+
+    private fun splitThinkingTaggedContent(rawText: String): ThinkingSplitResult {
+        if (rawText.isBlank()) {
+            return ThinkingSplitResult.notDetected(originalLength = rawText.length)
+        }
+
+        val thinkingTagRegex = Regex(
+            pattern = """(?is)<\s*(thought|thinking|thoughts)\b[^>]*>(.*?)<\s*/\s*\1\s*>"""
+        )
+        val matches = thinkingTagRegex.findAll(rawText).toList()
+        if (matches.isEmpty()) {
+            return ThinkingSplitResult.notDetected(
+                originalLength = rawText.length,
+                finalText = rawText.trim()
+            )
+        }
+
+        val extractedThinking = matches
+            .mapNotNull { match ->
+                match.groups[2]
+                    ?.value
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .joinToString("\n\n")
+            .trim()
+
+        val finalText = rawText
+            .replace(thinkingTagRegex, "")
+            .replace(Regex("""[ \t]+\n"""), "\n")
+            .replace(Regex("""\n{3,}"""), "\n\n")
+            .trim()
+
+        return ThinkingSplitResult(
+            finalText = finalText,
+            thinkingSummaryDetected = true,
+            thinkingSummaryLength = extractedThinking.length,
+            thinkingSummaryPreview = buildThinkingSummaryPreview(extractedThinking),
+            originalLength = rawText.length
+        )
+    }
+
+    private fun buildThinkingSummaryPreview(thinkingSummary: String): String {
+        if (thinkingSummary.isBlank()) return ""
+        return thinkingSummary
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(300)
+    }
+
+    private fun StringBuilder.appendThinkingSummaryTrace(thinkingSplit: ThinkingSplitResult) {
+        appendLine("[THINKING_SUMMARY]")
+        appendLine("THINKING_SUMMARY_DETECTED=${thinkingSplit.thinkingSummaryDetected}")
+        appendLine("thinkingSummaryLength=${thinkingSplit.thinkingSummaryLength}")
+        if (thinkingSplit.thinkingSummaryDetected) {
+            appendLine("thinkingSummaryPreview=${thinkingSplit.thinkingSummaryPreview}")
+        }
     }
 
     private fun buildRagTraceText(ragContext: RagContext?): String {
@@ -901,7 +1155,7 @@ class ConversationEngine(
             "MODEL_MISSING" -> "대화모드 기본 모델이 설정되지 않았습니다. Model 관리에서 기본 모델을 지정하세요."
             "INVALID_REQUEST" -> "요청 형식 또는 모델명이 올바르지 않습니다. 모델명과 Provider 설정을 확인하세요."
             "INVALID_RESPONSE" -> "응답에서 표시 가능한 텍스트를 찾지 못했습니다."
-            "TOOL_CALL_NOT_SUPPORTED" -> "이 응답은 도구 호출이 필요하지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
+            "TOOL_CALL_NOT_SUPPORTED" -> "모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
             "RATE_LIMIT" -> "요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."
             "SERVER_ERROR" -> "Provider 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
             "AUTH_FAILED" -> "Provider 인증에 실패했습니다. API Key와 Provider 설정을 확인하세요."
@@ -954,6 +1208,29 @@ class ConversationEngine(
             ProviderType.GOOGLE -> true
             ProviderType.LOCAL,
             ProviderType.CUSTOM -> false
+        }
+    }
+}
+
+private data class ThinkingSplitResult(
+    val finalText: String,
+    val thinkingSummaryDetected: Boolean,
+    val thinkingSummaryLength: Int,
+    val thinkingSummaryPreview: String,
+    val originalLength: Int
+) {
+    companion object {
+        fun notDetected(
+            originalLength: Int,
+            finalText: String = ""
+        ): ThinkingSplitResult {
+            return ThinkingSplitResult(
+                finalText = finalText,
+                thinkingSummaryDetected = false,
+                thinkingSummaryLength = 0,
+                thinkingSummaryPreview = "",
+                originalLength = originalLength
+            )
         }
     }
 }

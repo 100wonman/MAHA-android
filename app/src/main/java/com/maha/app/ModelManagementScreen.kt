@@ -527,7 +527,7 @@ private fun ModelProfileEditDialog(
                 Divider()
                 Text(text = "Capabilities", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    text = "입력 → 출력 형식으로 모델 기능을 표시합니다. 체크한 기능은 호출 시 참고 정보이며, 실제 지원 여부는 Provider/모델 정책에 따라 달라질 수 있습니다.",
+                    text = "Capability 체크는 모델 기능 표시 및 향후 호출 정책 참고값입니다. 실제 도구 실행 가능 여부는 Provider와 Adapter 지원 상태에 따라 달라집니다. 현재 대화모드는 tool/webSearch/codeExecution을 실제 실행하지 않으며, tool_call 응답은 미지원 안내로 처리됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFB8BCC6)
                 )
