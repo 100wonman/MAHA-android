@@ -1,4 +1,346 @@
 ==============================
+[2026-05-02 20:47] GeminiNativeProviderAdapter skeleton 설계
+==============================
+
+[작업]
+- Gemini native generateContent Adapter 역할 설계
+- 기존 GoogleGeminiProviderAdapter와 GeminiNativeProviderAdapter 분리 정책 확정
+- GeminiNativeRequest / GeminiNativeResult / GroundingCitation 구조 설계
+- Web Search grounding 분기 조건 설계
+- citation / grounding metadata 표시 정책 설계
+- thinking summary 실행정보 표시 정책 설계
+- 오류 처리 정책 설계
+- 1차 skeleton 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- GeminiNativeProviderAdapter는 기존 GoogleGeminiProviderAdapter와 분리한다
+- 기존 GoogleGeminiProviderAdapter는 OpenAI-compatible chat/completions 전용으로 유지한다
+- Gemini native adapter는 generateContent / Google Search grounding 전용 skeleton으로 설계한다
+- 현재 단계에서는 nativeGroundingAvailable=false를 유지한다
+- 실제 HTTP 호출, grounding 요청, citation 파싱은 구현하지 않는다
+
+[Adapter 구조]
+- 기존 GoogleGeminiProviderAdapter: 일반 Google Gemini 대화 호출의 기본 경로로 유지
+- GeminiNativeProviderAdapter: 후속 Google Search grounding 및 native generateContent 확장용 신규 adapter 후보
+- 사용 조건: providerType=GOOGLE, webSearchEnabled=true, model webSearch capability=USER_ENABLED 또는 SUPPORTED, nativeGroundingAvailable=true일 때만 후보
+
+[Native Request/Response]
+- Request: modelName, prompt, systemInstruction, enableGoogleSearch, temperature, maxOutputTokens, requestId, createdAt 후보
+- Result: success, rawText, groundingUsed, citations, searchQueries, thinkingSummary, latencySec, errorType, errorMessage, rawMetadataSummary 후보
+- Citation: title, url, snippet, sourceIndex 후보
+- thinkingSummary: ASSISTANT 본문 노출 금지, 실행정보 Thinking summary 섹션 전용
+
+[ConversationEngine 분기]
+- 조건: GOOGLE Provider + Web Search ON + webSearch capability 허용 + nativeGroundingAvailable=true
+- 현재 skeleton: nativeGroundingAvailable=false 유지, 기존 WEB_SEARCH_GROUNDING placeholder 유지
+- 후속 실제 구현: GeminiNativeProviderAdapter 호출 후 groundingExecuted/citationCount/searchQueryCount 반영
+
+[응답/출처 표시]
+- 본문: 최종 답변 text만 TEXT_BLOCK으로 표시
+- 실행정보: [WEB_SEARCH_GROUNDING]에 groundingExecuted, groundingUsed, citationCount, searchQueryCount, source 요약 표시
+- 참조 출처: 후속 UX에서 “참조 출처 보기” 기본 접힘 섹션으로 표시
+
+[오류 처리]
+- API Key: API_KEY_MISSING
+- grounding 실패: GROUNDING_FAILED
+- 모델 미지원: MODEL_UNSUPPORTED_TOOL
+- 응답 없음: INVALID_RESPONSE
+
+[1차 구현 범위]
+- GeminiNativeModels.kt 신규 추가
+- GeminiNativeRequest / GeminiNativeResult / GroundingCitation data class 추가
+- GeminiNativeProviderAdapter.kt 신규 추가
+- execute(...) skeleton은 NOT_IMPLEMENTED result만 반환
+- ConversationEngine 실제 native 호출 분기 연결은 다음 단계로 보류
+
+[보류 항목]
+- generateContent 실제 HTTP 호출
+- Google Search grounding request body 실제 구성
+- grounding metadata/citation 파싱
+- nativeGroundingAvailable=true 전환
+- ConversationEngine native adapter 실제 호출 연결
+
+[문제]
+- 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+GeminiNativeProviderAdapter skeleton 설계
+
+목표:
+- Google Search grounding을 후속 구현하기 위한 Gemini native API Adapter skeleton 구조를 설계한다.
+- 기존 GoogleGeminiProviderAdapter(OpenAI-compatible chat/completions)는 유지한다.
+- 이번 단계는 설계만 수행한다.
+- 실제 Gemini native API 호출, Google Search grounding 호출, citation 파싱은 구현하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료:
+- GoogleGeminiProviderAdapter: OpenAI-compatible chat/completions 호출
+- OpenAiCompatibleProviderAdapter: OPENAI_COMPATIBLE / LOCAL / CUSTOM 호출
+- WebSearchUsagePolicy
+- 대화방 Web Search 토글
+- WEB_SEARCH_GROUNDING 실행정보 placeholder
+- ToolSupportPolicy
+- RAG keyword 검색
+- ModelCapability V2
+
+현재 목표:
+- Web Search 토글 ON 상태에서 후속 Gemini native 호출로 확장할 수 있는 adapter 구조를 설계한다.
+
+--------------------------------------------------
+2. 핵심 결정 대상
+--------------------------------------------------
+
+확정할 것:
+
+1. GeminiNativeProviderAdapter 역할
+2. 기존 GoogleGeminiProviderAdapter와의 관계
+3. Native request / response 모델 후보
+4. Web Search grounding 요청 구조 후보
+5. citation / grounding metadata 반환 구조 후보
+6. ConversationEngine 분기 조건
+7. 오류 처리 정책
+8. 1차 skeleton 구현 범위
+
+--------------------------------------------------
+3. Adapter 분리 정책
+--------------------------------------------------
+
+기존 유지:
+- GoogleGeminiProviderAdapter
+  - OpenAI-compatible chat/completions 전용
+  - 일반 Google Gemini 대화 호출 기본 경로
+
+신규 후보:
+- GeminiNativeProviderAdapter
+  - Gemini native generateContent 전용
+  - Web Search grounding 전용 또는 native 기능 전용
+  - thinking summary / grounding metadata / citations 확장 후보
+
+정책:
+- 일반 Gemini 호출은 기존 Adapter 유지
+- Web Search grounding이 필요한 경우에만 native adapter 사용
+- native adapter가 미구현이면 기존 WEB_SEARCH_GROUNDING placeholder 유지
+
+--------------------------------------------------
+4. Native endpoint 설계
+--------------------------------------------------
+
+후속 구현 후보 endpoint:
+
+- POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+
+요청 body 후보:
+
+{
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "{prompt}"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "google_search": {}
+    }
+  ]
+}
+
+주의:
+- 실제 필드명은 구현 단계에서 공식 문서 기준 재확인
+- 이번 단계에서는 HTTP 호출 금지
+- API Key 하드코딩 금지
+
+--------------------------------------------------
+5. Native request 모델 후보
+--------------------------------------------------
+
+GeminiNativeRequest 후보 필드:
+
+- modelName: String
+- prompt: String
+- systemInstruction: String?
+- enableGoogleSearch: Boolean
+- temperature: Double?
+- maxOutputTokens: Int?
+- requestId: String
+- createdAt: Long
+
+후속 확장:
+- recentMessages
+- ragContext
+- safetySettings
+- thinkingConfig
+- responseMimeType
+- structuredOutputSchema
+
+--------------------------------------------------
+6. Native response 모델 후보
+--------------------------------------------------
+
+GeminiNativeResult 후보 필드:
+
+- success: Boolean
+- rawText: String
+- groundingUsed: Boolean
+- citations: List<GroundingCitation>
+- searchQueries: List<String>
+- thinkingSummary: String?
+- latencySec: Double
+- errorType: String?
+- errorMessage: String?
+- rawMetadataSummary: String?
+
+GroundingCitation 후보 필드:
+- title: String?
+- url: String?
+- snippet: String?
+- sourceIndex: Int?
+
+주의:
+- raw grounding metadata 전체를 ASSISTANT 본문에 노출하지 않음
+- citations는 실행정보 또는 접힘 섹션으로 표시
+
+--------------------------------------------------
+7. ConversationEngine 분기 조건
+--------------------------------------------------
+
+Gemini native adapter 후보 분기:
+
+조건:
+- providerType == GOOGLE
+- request.webSearchEnabled == true
+- WebSearchUsagePolicy.enabledByUser == true
+- model.capabilitiesV2.tools.webSearch == USER_ENABLED 또는 SUPPORTED
+- nativeGroundingAvailable == true
+
+현재 skeleton 단계:
+- nativeGroundingAvailable = false 유지 가능
+- 실제 native 호출 분기 연결은 보류 가능
+
+후속 실제 구현 단계:
+- nativeGroundingAvailable = true로 전환
+- GeminiNativeProviderAdapter 호출
+
+--------------------------------------------------
+8. 응답 표시 정책
+--------------------------------------------------
+
+성공:
+- rawText → TEXT_BLOCK
+- citations는 본문에 직접 삽입하지 않음
+- 실행정보 [WEB_SEARCH_GROUNDING]에:
+  - groundingExecuted=true
+  - groundingUsed
+  - citationCount
+  - searchQueryCount
+  - source title/url 요약
+
+후속 UX:
+- “참조 출처 보기” 접힘 섹션
+- citation 복사
+- 링크 표시
+
+thinkingSummary:
+- 답변 본문 표시 금지
+- 실행정보 Thinking summary 섹션에만 표시
+- 기본 접힘
+
+--------------------------------------------------
+9. 오류 처리 정책
+--------------------------------------------------
+
+오류 후보:
+
+- WEB_SEARCH_NOT_SUPPORTED
+- NATIVE_GEMINI_REQUIRED
+- GROUNDING_FAILED
+- MODEL_UNSUPPORTED_TOOL
+- API_KEY_MISSING
+- INVALID_REQUEST
+- INVALID_RESPONSE
+- RATE_LIMIT
+- SERVER_ERROR
+- TIMEOUT
+- UNKNOWN
+
+정책:
+- API Key 없음: API_KEY_MISSING
+- 모델이 grounding을 거부: MODEL_UNSUPPORTED_TOOL
+- native 응답에 text 없음: INVALID_RESPONSE
+- grounding metadata 없음:
+  - 답변 text가 있으면 SUCCESS + groundingUsed=false 가능
+  - 답변 text도 없으면 INVALID_RESPONSE
+
+--------------------------------------------------
+10. 1차 skeleton 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- GeminiNativeModels.kt 추가
+  - GeminiNativeRequest
+  - GeminiNativeResult
+  - GroundingCitation
+- GeminiNativeProviderAdapter.kt 추가
+  - execute(...) skeleton
+  - 현재는 실제 HTTP 호출 없이 NOT_IMPLEMENTED result 반환
+- ConversationEngine에 native adapter 호출은 아직 연결하지 않거나 feature flag false로 유지
+- WebSearchUsagePolicy의 nativeGroundingAvailable=false 유지
+- 실행정보 WEB_SEARCH_GROUNDING placeholder 유지
+
+또는:
+- Adapter skeleton만 추가하고 ConversationEngine 변경 없음
+
+권장:
+- Adapter skeleton + models 추가
+- ConversationEngine 실제 분기 연결은 다음 단계
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 generateContent 호출
+❌ Google Search grounding 요청 구현
+❌ citations 파싱 구현
+❌ 기존 GoogleGeminiProviderAdapter 대체
+❌ WebSearchUsagePolicy nativeGroundingAvailable=true 변경
+❌ RAG 토글과 Web Search 토글 통합
+❌ streaming 구현
+❌ tool execution 구현
+
+--------------------------------------------------
+완료 기준:
+- GeminiNativeProviderAdapter 역할 확정
+- Native request/response 모델 후보 확정
+- GroundingCitation 구조 확정
+- ConversationEngine 분기 조건 확정
+- 응답/출처 표시 정책 확정
+- 오류 처리 정책 확정
+- 1차 skeleton 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+GeminiNativeProviderAdapter skeleton 구현
+
+==============================
 [2026-05-02 20:39] WebSearchUsagePolicy 및 Web Search UI skeleton 구현
 ==============================
 
