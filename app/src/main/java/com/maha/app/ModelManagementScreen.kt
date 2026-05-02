@@ -494,18 +494,33 @@ private fun ModelProfileEditDialog(
 
                 Divider()
                 Text(text = "Capabilities", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = "입력 → 출력 형식으로 모델 기능을 표시합니다. 체크한 기능은 호출 시 참고 정보이며, 실제 지원 여부는 Provider/모델 정책에 따라 달라질 수 있습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFB8BCC6)
+                )
 
-                CapabilityCheckbox(label = "Text", checked = textCap, onCheckedChange = { textCap = it })
-                CapabilityCheckbox(label = "Code", checked = codeCap, onCheckedChange = { codeCap = it })
-                CapabilityCheckbox(label = "Vision", checked = visionCap, onCheckedChange = { visionCap = it })
-                CapabilityCheckbox(label = "Audio", checked = audioCap, onCheckedChange = { audioCap = it })
-                CapabilityCheckbox(label = "Video", checked = videoCap, onCheckedChange = { videoCap = it })
-                CapabilityCheckbox(label = "Tool Calling", checked = toolCallingCap, onCheckedChange = { toolCallingCap = it })
-                CapabilityCheckbox(label = "Function Calling", checked = functionCallingCap, onCheckedChange = { functionCallingCap = it })
-                CapabilityCheckbox(label = "Web Search", checked = webSearchCap, onCheckedChange = { webSearchCap = it })
-                CapabilityCheckbox(label = "JSON Mode", checked = jsonModeCap, onCheckedChange = { jsonModeCap = it })
-                CapabilityCheckbox(label = "Image Generation", checked = imageGenerationCap, onCheckedChange = { imageGenerationCap = it })
-                CapabilityCheckbox(label = "Structured Output", checked = structuredOutputCap, onCheckedChange = { structuredOutputCap = it })
+                CapabilityGroupHeader(text = "입력 → 출력")
+                CapabilityCheckbox(label = "text → text", checked = textCap, onCheckedChange = { textCap = it })
+                CapabilityCheckbox(label = "text → code", checked = codeCap, onCheckedChange = { codeCap = it })
+                CapabilityCheckbox(label = "text → json", checked = jsonModeCap, onCheckedChange = { jsonModeCap = it })
+                CapabilityCheckbox(label = "image → text", checked = visionCap, onCheckedChange = { visionCap = it })
+                CapabilityCheckbox(label = "audio → text", checked = audioCap, onCheckedChange = { audioCap = it })
+                CapabilityCheckbox(label = "video → text", checked = videoCap, onCheckedChange = { videoCap = it })
+                CapabilityCheckbox(label = "text → image", checked = imageGenerationCap, onCheckedChange = { imageGenerationCap = it })
+
+                CapabilityGroupHeader(text = "도구")
+                CapabilityCheckbox(label = "tool calling", checked = toolCallingCap, onCheckedChange = { toolCallingCap = it })
+                CapabilityCheckbox(label = "function calling", checked = functionCallingCap, onCheckedChange = { functionCallingCap = it })
+                CapabilityCheckbox(label = "web search", checked = webSearchCap, onCheckedChange = { webSearchCap = it })
+                CapabilityCheckbox(label = "structured output", checked = structuredOutputCap, onCheckedChange = { structuredOutputCap = it })
+
+                CapabilityGroupHeader(text = "추론")
+                Text(
+                    text = "thinking summary: 현재 저장 필드 없음 / 후속 단계에서 지원 예정",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFB8BCC6)
+                )
 
                 Divider()
                 ToggleRow(label = "즐겨찾기", checked = isFavorite, onCheckedChange = { isFavorite = it })
@@ -605,6 +620,18 @@ private fun LocalModelGuideCard() {
             )
         }
     }
+}
+
+
+@Composable
+private fun CapabilityGroupHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFFD0D3DA),
+        modifier = Modifier.padding(top = 8.dp)
+    )
 }
 
 @Composable

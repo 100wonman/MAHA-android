@@ -1,4 +1,237 @@
+==============================
+[2026-05-02 17:29] Model capability 체크박스 표기 직관화
+==============================
 
+[작업]
+- Model 추가/수정 Dialog capability 체크박스 라벨 정리
+- 기존 단일 기능명 표기를 input→output 형식으로 변경
+- capability 항목을 입력→출력 / 도구 / 추론 그룹으로 구분
+- 기존 Boolean capability 저장 구조 유지
+- ModelCapability V2 badge 표시와 의미 정렬
+- 실제 tool/webSearch/thinking 구현은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 모델 추가/수정 Dialog의 capability 체크박스 라벨을 input→output 기준으로 변경
+- capability 체크박스를 [입력 → 출력] / [도구] / [추론] 그룹으로 구분
+- capability 섹션 상단에 실제 지원 여부 안내 문구 추가
+- thinking summary는 현재 저장 필드가 없어 안내 텍스트로만 표시
+- 기존 Boolean 저장값과 ModelCapability V2 badge 로직은 변경하지 않음
+
+[Capability 라벨 테스트]
+- 모델 추가 Dialog: Model 관리 → 모델 추가 → capability 섹션 그룹 표시 확인
+- 모델 수정 Dialog: 기존 모델 수정 → capability 섹션 그룹 표시 확인
+- 입력→출력 라벨: text→text / text→code / text→json / image→text / audio→text / video→text / text→image 확인
+- 도구 라벨: tool calling / function calling / web search / structured output 확인
+- 기존 값 저장/로드: 체크값 변경 후 저장 → 다시 수정 Dialog 열어 값 유지 확인
+
+[기존 기능 영향]
+- Model 카드 badge: Model 카드의 input/output/tools/reasoning badge 기존 표시 확인
+- Google 모델 목록 조회: Provider 관리 → Google 모델 목록 불러오기 → 모델 추가 확인
+- Gemini 대화 호출: 기존 Google Provider + 기본 모델로 메시지 전송 확인
+- Provider 관리: Provider 추가/수정/삭제/토글 확인
+- RAG: 검색 ON/OFF, RAG 섹션, 참조 컨텍스트 보기 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[문제]
+- 없음
+또는
+- 발생한 문제 내용
+
+[변경 파일]
+- ModelManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Model capability 체크박스 표기 직관화
+
+목표:
+- Model 관리 > 모델 수정 Dialog의 capability 체크박스 표기를 기존 단일 기능명에서 input→output / tool / reasoning 기준으로 직관화한다.
+- 저장 구조와 capability 로직은 변경하지 않고 UI 라벨만 정리한다.
+- 기존 ModelCapability V2 badge 표기와 의미가 맞도록 수정한다.
+
+--------------------------------------------------
+1. 현재 문제
+--------------------------------------------------
+
+현재:
+- capability 체크박스가 text, code, vision, audio, video, toolCalling 등 단일 기능명 중심으로 표시됨
+
+문제:
+- 사용자가 “입력인지 출력인지” 직관적으로 이해하기 어려움
+- 예: code가 “코드 입력”인지 “코드 출력”인지 불명확함
+
+목표:
+- 체크박스 라벨을 기능 방향 중심으로 변경
+
+예:
+- text → text
+- text → code
+- text → json
+- image → text
+- audio → text
+- video → text
+- tool calling
+- web search
+- thinking summary
+
+--------------------------------------------------
+2. 수정 범위
+--------------------------------------------------
+
+대상:
+- ModelManagementScreen.kt
+- 모델 추가/수정 Dialog 내 capability 체크박스 라벨
+
+이번 단계에서 구현:
+✔ 체크박스 라벨 변경
+✔ 입력/출력/도구/추론 그룹 구분 표시
+✔ 기존 저장값 매핑 유지
+✔ 기존 ConversationModelCapability Boolean 구조 유지
+✔ ModelCapability V2 badge 표시 유지
+
+이번 단계에서 금지:
+❌ ProviderSettingsModels 구조 변경
+❌ model_profiles.json 구조 변경
+❌ capability 저장 로직 변경
+❌ 실제 tool calling 구현
+❌ webSearch 호출 구현
+❌ thinking 구현
+❌ Model 관리 UI 대규모 재작성
+
+--------------------------------------------------
+3. 라벨 매핑 정책
+--------------------------------------------------
+
+기존 ConversationModelCapability 필드 기준 라벨만 변경한다.
+
+권장 매핑:
+
+text:
+- "text → text"
+
+code:
+- "text → code"
+
+vision:
+- "image → text"
+
+audio:
+- "audio → text"
+
+video:
+- "video → text"
+
+functionCalling:
+- "tool calling"
+
+toolCalling:
+- "function/tool calling"
+  또는 기존 필드가 별도면 "tool calling"
+
+webSearch:
+- "web search"
+
+jsonMode:
+- "text → json"
+
+imageGeneration:
+- "text → image"
+
+structuredOutput:
+- "structured output"
+
+주의:
+- 기존 필드 의미를 바꾸지 말 것
+- 저장되는 Boolean 값은 기존과 동일
+- 라벨만 직관적으로 변경
+
+--------------------------------------------------
+4. 그룹 표시 정책
+--------------------------------------------------
+
+Dialog 안에서 체크박스를 그룹화한다.
+
+[입력 → 출력]
+- text → text
+- text → code
+- text → json
+- image → text
+- audio → text
+- video → text
+- text → image
+
+[도구]
+- function/tool calling
+- web search
+- structured output
+
+[추론]
+- thinking summary는 현재 Boolean 필드가 없으면 표시하지 않거나 disabled 안내만 표시
+- 실제 thinking 구현 금지
+
+주의:
+- 현재 데이터 모델에 없는 항목을 저장 가능한 체크박스로 새로 만들지 말 것
+- 없는 항목은 안내 텍스트로만 표시 가능
+
+--------------------------------------------------
+5. UX 문구
+--------------------------------------------------
+
+Dialog capability 섹션 상단에 짧은 안내 추가:
+
+"입력 → 출력 형식으로 모델 기능을 표시합니다. 실제 지원 여부는 Provider/모델에 따라 다를 수 있습니다."
+
+또는:
+
+"체크한 기능은 호출 시 참고 정보로 사용되며, 실제 지원은 모델 API 정책에 따라 달라질 수 있습니다."
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 모델 추가
+- 모델 수정
+- 모델 삭제
+- 즐겨찾기
+- 기본 모델 지정
+- capability 저장/로드
+- ModelCapability V2 badge 표시
+- Google 모델 목록 조회
+- Gemini 대화 호출
+- Provider 관리
+- RAG
+- SAF 백업/복원
+- 작업모드
+
+--------------------------------------------------
+7. 완료 기준
+--------------------------------------------------
+
+- 모델 추가 Dialog capability 체크박스 라벨이 input→output 방식으로 표시됨
+- 모델 수정 Dialog capability 체크박스 라벨이 input→output 방식으로 표시됨
+- 기존 체크박스 저장/로드 정상
+- 기존 모델 capability 값 유지
+- Model 카드 V2 badge 표시 정상
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Gemini 호출 UX 보정 또는 OpenAI-compatible Adapter 일반화 설계
 
 ==============================
 [2026-05-02 17:22] ModelCapability V2 및 metadata 표시 1차 구현
