@@ -61,7 +61,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -1696,12 +1698,65 @@ private fun ConversationGlobalSettingsScreen(
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
+    val settingsScope = rememberCoroutineScope()
+    val settingsBackupManager = remember(context) { SettingsBackupManager(context) }
     var modelApiSettingsSummary by remember { mutableStateOf(ModelApiSettingsSummary()) }
+    var settingsBackupEntries by remember { mutableStateOf<List<SettingsBackupEntry>>(emptyList()) }
+    var settingsBackupMessage by remember { mutableStateOf("") }
+    var isSettingsBackupRunning by remember { mutableStateOf(false) }
+    var showSettingsRestoreDialog by remember { mutableStateOf(false) }
+    var pendingSettingsRestoreEntry by remember { mutableStateOf<SettingsBackupEntry?>(null) }
+
+    fun reloadModelApiSettingsUi() {
+        settingsScope.launch {
+            modelApiSettingsSummary = withContext(Dispatchers.IO) {
+                loadModelApiSettingsSummary(context)
+            }
+            settingsBackupEntries = withContext(Dispatchers.IO) {
+                settingsBackupManager.listSettingsBackupsFromSaf()
+            }
+        }
+    }
 
     LaunchedEffect(selectedPage) {
         if (selectedPage == null || selectedPage == "modelApi") {
-            modelApiSettingsSummary = loadModelApiSettingsSummary(context)
+            modelApiSettingsSummary = withContext(Dispatchers.IO) {
+                loadModelApiSettingsSummary(context)
+            }
+            settingsBackupEntries = withContext(Dispatchers.IO) {
+                settingsBackupManager.listSettingsBackupsFromSaf()
+            }
         }
+    }
+
+    if (showSettingsRestoreDialog) {
+        SettingsBackupListDialog(
+            backups = settingsBackupEntries,
+            onDismiss = { showSettingsRestoreDialog = false },
+            onSelectBackup = { entry ->
+                pendingSettingsRestoreEntry = entry
+                showSettingsRestoreDialog = false
+            }
+        )
+    }
+
+    pendingSettingsRestoreEntry?.let { entry ->
+        SettingsRestoreConfirmDialog(
+            backup = entry,
+            onDismiss = { pendingSettingsRestoreEntry = null },
+            onConfirm = {
+                pendingSettingsRestoreEntry = null
+                isSettingsBackupRunning = true
+                settingsScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        settingsBackupManager.restoreSettingsBackupFromSaf(entry.folderName)
+                    }
+                    settingsBackupMessage = result.message
+                    isSettingsBackupRunning = false
+                    reloadModelApiSettingsUi()
+                }
+            }
+        )
     }
 
     Box(
@@ -1940,6 +1995,33 @@ private fun ConversationGlobalSettingsScreen(
                     item {
                         ModelApiWarningCards(
                             summary = modelApiSettingsSummary
+                        )
+                    }
+
+                    item {
+                        ModelApiSettingsBackupCard(
+                            backupCount = settingsBackupEntries.size,
+                            message = settingsBackupMessage,
+                            isRunning = isSettingsBackupRunning,
+                            onBackupClick = {
+                                isSettingsBackupRunning = true
+                                settingsScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        settingsBackupManager.backupModelApiSettingsToSaf()
+                                    }
+                                    settingsBackupMessage = result.message
+                                    isSettingsBackupRunning = false
+                                    reloadModelApiSettingsUi()
+                                }
+                            },
+                            onRestoreClick = {
+                                settingsScope.launch {
+                                    settingsBackupEntries = withContext(Dispatchers.IO) {
+                                        settingsBackupManager.listSettingsBackupsFromSaf()
+                                    }
+                                    showSettingsRestoreDialog = true
+                                }
+                            }
                         )
                     }
 
@@ -2249,6 +2331,172 @@ private fun ModelApiNavigationCard(
             )
         }
     }
+}
+
+@Composable
+private fun ModelApiSettingsBackupCard(
+    backupCount: Int,
+    message: String,
+    isRunning: Boolean,
+    onBackupClick: () -> Unit,
+    onRestoreClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF263244)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "모델/API 설정 백업·복원",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = "Provider / Model 설정만 백업합니다.",
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = "API Key는 보안상 백업되지 않습니다. 복원 후 다시 입력해야 합니다.",
+                color = Color(0xFFFFD9A8)
+            )
+
+            Text(
+                text = "감지된 설정 백업: ${backupCount}개",
+                color = Color(0xFF9FB7D9)
+            )
+
+            if (message.isNotBlank()) {
+                Text(
+                    text = message,
+                    color = Color(0xFFD0D3DA)
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(
+                    onClick = onBackupClick,
+                    enabled = !isRunning,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = if (isRunning) "처리 중" else "설정 백업")
+                }
+
+                TextButton(
+                    onClick = onRestoreClick,
+                    enabled = !isRunning,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(text = "설정 복원")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsBackupListDialog(
+    backups: List<SettingsBackupEntry>,
+    onDismiss: () -> Unit,
+    onSelectBackup: (SettingsBackupEntry) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "설정 백업 선택")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "복원은 현재 Provider/Model 설정에 병합됩니다. 같은 ID는 건너뜁니다. API Key는 복원되지 않습니다."
+                )
+
+                if (backups.isEmpty()) {
+                    Text(text = "표시할 설정 백업이 없습니다.")
+                } else {
+                    backups.forEach { backup ->
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF3A3F49)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = backup.folderName,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Provider ${backup.providerCount}개 · Model ${backup.modelCount}개 · API Key 미포함",
+                                    color = Color(0xFFD0D3DA)
+                                )
+                                Button(
+                                    onClick = { onSelectBackup(backup) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(text = "복원")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SettingsRestoreConfirmDialog(
+    backup: SettingsBackupEntry,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "설정 복원 확인")
+        },
+        text = {
+            Text(
+                text = "${backup.folderName} 백업을 현재 Provider/Model 설정에 병합합니다. 같은 providerId/modelId는 건너뜁니다. API Key는 복원되지 않습니다."
+            )
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(text = "복원")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "취소")
+            }
+        }
+    )
 }
 
 @Composable
