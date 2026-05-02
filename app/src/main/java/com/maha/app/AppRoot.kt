@@ -315,6 +315,10 @@ fun AppRoot() {
                 selectedConversationSettingsPage = "rag"
             }
 
+            conversationDrawerState.isOpen && selectedConversationSettingsPage == "providerManagement" -> {
+                selectedConversationSettingsPage = "modelApi"
+            }
+
             conversationDrawerState.isOpen && selectedConversationSettingsPage != null -> {
                 selectedConversationSettingsPage = null
             }
@@ -569,10 +573,10 @@ fun AppRoot() {
                                 conversationViewModel.clearSelectedSession()
                             }
                         },
-                        onStorageChanged = conversationViewModel::reloadSessionsFromStorage,
                         onBackClick = {
                             when (selectedConversationSettingsPage) {
                                 "storage" -> selectedConversationSettingsPage = "rag"
+                                "providerManagement" -> selectedConversationSettingsPage = "modelApi"
                                 null -> scope.launch { conversationDrawerState.close() }
                                 else -> selectedConversationSettingsPage = null
                             }
@@ -1677,7 +1681,6 @@ private fun ConversationGlobalSettingsScreen(
     onUseFallbackStorageClick: () -> Unit,
     onImportAppSpecificStorageClick: () -> Unit,
     onDeleteAppSpecificSession: (String) -> Unit,
-    onStorageChanged: () -> Unit,
     onBackClick: () -> Unit
 ) {
     Box(
@@ -1706,8 +1709,33 @@ private fun ConversationGlobalSettingsScreen(
 
                 StorageManagementScreen(
                     modifier = Modifier.fillMaxWidth(),
-                    onSessionDeleted = onDeleteAppSpecificSession,
-                    onStorageChanged = onStorageChanged
+                    onSessionDeleted = onDeleteAppSpecificSession
+                )
+            }
+            return@Box
+        }
+
+        if (selectedPage == "providerManagement") {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                TextButton(onClick = onBackClick) {
+                    Text(text = "←", color = Color.White)
+                }
+
+                Text(
+                    text = "Provider 관리",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                ProviderManagementScreen(
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
             return@Box
@@ -1778,6 +1806,15 @@ private fun ConversationGlobalSettingsScreen(
                         onClick = { onPageSelected("rag") }
                     )
                 }
+
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "모델 / API 설정",
+                        subtitle = "대화모드 Provider, API Key, 모델 설정",
+                        onClick = { onPageSelected("modelApi") }
+                    )
+                }
             } else {
                 item {
                     Text(
@@ -1786,6 +1823,8 @@ private fun ConversationGlobalSettingsScreen(
                             "general" -> "일반 설정"
                             "output" -> "출력 블록 설정"
                             "rag" -> "메모리 / RAG"
+                            "modelApi" -> "모델 / API 설정"
+                            "providerManagement" -> "Provider 관리"
                             else -> "대화 설정"
                         },
                         style = MaterialTheme.typography.headlineMedium,
@@ -1819,6 +1858,8 @@ private fun ConversationGlobalSettingsScreen(
                                     "general" -> "일반 설정 상세 페이지"
                                     "output" -> "출력 블록 설정 상세 페이지"
                                     "rag" -> "메모리 / RAG 상세 페이지"
+                                    "modelApi" -> "모델 / API 설정 상세 페이지"
+                                    "providerManagement" -> "Provider 관리"
                                     else -> "대화 설정 상세 페이지"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
@@ -1830,6 +1871,41 @@ private fun ConversationGlobalSettingsScreen(
                                 text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
                                 color = Color(0xFFD0D3DA)
                             )
+                        }
+                    }
+                }
+
+                if (selectedPage == "modelApi") {
+                    item {
+                        ConversationGlobalSettingsCard(
+                            title = "Provider 관리",
+                            subtitle = "대화모드 Provider 추가, 수정, 삭제, 활성 상태 관리",
+                            onClick = { onPageSelected("providerManagement") }
+                        )
+                    }
+
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF3A3F49)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "모델 관리",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "모델 목록과 capability 설정은 후속 단계에서 연결합니다.",
+                                    color = Color(0xFFD0D3DA)
+                                )
+                            }
                         }
                     }
                 }

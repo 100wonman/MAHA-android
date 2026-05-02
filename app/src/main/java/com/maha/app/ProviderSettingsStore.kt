@@ -30,6 +30,8 @@ class ProviderSettingsStore(
         if (!modelProfilesFile.exists()) {
             createEmptyModelFile()
         }
+
+        ensureDefaultProviderProfiles()
     }
 
     fun createEmptyProviderFile() {
@@ -37,6 +39,7 @@ class ProviderSettingsStore(
         providerProfilesFile.writeText(
             JSONObject()
                 .put("version", 1)
+                .put("defaultProvidersSeeded", false)
                 .put("providers", JSONArray())
                 .toString(2)
         )
@@ -71,16 +74,19 @@ class ProviderSettingsStore(
     }
 
     fun saveProviderProfiles(providers: List<ProviderProfile>) {
-        ensureSettingsFiles()
+        ensureSettingsDirOnly()
 
         val array = JSONArray()
         providers.forEach { profile ->
             array.put(profile.toJsonObject())
         }
 
+        val existingSeeded = readProviderSeedFlag()
+
         providerProfilesFile.writeText(
             JSONObject()
                 .put("version", 1)
+                .put("defaultProvidersSeeded", existingSeeded)
                 .put("providers", array)
                 .toString(2)
         )
@@ -176,6 +182,93 @@ class ProviderSettingsStore(
         if (!settingsDir.exists()) {
             settingsDir.mkdirs()
         }
+    }
+
+    private fun ensureDefaultProviderProfiles() {
+        ensureSettingsDirOnly()
+
+        val now = System.currentTimeMillis()
+        val root = runCatching {
+            JSONObject(providerProfilesFile.readText())
+        }.getOrElse {
+            JSONObject()
+                .put("version", 1)
+                .put("defaultProvidersSeeded", false)
+                .put("providers", JSONArray())
+        }
+
+        val alreadySeeded = root.optBoolean("defaultProvidersSeeded", false)
+        if (alreadySeeded) return
+
+        val providersArray = root.optJSONArray("providers") ?: JSONArray()
+        val existingProviders = buildList {
+            for (index in 0 until providersArray.length()) {
+                val item = providersArray.optJSONObject(index) ?: continue
+                add(item.toProviderProfile())
+            }
+        }
+
+        val defaultProviders = createDefaultProviderProfiles(now)
+        val existingIds = existingProviders.map { it.providerId }.toSet()
+        val providersToAdd = defaultProviders.filterNot { it.providerId in existingIds }
+        val updatedProviders = existingProviders + providersToAdd
+
+        val updatedArray = JSONArray()
+        updatedProviders.forEach { provider ->
+            updatedArray.put(provider.toJsonObject())
+        }
+
+        providerProfilesFile.writeText(
+            JSONObject()
+                .put("version", 1)
+                .put("defaultProvidersSeeded", true)
+                .put("providers", updatedArray)
+                .toString(2)
+        )
+    }
+
+    private fun createDefaultProviderProfiles(now: Long): List<ProviderProfile> {
+        return listOf(
+            ProviderProfile(
+                providerId = "provider_google_gemini_openai",
+                displayName = "Google Gemini",
+                providerType = ProviderType.GOOGLE,
+                baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai/",
+                apiKeyAlias = null,
+                modelListEndpoint = "https://generativelanguage.googleapis.com/v1beta/openai/models",
+                isEnabled = true,
+                createdAt = now,
+                updatedAt = now
+            ),
+            ProviderProfile(
+                providerId = "provider_groq_openai",
+                displayName = "GROQ",
+                providerType = ProviderType.OPENAI_COMPATIBLE,
+                baseUrl = "https://api.groq.com/openai/v1",
+                apiKeyAlias = null,
+                modelListEndpoint = "https://api.groq.com/openai/v1/models",
+                isEnabled = true,
+                createdAt = now,
+                updatedAt = now
+            ),
+            ProviderProfile(
+                providerId = "provider_openrouter_openai",
+                displayName = "OpenRouter",
+                providerType = ProviderType.OPENAI_COMPATIBLE,
+                baseUrl = "https://openrouter.ai/api/v1",
+                apiKeyAlias = null,
+                modelListEndpoint = "https://openrouter.ai/api/v1/models",
+                isEnabled = true,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+    }
+
+    private fun readProviderSeedFlag(): Boolean {
+        return runCatching {
+            JSONObject(providerProfilesFile.readText()).optBoolean("defaultProvidersSeeded", false)
+        }.getOrDefault(false)
     }
 
     private fun JSONObject.toProviderProfile(): ProviderProfile {

@@ -1,4 +1,254 @@
 ==============================
+[2026-05-02 11:03] Provider 관리 UI skeleton 구현
+==============================
+
+[작업]
+- 대화모드 전역 설정에 모델/API 설정 항목 추가
+- Provider 관리 화면 추가
+- Provider 목록 표시 UI 추가
+- Provider 추가/수정 Dialog 추가
+- Provider 삭제 확인 Dialog 추가
+- Provider 활성/비활성 토글 추가
+- ProviderSettingsStore 저장/로드 UI 연결
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 대화모드 전역 설정 메인에 “모델 / API 설정” 항목 추가
+- 모델 / API 설정 하위에 “Provider 관리” 진입 카드 추가
+- Provider 목록 표시, 추가, 수정, 삭제, 활성/비활성 토글 구현
+- provider_profiles.json 저장/로드를 ProviderSettingsStore와 연결
+- Google Gemini / GROQ / OpenRouter 기본 Provider Profile을 API Key 없이 1회 seed 저장하도록 추가
+
+[Provider 기본값 정책]
+- 저장 위치: MAHA/settings/provider_profiles.json
+- 기본값 생성 방식: provider_profiles.json이 비어 있고 defaultProvidersSeeded=false일 때만 1회 자동 저장
+- API Key: 기본 Provider에는 원문 API Key 저장 없음 / 미설정 상태로 표시
+- 수정/삭제 유지: 사용자가 수정/삭제하면 provider_profiles.json에 반영되고 재시작 후 유지
+- 재생성 방지: defaultProvidersSeeded 플래그로 삭제한 기본 Provider가 자동 재생성되지 않도록 처리
+
+[Provider UI 테스트]
+- 모델/API 설정 진입: 대화모드 전역 설정 → 모델 / API 설정 클릭 → 화면 진입 확인
+- Provider 목록 표시: Provider 관리 클릭 → Provider 카드 목록 또는 “등록된 Provider가 없습니다” 표시 확인
+- 기본 Provider 표시: Provider 관리 진입 → Google Gemini / GROQ / OpenRouter 카드 표시 확인
+- API Key 미설정: 각 기본 Provider 카드의 API Key 상태가 “미설정”인지 확인
+- Provider 추가: Provider 추가 → 이름/type/baseUrl/API Key 입력 → 저장 → 목록에 표시 확인
+- Provider 수정: Provider 카드 수정 → 이름/baseUrl/API Key 상태 변경 → 저장 → 변경값 유지 확인
+- Provider 삭제: Provider 카드 삭제 → 확인 → 목록에서 제거 확인
+- 활성/비활성: 카드 오른쪽 스위치 토글 → 상태 변경 확인
+- 앱 재시작 후 유지: 앱 재시작 → Provider 관리 재진입 → 추가/수정/삭제/토글 결과 유지 확인
+
+[기존 기능 영향]
+- 대화모드 설정: 일반/대화/출력블록/메모리-RAG 기존 진입 확인
+- ConversationEngine dry-run: 대화방 메시지 전송 → 기존 Dummy/ERROR dry-run 흐름 확인
+- RAG 검색/인덱싱: 저장소 관리 → RAG 검색/선택 세션 인덱싱 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[참고한 기본 Endpoint]
+- Google Gemini: baseUrl=https://generativelanguage.googleapis.com/v1beta/openai/ , models endpoint=/models
+- GROQ: baseUrl=https://api.groq.com/openai/v1 , models endpoint=/models
+- OpenRouter: baseUrl=https://openrouter.ai/api/v1 , models endpoint=/models
+
+[문제]
+- 기본 Provider 목록 자체는 ProviderSettingsStore.kt의 seed 데이터로 존재함
+- 하지만 실제 사용자 설정값은 provider_profiles.json에 저장됨
+- API Key 원문은 기본값으로 저장하지 않음
+
+[변경 파일]
+- AppRoot.kt
+- ProviderManagementScreen.kt
+- ProviderSettingsStore.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+[구현 모드]
+
+작업명:
+Provider 관리 UI skeleton 구현
+
+목표:
+- 대화모드 전역 설정에서 Provider를 추가/수정/삭제할 수 있는 기본 UI를 구현한다.
+- ProviderSettingsStore의 provider_profiles.json 저장/로드 기능을 실제 화면과 연결한다.
+- 이번 단계에서는 실제 API 호출, 연결 테스트, 모델 목록 조회는 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 대화모드 전역 설정 > 모델/API 설정 항목 추가
+✔ Provider 관리 화면 추가
+✔ Provider 목록 표시
+✔ Provider 추가 Dialog
+✔ Provider 수정 Dialog
+✔ Provider 삭제
+✔ Provider 활성/비활성 토글
+✔ provider_profiles.json 저장/로드 연결
+
+이번 단계에서 금지:
+
+❌ 실제 API 호출
+❌ 연결 테스트 네트워크 호출
+❌ 모델 목록 실제 조회
+❌ API Key 유효성 검증
+❌ ConversationEngine 실제 Provider 호출 연결
+❌ 작업모드 Provider 구조 수정
+❌ Model 관리 UI 구현
+
+--------------------------------------------------
+2. 화면 위치
+--------------------------------------------------
+
+경로:
+
+대화모드 전역 설정
+→ 모델/API 설정
+→ Provider 관리
+
+주의:
+- 기존 일반 설정 / 대화 설정 / 출력블록 설정 / 메모리-RAG 구조를 깨지 말 것
+- 모델/API 설정 항목이 없다면 전역 설정 메인에 새 항목으로 추가
+
+--------------------------------------------------
+3. Provider 관리 화면
+--------------------------------------------------
+
+표시 항목:
+
+- Provider 이름
+- Provider Type
+- Base URL
+- API Key 상태
+  - 설정됨 / 미설정
+  - 원문 노출 금지
+- 활성 상태
+- 수정 버튼
+- 삭제 버튼
+
+상단 또는 하단:
+- Provider 추가 버튼
+
+--------------------------------------------------
+4. Provider 추가 Dialog
+--------------------------------------------------
+
+입력 필드:
+
+- Provider 이름
+- Provider Type 선택
+  - GOOGLE
+  - OPENAI_COMPATIBLE
+  - NVIDIA
+  - LOCAL
+  - CUSTOM
+- Base URL
+- API Key 입력
+- Model List Endpoint optional
+- 활성화 여부
+
+저장 시:
+- providerId 생성
+- ProviderProfile 생성
+- ProviderSettingsStore.addProviderProfile 호출
+- UI 목록 갱신
+
+주의:
+- API Key 원문 저장 정책은 현재 store 구조에 맞춘다.
+- apiKeyAlias 필드만 있다면 임시로 providerId 또는 "stored" 등으로 표시하고, 실제 키 저장은 후속으로 분리 가능
+- 이번 단계에서는 보안 고도화 금지
+
+--------------------------------------------------
+5. Provider 수정 Dialog
+--------------------------------------------------
+
+수정 가능:
+- displayName
+- providerType
+- baseUrl
+- apiKeyAlias 또는 API Key 상태값
+- modelListEndpoint
+- isEnabled
+
+수정 후:
+- ProviderSettingsStore.updateProviderProfile 호출
+- UI 목록 갱신
+
+--------------------------------------------------
+6. Provider 삭제
+--------------------------------------------------
+
+삭제 버튼 클릭:
+- 확인 Dialog 표시
+- 확인 시 ProviderSettingsStore.deleteProviderProfile(providerId)
+- UI 목록 갱신
+
+주의:
+- 삭제 시 model_profiles와의 연동 삭제는 후속 단계
+- 이번 단계에서는 provider profile만 삭제
+
+--------------------------------------------------
+7. 상태 관리
+--------------------------------------------------
+
+권장:
+- UI local state로 provider list 유지
+- 화면 진입 시 loadProviderProfiles()
+- 추가/수정/삭제 후 reload 또는 state 갱신
+
+주의:
+- recomposition마다 파일 읽기 금지
+- LaunchedEffect(Unit) 또는 화면 진입 시 1회 로드
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화모드 Drawer
+- 설정 화면 스크롤
+- 저장소 관리
+- RAG 검색/인덱싱
+- SAF 백업/복원
+- ConversationEngine dry-run
+- 작업모드 기능
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 네트워크 호출 금지
+❌ 실제 API Key 검증 금지
+❌ 모델 목록 조회 금지
+❌ ModelProfile UI 구현 금지
+❌ ConversationEngine 호출 정책 변경 금지
+❌ ProviderSettingsStore 대규모 변경 금지
+❌ 작업모드 Provider 코드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- 모델/API 설정 화면 진입 가능
+- Provider 관리 화면 진입 가능
+- Provider 추가 가능
+- Provider 수정 가능
+- Provider 삭제 가능
+- 활성/비활성 토글 가능
+- 앱 재시작 후 Provider 목록 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Model 관리 UI skeleton 구현
+
+==============================
 [2026-05-02 10:20] Provider / Model 설정 저장소 1차 구현
 ==============================
 
