@@ -1,72 +1,33 @@
 package com.maha.app
 
-class ConversationEngine {
+class ConversationEngine(
+    private val promptBuilder: ConversationPromptBuilder = ConversationPromptBuilder(),
+    private val apiKeyProvider: (providerName: String) -> String? = { null }
+) {
     fun execute(request: ConversationRequest): ConversationResponse {
         val startedAt = System.currentTimeMillis()
 
         return try {
-            val rawText = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다."
-            val traceText = buildTraceText(request.ragContext)
-            val baseRun = createDummyConversationRun(request.sessionId)
-            val latencySec = ((System.currentTimeMillis() - startedAt).coerceAtLeast(1) / 1000.0)
-                .coerceAtLeast(1.1)
+            val prompt = promptBuilder.build(request)
+            val providerName = resolveProviderName(request.selectedProvider)
+            val modelName = resolveModelName(request.selectedModel)
 
-            val runInfo = baseRun.copy(
-                runId = request.requestId,
-                userInput = request.userInput,
-                status = ConversationRunStatus.COMPLETED,
-                totalLatencySec = latencySec,
-                totalRetryCount = 0,
-                workerResults = baseRun.workerResults.mapIndexed { index, worker ->
-                    if (index == 0) {
-                        worker.copy(
-                            status = "COMPLETED",
-                            providerName = "DUMMY",
-                            modelName = "conversation-engine-dummy",
-                            latencySec = latencySec,
-                            retryCount = 0,
-                            errorType = "",
-                            outputSummary = "ConversationEngine 더미 응답 생성 완료",
-                            rawOutput = buildString {
-                                appendLine(rawText)
-                                appendLine()
-                                appendLine("[RAG]")
-                                append(traceText)
-                            }.trim()
-                        )
-                    } else {
-                        worker
-                    }
-                }
-            )
+            if (requiresApiKey(providerName) && apiKeyProvider(providerName).isNullOrBlank()) {
+                return createApiKeyMissingResponse(
+                    request = request,
+                    providerName = providerName,
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length
+                )
+            }
 
-            ConversationResponse(
-                responseId = "conversation_response_${System.currentTimeMillis()}",
-                requestId = request.requestId,
-                status = "SUCCESS",
-                blocks = listOf(
-                    ConversationOutputBlock(
-                        blockId = "block_assistant_${System.currentTimeMillis()}",
-                        type = ConversationOutputBlockType.TEXT_BLOCK,
-                        title = "더미 응답",
-                        content = rawText,
-                        collapsed = false
-                    ),
-                    ConversationOutputBlock(
-                        blockId = "block_trace_${System.currentTimeMillis()}",
-                        type = ConversationOutputBlockType.TRACE_BLOCK,
-                        title = "실행 과정",
-                        content = traceText,
-                        collapsed = true
-                    )
-                ),
-                rawText = rawText,
-                providerName = "DUMMY",
-                modelName = "conversation-engine-dummy",
-                latencySec = latencySec,
-                errorType = null,
-                runInfo = runInfo,
-                createdAt = System.currentTimeMillis()
+            createDummySuccessResponse(
+                request = request,
+                providerName = providerName,
+                modelName = modelName,
+                startedAt = startedAt,
+                promptLength = prompt.length
             )
         } catch (throwable: Throwable) {
             createFailureResponse(
@@ -75,6 +36,185 @@ class ConversationEngine {
                 startedAt = startedAt
             )
         }
+    }
+
+    private fun createDummySuccessResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        startedAt: Long,
+        promptLength: Int
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
+            .coerceAtLeast(1.1)
+        val rawText = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다."
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            errorType = null
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.COMPLETED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                if (index == 0) {
+                    worker.copy(
+                        status = "COMPLETED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = "",
+                        outputSummary = "ConversationEngine provider dry-run 더미 응답 생성 완료",
+                        rawOutput = buildString {
+                            appendLine(rawText)
+                            appendLine()
+                            appendLine("[PROVIDER_DRY_RUN]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("actualApiCall: false")
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                } else {
+                    worker
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "SUCCESS",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_assistant_$now",
+                    type = ConversationOutputBlockType.TEXT_BLOCK,
+                    title = "더미 응답",
+                    content = rawText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = rawText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
+            errorType = null,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createApiKeyMissingResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        startedAt: Long,
+        promptLength: Int
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val latencySec = ((now - startedAt).coerceAtLeast(1) / 1000.0)
+        val errorText = "API Key가 설정되지 않았습니다. 설정에서 API Key를 입력하세요."
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            errorType = "API_KEY_MISSING"
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = "API_KEY_MISSING",
+                        outputSummary = "API Key 없음으로 provider dry-run 실패",
+                        rawOutput = buildString {
+                            appendLine(errorText)
+                            appendLine()
+                            appendLine("[PROVIDER_DRY_RUN]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("actualApiCall: false")
+                            appendLine("errorType: API_KEY_MISSING")
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = "API_KEY_MISSING",
+                        outputSummary = "API Key 없음으로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "API Key 필요",
+                    content = errorText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = errorText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
+            errorType = "API_KEY_MISSING",
+            runInfo = runInfo,
+            createdAt = now
+        )
     }
 
     private fun createFailureResponse(
@@ -96,8 +236,8 @@ class ConversationEngine {
                 if (index == 0) {
                     worker.copy(
                         status = "FAILED",
-                        providerName = "DUMMY",
-                        modelName = "conversation-engine-dummy",
+                        providerName = resolveProviderName(request.selectedProvider),
+                        modelName = resolveModelName(request.selectedModel),
                         latencySec = latencySec,
                         retryCount = 0,
                         errorType = "UNKNOWN",
@@ -124,8 +264,8 @@ class ConversationEngine {
                 )
             ),
             rawText = errorMessage,
-            providerName = "DUMMY",
-            modelName = "conversation-engine-dummy",
+            providerName = resolveProviderName(request.selectedProvider),
+            modelName = resolveModelName(request.selectedModel),
             latencySec = latencySec,
             errorType = "UNKNOWN",
             runInfo = runInfo,
@@ -133,11 +273,23 @@ class ConversationEngine {
         )
     }
 
-    private fun buildTraceText(ragContext: RagContext?): String {
-        val ragTrace = buildRagTraceText(ragContext)
+    private fun buildTraceText(
+        ragContext: RagContext?,
+        providerName: String,
+        modelName: String,
+        promptLength: Int,
+        errorType: String?
+    ): String {
         return buildString {
-            appendLine("입력 수신 → ConversationEngine 실행 → 더미 응답 생성 → 화면 갱신")
-            append(ragTrace)
+            appendLine("입력 수신 → PromptBuilder 실행 → Provider dry-run 확인 → 응답 생성 → 화면 갱신")
+            appendLine("providerName: $providerName")
+            appendLine("modelName: $modelName")
+            appendLine("promptLength: $promptLength")
+            appendLine("actualApiCall: false")
+            if (errorType != null) {
+                appendLine("errorType: $errorType")
+            }
+            append(buildRagTraceText(ragContext))
         }.trim()
     }
 
@@ -170,5 +322,17 @@ class ConversationEngine {
                 appendLine("[RAG_CONTEXT_END]")
             }
         }.trim()
+    }
+
+    private fun resolveProviderName(selectedProvider: String?): String {
+        return selectedProvider?.trim()?.takeIf { it.isNotBlank() } ?: "DUMMY"
+    }
+
+    private fun resolveModelName(selectedModel: String?): String {
+        return selectedModel?.trim()?.takeIf { it.isNotBlank() } ?: "conversation-engine-dummy"
+    }
+
+    private fun requiresApiKey(providerName: String): Boolean {
+        return !providerName.equals("DUMMY", ignoreCase = true)
     }
 }

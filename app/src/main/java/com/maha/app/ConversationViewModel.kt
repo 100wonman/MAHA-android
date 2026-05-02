@@ -19,7 +19,11 @@ class ConversationViewModel(
         ragIndexStore = ragIndexStore
     )
     private val ragContextBuilder = RagContextBuilder(ragKeywordSearchEngine)
-    private val conversationEngine = ConversationEngine()
+    private val conversationEngine = ConversationEngine(
+        apiKeyProvider = { providerName ->
+            resolveProviderApiKey(providerName)
+        }
+    )
     private val conversationFileStore = ConversationFileStore(
         context = application.applicationContext,
         storageManager = storageManager
@@ -267,8 +271,8 @@ class ConversationViewModel(
             ragContext = ragContext,
             recentMessages = targetSession.messages.takeLast(10),
             systemInstruction = null,
-            selectedProvider = null,
-            selectedModel = null,
+            selectedProvider = resolveSelectedProviderName(),
+            selectedModel = resolveSelectedModelName(),
             createdAt = currentTimeMillis
         )
 
@@ -346,6 +350,42 @@ class ConversationViewModel(
             session = updatedSession,
             isFavorite = favoriteSessionIds.contains(targetSessionId)
         )
+    }
+
+
+    private fun resolveSelectedProviderName(): String {
+        val context = getApplication<Application>().applicationContext
+        val selectedProvider = runCatching {
+            ApiKeyManager.getSelectedProvider(context)
+        }.getOrNull()
+
+        val fallbackProvider = runCatching {
+            ApiKeyManager.getFallbackProvider(context)
+        }.getOrNull()
+
+        return selectedProvider?.takeIf { it.isNotBlank() }
+            ?: fallbackProvider?.takeIf { it.isNotBlank() }
+            ?: "DUMMY"
+    }
+
+    private fun resolveSelectedModelName(): String {
+        val context = getApplication<Application>().applicationContext
+        val fallbackModel = runCatching {
+            ApiKeyManager.getFallbackModel(context)
+        }.getOrNull()
+
+        return fallbackModel?.takeIf { it.isNotBlank() } ?: "conversation-engine-dummy"
+    }
+
+    private fun resolveProviderApiKey(providerName: String): String? {
+        val context = getApplication<Application>().applicationContext
+        return when {
+            providerName.equals("GOOGLE", ignoreCase = true) -> {
+                runCatching { ApiKeyManager.getGoogleApiKey(context) }.getOrNull()
+            }
+
+            else -> null
+        }
     }
 
     private fun loadInitialSessions() {

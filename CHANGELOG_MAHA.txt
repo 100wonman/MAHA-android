@@ -1,4 +1,268 @@
 ==============================
+[2026-05-02 09:24] Provider 연결 dry-run 및 API Key 오류 처리 구현
+==============================
+
+[작업]
+- ConversationPromptBuilder 추가
+- ConversationEngine provider dry-run 분기 추가
+- ApiKeyManager 기반 API Key 없음 감지
+- API_KEY_MISSING ERROR_BLOCK 반환 경로 구현
+- 실행정보 블록 FAILED/API_KEY_MISSING 표시
+- 기존 Dummy 성공 흐름 및 RAG 표시 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationPromptBuilder 추가
+- ConversationEngine에 Provider dry-run 분기 추가
+- selectedProvider가 DUMMY가 아니고 API Key가 없으면 API_KEY_MISSING ERROR_BLOCK 반환
+- API Key가 있거나 DUMMY 흐름이면 실제 API 호출 없이 기존 Dummy 응답 유지
+- 실행정보에 provider/model/promptLength/errorType/RAG 정보를 기록
+
+[Provider dry-run 테스트]
+- PromptBuilder 생성: 메시지 전송 → 실행정보 펼침 → promptLength 표시 20 확인
+- Dummy 성공 흐름: Provider가 DUMMY인 상태에서 메시지 전송 → 기존 더미 응답 표시 확인
+- API Key 없음 감지: Google 선택 + API Key 비움 → 메시지 전송 → API_KEY_MISSING 확인
+- ERROR_BLOCK 표시: API Key 없음 상태 → ASSISTANT 응답에 “API Key가 설정되지 않았습니다” 표시 확인
+- 실행정보 FAILED 표시: API Key 없음 응답의 실행정보 펼침 → status FAILED / errorType API_KEY_MISSING 확인
+
+[RAG 유지 테스트]
+- 검색 OFF: 빠른 설정 검색 OFF → 메시지 전송 → RAG OFF 표시 확인
+- 검색 ON: 검색 ON → 인덱싱된 단어 입력 → RAG 결과 수 표시 확인
+- RAG 섹션: 실행정보 펼침 → RAG ON/OFF, resultCount, fallback 표시 확인
+- 참조 컨텍스트 보기: 검색 결과 있는 메시지 → 실행정보 하단 컨텍스트 섹션 확인
+
+[기존 기능 영향]
+- 메시지 저장/복구: 메시지 전송 → 앱 재시작 → 대화 유지 확인
+- 자동 스크롤: 메시지 전송 후 최신 메시지 위치로 이동 확인
+- SAF 백업/복원: 저장소 관리에서 백업/복원 버튼 동작 확인
+- RAG 검색 테스트: 저장소 관리 → RAG 검색 테스트 기존 검색 확인
+- chunk 인덱싱: 선택 세션 인덱싱 → chunk 생성 확인
+
+[문제]
+- 없음
+[요청]
+1. 기존 작업모드의 API 연동과 별개의 대화모드 독자 연결 방식인가?
+ - 기존 작업모드의 API 연동과 호출 정보 등에서 수정할 사항이 매우 많으므로 분리가 적합한가?
+2. 프로바이더와 API 연동을 하드코딩이 아닌 자동연결은 가능한가?
+ - 프로바이더 URL 입력, 하단에 API키 입력, 하단에 저장 버튼
+ - 2번째 3번째.... 위 프로바이더 주소와 API 키 쌍 입력을 원하는 만큼 추가할 수 있는가? (프로바이더 추가)
+ - 하드코딩 없이 추가되는 프로바이더 정보와 API 키 만으로 자동으로 LLM 호출, 사용 등의 작업이 가능?
+3. LLM 모델 선택 페이지는 프로바이더별 페이지가 아닌 탭으로 분류된 통합 페이지를 사용
+4. LLM 모델의 즐겨찾기 등록, 취소 기능으로 즐겨찾기 페이지 또로 구성 혹은 통합페이지 내 적용
+5. LLM 모델의 도구 호출 기능을 체크박스 형태로 사용자가 지정 가능
+ - GEMMA4 31B IT 모델 같은 경우 호출 시 내부에서 구글서치 툴 이용 가능으로 알고 있음
+ - 이미지, 오디오, 비디오 등의 도구를 사용할 수 있는 모델에게 호출 시 기능 부여 및 사용자 선택 가능
+
+[변경 파일]
+- ConversationPromptBuilder.kt
+- ConversationEngine.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Provider 연결 dry-run 및 API Key 오류 처리 구현
+
+목표:
+- 실제 Provider 호출 전 단계로 ConversationEngine에 Provider 연결 준비 분기를 만든다.
+- API Key가 없을 때 ERROR_BLOCK을 반환하는 실패 경로를 구현한다.
+- 실제 Google/NVIDIA API 호출은 아직 하지 않는다.
+- 기존 Dummy 응답 흐름은 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ConversationPromptBuilder 추가
+✔ ConversationEngine에 provider dry-run 분기 추가
+✔ API Key 없음 감지
+✔ API_KEY_MISSING errorType 처리
+✔ ERROR_BLOCK 반환
+✔ 실행정보 블록에 실패 상태 표시
+✔ Dummy fallback 유지
+
+이번 단계에서 금지:
+
+❌ 실제 Google API 호출
+❌ 실제 NVIDIA API 호출
+❌ ModelRouter 신규 대규모 구현
+❌ ModelRequest/ModelResponse 공통화
+❌ API Key 하드코딩
+❌ Worker 다단계 실행 정식화
+❌ RAG 검색 알고리즘 변경
+
+--------------------------------------------------
+2. ConversationPromptBuilder
+--------------------------------------------------
+
+신규 파일 권장:
+
+- ConversationPromptBuilder.kt
+
+역할:
+- ConversationRequest를 모델 입력용 prompt 문자열로 변환한다.
+
+입력 요소 순서:
+
+1. systemInstruction
+2. recentMessages
+3. RAG context
+4. userInput
+
+출력:
+- String prompt
+
+주의:
+- 이번 단계에서는 prompt를 실제 API에 보내지 않는다.
+- dry-run 확인용으로만 생성한다.
+- contextText 전체 무제한 삽입 금지
+- RagContext.maxContextChars 정책 유지
+
+--------------------------------------------------
+3. ConversationEngine provider dry-run 분기
+--------------------------------------------------
+
+ConversationEngine.execute(request) 내부에 provider 준비 분기를 추가한다.
+
+정책 후보:
+
+- selectedProvider / selectedModel이 있고 API Key도 있으면:
+  - 아직 실제 호출은 하지 않고 Dummy 성공 응답 반환
+  - providerName/modelName은 request 값 또는 fallback 값 표시
+
+- selectedProvider가 실제 Provider인데 API Key가 없으면:
+  - status = FAILED
+  - errorType = API_KEY_MISSING
+  - ERROR_BLOCK 생성
+  - 실행정보 status = FAILED
+
+- selectedProvider가 없거나 Dummy 모드이면:
+  - 기존 Dummy 응답 유지
+
+주의:
+- 실제 네트워크 호출 금지
+- 앱 크래시 금지
+
+--------------------------------------------------
+4. API Key 확인
+--------------------------------------------------
+
+기존 ApiKeyManager를 재사용한다.
+
+확인할 것:
+- Google API Key 저장/로드 함수
+- selectedProvider 저장/로드 함수
+- fallbackProvider/fallbackModel
+
+정책:
+- API Key가 null/blank이면 API_KEY_MISSING
+- 코드에 API Key 하드코딩 금지
+
+--------------------------------------------------
+5. ERROR_BLOCK 정책
+--------------------------------------------------
+
+API Key 없음 시 ASSISTANT 메시지에 ERROR_BLOCK 추가.
+
+표시 문구 예:
+
+"API Key가 설정되지 않았습니다. 설정에서 API Key를 입력하세요."
+
+metadata:
+- errorType = API_KEY_MISSING
+- providerName
+- modelName
+
+--------------------------------------------------
+6. 실행정보 블록 정책
+--------------------------------------------------
+
+API Key 없음 실패 시:
+
+- status = FAILED
+- totalLatencySec 기록
+- workerName = ConversationMain 또는 Main
+- providerName
+- modelName
+- retryCount = 0
+- errorType = API_KEY_MISSING
+- ragEnabled / ragResultCount / ragFallback 정보 유지
+
+Worker 3개 표시 정책:
+- 기존 Orchestrator / Main / Synthesis 표시 유지 가능
+- 실제 실패는 Main에 표시
+- Orchestrator/Synthesis는 SKIPPED 또는 더미 상태로 표시 가능
+
+--------------------------------------------------
+7. Dummy 성공 흐름 유지
+--------------------------------------------------
+
+검색 OFF:
+- 기존 Dummy 응답 정상
+
+검색 ON:
+- RagContext 생성
+- Dummy 응답 정상
+- 실행정보 RAG 섹션 유지
+
+Provider dry-run:
+- 실제 API 호출 없이 성공 응답 또는 API Key 없음 실패 경로만 검증
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 메시지 저장/복구
+- SAF 백업/복원
+- RAG 검색 테스트 UI
+- chunk 인덱싱
+- RagContext 생성
+- 실행정보 RAG 섹션
+- OutputBlock 렌더링
+- 자동 스크롤
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 실제 API 호출 금지
+❌ GoogleModelProvider 호출 금지
+❌ NVIDIA Provider 호출 금지
+❌ Provider 구조 대규모 변경 금지
+❌ AppRoot 대규모 변경 금지
+❌ ConversationFileStore 수정 금지
+❌ SAF 로직 수정 금지
+❌ RAG 검색 알고리즘 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- ConversationPromptBuilder 추가
+- prompt 생성 가능
+- API Key 없음 시 ERROR_BLOCK 표시
+- 실행정보 FAILED/API_KEY_MISSING 표시
+- Dummy 성공 흐름 유지
+- 검색 ON/OFF 흐름 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+실제 Google Provider 호출 설계 또는 API Key 설정 UX 점검
+
+==============================
 [2026-05-02 09:25] 실제 Provider 연결 준비 설계
 ==============================
 
