@@ -60,12 +60,14 @@ fun ConversationRoomScreen(
     inputText: String,
     searchEnabled: Boolean,
     webSearchEnabled: Boolean,
+    webSearchFallbackEnabled: Boolean,
     modeLabel: String,
     isRunning: Boolean,
     onInputTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onToggleSearch: () -> Unit,
     onToggleWebSearch: () -> Unit,
+    onToggleWebSearchFallback: () -> Unit,
     onModeChange: (String) -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -92,12 +94,14 @@ fun ConversationRoomScreen(
                 inputText = inputText,
                 searchEnabled = searchEnabled,
                 webSearchEnabled = webSearchEnabled,
+                webSearchFallbackEnabled = webSearchFallbackEnabled,
                 modeLabel = modeLabel,
                 isRunning = isRunning,
                 onInputTextChange = onInputTextChange,
                 onSend = onSend,
                 onToggleSearch = onToggleSearch,
                 onToggleWebSearch = onToggleWebSearch,
+                onToggleWebSearchFallback = onToggleWebSearchFallback,
                 onModeChange = onModeChange,
                 onOpenSettings = onOpenSettings,
                 modifier = Modifier
@@ -1747,12 +1751,14 @@ private fun ConversationInputPanel(
     inputText: String,
     searchEnabled: Boolean,
     webSearchEnabled: Boolean,
+    webSearchFallbackEnabled: Boolean,
     modeLabel: String,
     isRunning: Boolean,
     onInputTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onToggleSearch: () -> Unit,
     onToggleWebSearch: () -> Unit,
+    onToggleWebSearchFallback: () -> Unit,
     onModeChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -1795,7 +1801,7 @@ private fun ConversationInputPanel(
                     )
 
                     Text(
-                        text = "모드 $modeLabel · RAG ${if (searchEnabled) "ON" else "OFF"} · Web ${if (webSearchEnabled) "ON" else "OFF"}",
+                        text = "모드 $modeLabel · RAG ${if (searchEnabled) "ON" else "OFF"} · Web ${if (webSearchEnabled) "ON" else "OFF"}${if (webSearchEnabled) " · Fallback ${if (webSearchFallbackEnabled) "ON" else "OFF"}" else ""}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         maxLines = 1
@@ -1924,6 +1930,38 @@ private fun ConversationInputPanel(
                                 onToggleWebSearch()
                             }
                         )
+                    }
+
+                    if (webSearchEnabled) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "검색 실패 시 일반 답변으로 계속",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                                )
+
+                                Text(
+                                    text = "외부 검색 grounding에 실패하면 검색 없이 일반 모델 답변을 생성합니다. 최신정보 질문에서는 부정확할 수 있습니다.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                                )
+                            }
+
+                            Switch(
+                                checked = webSearchFallbackEnabled,
+                                onCheckedChange = {
+                                    onToggleWebSearchFallback()
+                                }
+                            )
+                        }
                     }
                 }
             }

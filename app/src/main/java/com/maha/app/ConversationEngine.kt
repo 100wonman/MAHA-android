@@ -86,7 +86,7 @@ class ConversationEngine(
                         providerType = providerProfile.providerType,
                         modelWebSearchStatus = request.selectedModelWebSearchStatus,
                         nativeGroundingAvailable = true,
-                        fallbackAllowed = false
+                        fallbackAllowed = request.webSearchFallbackEnabled
                     )
 
                     if (!webSearchPolicy.canAttemptGrounding) {
@@ -95,6 +95,52 @@ class ConversationEngine(
                             WebSearchUsageResolver.REASON_PROVIDER_NOT_GOOGLE -> "WEB_SEARCH_NOT_SUPPORTED"
                             else -> "WEB_SEARCH_NOT_SUPPORTED"
                         }
+                        val setupFailureResult = GeminiNativeResult.failure(
+                            latencySec = 0.0,
+                            errorType = errorType,
+                            errorMessage = buildUserFacingErrorMessage(
+                                errorType = errorType,
+                                fallbackMessage = "Web Search grounding 조건을 만족하지 못했습니다."
+                            ),
+                            rawMetadataSummary = "groundingExecuted=false, reason=${webSearchPolicy.reason ?: "UNKNOWN"}"
+                        )
+
+                        if (shouldAttemptWebSearchFallback(request, errorType)) {
+                            val fallbackResult = googleGeminiProviderAdapter.callGemini(
+                                prompt = prompt,
+                                modelName = modelName,
+                                apiKey = apiKey
+                            )
+
+                            return if (fallbackResult.success) {
+                                createNativeGroundingFallbackSuccessResponse(
+                                    request = request,
+                                    rawText = fallbackResult.rawText,
+                                    providerName = providerName,
+                                    modelName = modelName,
+                                    promptLength = prompt.length,
+                                    nativeResult = setupFailureResult,
+                                    fallbackResult = fallbackResult,
+                                    groundingExecuted = false,
+                                    toolSupportPolicy = toolSupportPolicy
+                                )
+                            } else {
+                                createNativeGroundingFailureResponse(
+                                    request = request,
+                                    providerName = providerName,
+                                    modelName = modelName,
+                                    promptLength = prompt.length,
+                                    nativeResult = setupFailureResult,
+                                    fallbackAttempted = true,
+                                    fallbackSucceeded = false,
+                                    fallbackErrorType = fallbackResult.errorType ?: "UNKNOWN",
+                                    fallbackErrorMessage = fallbackResult.errorMessage,
+                                    groundingExecuted = false,
+                                    toolSupportPolicy = toolSupportPolicy
+                                )
+                            }
+                        }
+
                         return createProviderSetupFailureResponse(
                             request = request,
                             providerName = providerName,
@@ -129,14 +175,51 @@ class ConversationEngine(
                             toolSupportPolicy = toolSupportPolicy
                         )
                     } else {
-                        createNativeGroundingFailureResponse(
-                            request = request,
-                            providerName = providerName,
-                            modelName = modelName,
-                            promptLength = prompt.length,
-                            nativeResult = nativeResult,
-                            toolSupportPolicy = toolSupportPolicy
-                        )
+                        val nativeErrorType = nativeResult.errorType ?: "GROUNDING_FAILED"
+                        if (shouldAttemptWebSearchFallback(request, nativeErrorType)) {
+                            val fallbackResult = googleGeminiProviderAdapter.callGemini(
+                                prompt = prompt,
+                                modelName = modelName,
+                                apiKey = apiKey
+                            )
+
+                            if (fallbackResult.success) {
+                                createNativeGroundingFallbackSuccessResponse(
+                                    request = request,
+                                    rawText = fallbackResult.rawText,
+                                    providerName = providerName,
+                                    modelName = modelName,
+                                    promptLength = prompt.length,
+                                    nativeResult = nativeResult,
+                                    fallbackResult = fallbackResult,
+                                    groundingExecuted = true,
+                                    toolSupportPolicy = toolSupportPolicy
+                                )
+                            } else {
+                                createNativeGroundingFailureResponse(
+                                    request = request,
+                                    providerName = providerName,
+                                    modelName = modelName,
+                                    promptLength = prompt.length,
+                                    nativeResult = nativeResult,
+                                    fallbackAttempted = true,
+                                    fallbackSucceeded = false,
+                                    fallbackErrorType = fallbackResult.errorType ?: "UNKNOWN",
+                                    fallbackErrorMessage = fallbackResult.errorMessage,
+                                    groundingExecuted = true,
+                                    toolSupportPolicy = toolSupportPolicy
+                                )
+                            }
+                        } else {
+                            createNativeGroundingFailureResponse(
+                                request = request,
+                                providerName = providerName,
+                                modelName = modelName,
+                                promptLength = prompt.length,
+                                nativeResult = nativeResult,
+                                toolSupportPolicy = toolSupportPolicy
+                            )
+                        }
                     }
                 }
 
@@ -378,27 +461,213 @@ class ConversationEngine(
         )
     }
 
+    private fun createNativeGroundingFallbackSuccessResponse(
+        request: ConversationRequest,
+        rawText: String,
+        providerName: String,
+        modelName: String,
+        promptLength: Int,
+        nativeResult: GeminiNativeResult,
+        fallbackResult: GeminiProviderResult,
+        groundingExecuted: Boolean,
+        toolSupportPolicy: ToolSupportPolicy? = null
+    ): ConversationResponse {
+        val thinkingSplit = splitThinkingTaggedContent(rawText)
+        val displayText = thinkingSplit.finalText
+
+        if (displayText.isBlank()) {
+            return createNativeGroundingFailureResponse(
+                request = request,
+                providerName = providerName,
+                modelName = modelName,
+                promptLength = promptLength,
+                nativeResult = nativeResult,
+                fallbackAttempted = true,
+                fallbackSucceeded = false,
+                fallbackErrorType = "INVALID_RESPONSE",
+                fallbackErrorMessage = "Fallback 일반 Gemini 응답에서 표시 가능한 답변을 찾지 못했습니다.",
+                groundingExecuted = groundingExecuted,
+                toolSupportPolicy = toolSupportPolicy
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        val totalLatencySec = nativeResult.latencySec + fallbackResult.latencySec
+        val providerResponseSummary = buildGeminiNativeProviderResponseSummary(nativeResult, responseLength = 0)
+        val fallbackProviderResponseSummary = buildFallbackProviderResponseSummary(
+            fallbackResult = fallbackResult,
+            responseLength = displayText.length
+        )
+        val thinkingSummaryTrace = buildGeminiNativeThinkingSummaryTrace(nativeResult, thinkingSplit)
+        val webSearchGroundingTrace = buildNativeWebSearchGroundingTraceText(
+            request = request,
+            providerType = ProviderType.GOOGLE,
+            nativeResult = nativeResult,
+            errorType = nativeResult.errorType ?: "GROUNDING_FAILED",
+            fallbackAllowed = true,
+            fallbackAttempted = true,
+            fallbackSucceeded = true,
+            fallbackErrorType = null,
+            finalAnswerSource = "FALLBACK_GENERAL",
+            groundingExecuted = groundingExecuted
+        )
+        val traceText = buildNativeTraceText(
+            request = request,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = displayText.length,
+            status = "COMPLETED",
+            latencySec = totalLatencySec,
+            errorType = null,
+            toolSupportPolicy = toolSupportPolicy,
+            thinkingSummaryTrace = thinkingSummaryTrace,
+            providerResponseSummary = providerResponseSummary,
+            webSearchGroundingTrace = webSearchGroundingTrace,
+            fallbackProviderResponseSummary = fallbackProviderResponseSummary
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.COMPLETED,
+            totalLatencySec = totalLatencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                if (index == 0) {
+                    worker.copy(
+                        status = "COMPLETED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = totalLatencySec,
+                        retryCount = 0,
+                        errorType = "",
+                        outputSummary = "Web Search 실패 후 일반 Gemini fallback 호출 완료",
+                        rawOutput = buildString {
+                            appendLine(displayText.take(800))
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: ${displayText.length}")
+                            appendLine("latencySec: $totalLatencySec")
+                            appendLine("actualApiCall: true")
+                            appendLine("finalAnswerSource: FALLBACK_GENERAL")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendLine(thinkingSummaryTrace)
+                            appendLine()
+                            appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                            appendLine(providerResponseSummary)
+                            appendLine()
+                            appendLine("[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+                            appendLine(fallbackProviderResponseSummary)
+                            appendLine()
+                            appendLine(webSearchGroundingTrace)
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                } else {
+                    worker
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "SUCCESS",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_assistant_$now",
+                    type = ConversationOutputBlockType.TEXT_BLOCK,
+                    title = "Provider 응답",
+                    content = displayText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = displayText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = totalLatencySec,
+            errorType = null,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
     private fun createNativeGroundingFailureResponse(
         request: ConversationRequest,
         providerName: String,
         modelName: String,
         promptLength: Int,
         nativeResult: GeminiNativeResult,
+        fallbackAttempted: Boolean = false,
+        fallbackSucceeded: Boolean = false,
+        fallbackErrorType: String? = null,
+        fallbackErrorMessage: String? = null,
+        groundingExecuted: Boolean = true,
         toolSupportPolicy: ToolSupportPolicy? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val errorType = nativeResult.errorType ?: "GROUNDING_FAILED"
-        val safeErrorMessage = buildUserFacingErrorMessage(
+        val baseErrorMessage = buildUserFacingErrorMessage(
             errorType = errorType,
             fallbackMessage = nativeResult.errorMessage ?: "Gemini native grounding 호출에 실패했습니다."
         )
+        val safeErrorMessage = if (fallbackAttempted && !fallbackSucceeded) {
+            buildString {
+                appendLine("Web Search grounding 실패 후 일반 답변 fallback도 실패했습니다.")
+                appendLine()
+                appendLine("groundingErrorType: $errorType")
+                appendLine("groundingMessage: $baseErrorMessage")
+                appendLine("fallbackErrorType: ${fallbackErrorType ?: "UNKNOWN"}")
+                if (!fallbackErrorMessage.isNullOrBlank()) {
+                    appendLine("fallbackMessage: ${fallbackErrorMessage.take(300)}")
+                }
+            }.trim()
+        } else {
+            baseErrorMessage
+        }
         val providerResponseSummary = buildGeminiNativeProviderResponseSummary(nativeResult, responseLength = 0)
+        val fallbackProviderResponseSummary = if (fallbackAttempted) {
+            buildString {
+                appendLine("adapter=GoogleGeminiProviderAdapter")
+                appendLine("actualApiCall=true")
+                appendLine("status=FAILED")
+                appendLine("errorType=${fallbackErrorType ?: "UNKNOWN"}")
+                appendLine("latencySec=unknown")
+                appendLine("responseLength=0")
+            }.trim()
+        } else {
+            null
+        }
         val thinkingSummaryTrace = buildGeminiNativeThinkingSummaryTrace(nativeResult, ThinkingSplitResult.notDetected(0))
         val webSearchGroundingTrace = buildNativeWebSearchGroundingTraceText(
             request = request,
             providerType = ProviderType.GOOGLE,
             nativeResult = nativeResult,
-            errorType = errorType
+            errorType = errorType,
+            fallbackAllowed = request.webSearchFallbackEnabled && isWebSearchFallbackAllowedError(errorType),
+            fallbackAttempted = fallbackAttempted,
+            fallbackSucceeded = fallbackSucceeded,
+            fallbackErrorType = fallbackErrorType,
+            finalAnswerSource = "ERROR",
+            groundingExecuted = groundingExecuted
         )
         val traceText = buildNativeTraceText(
             request = request,
@@ -412,7 +681,8 @@ class ConversationEngine(
             toolSupportPolicy = toolSupportPolicy,
             thinkingSummaryTrace = thinkingSummaryTrace,
             providerResponseSummary = providerResponseSummary,
-            webSearchGroundingTrace = webSearchGroundingTrace
+            webSearchGroundingTrace = webSearchGroundingTrace,
+            fallbackProviderResponseSummary = fallbackProviderResponseSummary
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -452,6 +722,11 @@ class ConversationEngine(
                             appendLine()
                             appendLine("[PROVIDER_RESPONSE_SUMMARY]")
                             appendLine(providerResponseSummary)
+                            if (!fallbackProviderResponseSummary.isNullOrBlank()) {
+                                appendLine()
+                                appendLine("[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+                                appendLine(fallbackProviderResponseSummary)
+                            }
                             appendLine()
                             appendLine(webSearchGroundingTrace)
                             appendLine()
@@ -1350,6 +1625,46 @@ class ConversationEngine(
         )
     }
 
+    private fun shouldAttemptWebSearchFallback(
+        request: ConversationRequest,
+        errorType: String?
+    ): Boolean {
+        return request.webSearchEnabled &&
+                request.webSearchFallbackEnabled &&
+                isWebSearchFallbackAllowedError(errorType)
+    }
+
+    private fun isWebSearchFallbackAllowedError(errorType: String?): Boolean {
+        return when (errorType) {
+            "GROUNDING_FAILED",
+            "MODEL_UNSUPPORTED_TOOL",
+            "WEB_SEARCH_NOT_SUPPORTED",
+            "TIMEOUT",
+            "SERVER_ERROR" -> true
+            else -> false
+        }
+    }
+
+    private fun buildFallbackProviderResponseSummary(
+        fallbackResult: GeminiProviderResult,
+        responseLength: Int
+    ): String {
+        return buildString {
+            appendLine("adapter=GoogleGeminiProviderAdapter")
+            appendLine("actualApiCall=true")
+            appendLine("status=${if (fallbackResult.success) "COMPLETED" else "FAILED"}")
+            appendLine("errorType=${fallbackResult.errorType ?: "NONE"}")
+            appendLine("latencySec=${fallbackResult.latencySec}")
+            appendLine("responseLength=$responseLength")
+            appendLine("toolCallDetected=${fallbackResult.toolCallDetected}")
+            appendLine("toolCallCount=${fallbackResult.toolCallCount}")
+            appendLine("finishReason=${fallbackResult.finishReason ?: "UNKNOWN"}")
+            if (!fallbackResult.responseSummary.isNullOrBlank()) {
+                appendLine("responseSummary=${fallbackResult.responseSummary.take(500)}")
+            }
+        }.trim()
+    }
+
     private fun buildNativeTraceText(
         request: ConversationRequest,
         providerName: String,
@@ -1362,7 +1677,8 @@ class ConversationEngine(
         toolSupportPolicy: ToolSupportPolicy?,
         thinkingSummaryTrace: String,
         providerResponseSummary: String,
-        webSearchGroundingTrace: String
+        webSearchGroundingTrace: String,
+        fallbackProviderResponseSummary: String? = null
     ): String {
         return buildString {
             appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → Gemini native grounding 호출 → 응답 생성 → 화면 갱신")
@@ -1386,6 +1702,11 @@ class ConversationEngine(
             appendLine()
             appendLine("[PROVIDER_RESPONSE_SUMMARY]")
             appendLine(providerResponseSummary.take(1200))
+            if (!fallbackProviderResponseSummary.isNullOrBlank()) {
+                appendLine()
+                appendLine("[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+                appendLine(fallbackProviderResponseSummary.take(1200))
+            }
             appendLine()
             appendLine(webSearchGroundingTrace)
             appendLine()
@@ -1444,11 +1765,20 @@ class ConversationEngine(
         request: ConversationRequest,
         providerType: ProviderType,
         nativeResult: GeminiNativeResult,
-        errorType: String?
+        errorType: String?,
+        fallbackAllowed: Boolean = request.webSearchFallbackEnabled && isWebSearchFallbackAllowedError(errorType ?: nativeResult.errorType),
+        fallbackAttempted: Boolean = false,
+        fallbackSucceeded: Boolean = false,
+        fallbackErrorType: String? = null,
+        finalAnswerSource: String = if (errorType == null && nativeResult.success) "GROUNDING" else "ERROR",
+        groundingExecuted: Boolean = true
     ): String {
         val modelSupportsWebSearch = request.selectedModelWebSearchStatus == CapabilityStatus.USER_ENABLED ||
                 request.selectedModelWebSearchStatus == CapabilityStatus.SUPPORTED
-        val reason = errorType ?: nativeResult.errorType ?: "NONE"
+        val groundingErrorType = errorType ?: nativeResult.errorType
+        val reason = groundingErrorType ?: if (finalAnswerSource == "GROUNDING") "NONE" else "UNKNOWN"
+        val citationCount = if (finalAnswerSource == "GROUNDING") nativeResult.citations.size else 0
+        val searchQueryCount = if (finalAnswerSource == "GROUNDING") nativeResult.searchQueries.size else 0
 
         return buildString {
             appendLine("[WEB_SEARCH_GROUNDING]")
@@ -1456,22 +1786,27 @@ class ConversationEngine(
             appendLine("providerType: ${providerType.name}")
             appendLine("modelWebSearchStatus: ${request.selectedModelWebSearchStatus?.name ?: "UNKNOWN"}")
             appendLine("nativeGroundingAvailable: true")
-            appendLine("canAttemptGrounding: true")
-            appendLine("groundingExecuted: true")
-            appendLine("groundingUsed: ${nativeResult.groundingUsed}")
-            appendLine("citationCount: ${nativeResult.citations.size}")
-            appendLine("searchQueryCount: ${nativeResult.searchQueries.size}")
+            appendLine("canAttemptGrounding: $modelSupportsWebSearch")
+            appendLine("groundingExecuted: $groundingExecuted")
+            appendLine("groundingUsed: ${finalAnswerSource == "GROUNDING" && nativeResult.groundingUsed}")
+            appendLine("citationCount: $citationCount")
+            appendLine("searchQueryCount: $searchQueryCount")
             appendLine("modelSupportsWebSearch: $modelSupportsWebSearch")
-            appendLine("fallbackAllowed: false")
-            appendLine("errorType: ${errorType ?: nativeResult.errorType ?: "NONE"}")
+            appendLine("fallbackAllowed: $fallbackAllowed")
+            appendLine("fallbackAttempted: $fallbackAttempted")
+            appendLine("fallbackSucceeded: $fallbackSucceeded")
+            appendLine("groundingErrorType: ${groundingErrorType ?: "NONE"}")
+            appendLine("fallbackErrorType: ${fallbackErrorType ?: "NONE"}")
+            appendLine("finalAnswerSource: $finalAnswerSource")
+            appendLine("errorType: ${groundingErrorType ?: "NONE"}")
             appendLine("reason: $reason")
-            if (nativeResult.searchQueries.isNotEmpty()) {
+            if (finalAnswerSource == "GROUNDING" && nativeResult.searchQueries.isNotEmpty()) {
                 appendLine("searchQueries:")
                 nativeResult.searchQueries.take(5).forEachIndexed { index, query ->
                     appendLine("${index + 1}. ${query.take(160)}")
                 }
             }
-            if (nativeResult.citations.isNotEmpty()) {
+            if (finalAnswerSource == "GROUNDING" && nativeResult.citations.isNotEmpty()) {
                 appendLine("sources:")
                 nativeResult.citations.take(5).forEachIndexed { index, citation ->
                     appendLine("${index + 1}. title=${citation.title ?: "UNKNOWN"}")
@@ -1604,7 +1939,7 @@ class ConversationEngine(
             providerType = providerType,
             modelWebSearchStatus = request?.selectedModelWebSearchStatus,
             nativeGroundingAvailable = providerType == ProviderType.GOOGLE,
-            fallbackAllowed = request?.webSearchEnabled != true
+            fallbackAllowed = request?.let { it.webSearchEnabled && it.webSearchFallbackEnabled } ?: false
         )
         return policy.toTraceSummary()
     }

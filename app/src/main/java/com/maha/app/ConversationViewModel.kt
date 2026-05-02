@@ -53,6 +53,9 @@ class ConversationViewModel(
     var webSearchEnabled by mutableStateOf(false)
         private set
 
+    var webSearchFallbackEnabled by mutableStateOf(false)
+        private set
+
     var quickSettingsExpanded by mutableStateOf(false)
         private set
 
@@ -225,10 +228,29 @@ class ConversationViewModel(
 
     fun updateWebSearchEnabled(value: Boolean) {
         webSearchEnabled = value
+        if (!value) {
+            webSearchFallbackEnabled = false
+        }
     }
 
     fun toggleWebSearchEnabled() {
-        webSearchEnabled = !webSearchEnabled
+        val nextValue = !webSearchEnabled
+        webSearchEnabled = nextValue
+        if (!nextValue) {
+            webSearchFallbackEnabled = false
+        }
+    }
+
+    fun updateWebSearchFallbackEnabled(value: Boolean) {
+        webSearchFallbackEnabled = webSearchEnabled && value
+    }
+
+    fun toggleWebSearchFallbackEnabled() {
+        if (!webSearchEnabled) {
+            webSearchFallbackEnabled = false
+            return
+        }
+        webSearchFallbackEnabled = !webSearchFallbackEnabled
     }
 
     fun updateQuickSettingsExpanded(value: Boolean) {
@@ -294,6 +316,7 @@ class ConversationViewModel(
             selectedModel = defaultConversationModel?.rawModelName?.trim(),
             createdAt = currentTimeMillis,
             webSearchEnabled = webSearchEnabled,
+            webSearchFallbackEnabled = webSearchEnabled && webSearchFallbackEnabled,
             selectedModelWebSearchStatus = defaultConversationModel
                 ?.capabilitiesV2
                 ?.tools

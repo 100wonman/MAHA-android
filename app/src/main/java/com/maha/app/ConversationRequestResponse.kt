@@ -13,6 +13,7 @@ data class ConversationRequest(
     val selectedModel: String?,
     val createdAt: Long,
     val webSearchEnabled: Boolean = false,
+    val webSearchFallbackEnabled: Boolean = false,
     val selectedModelWebSearchStatus: CapabilityStatus? = null
 )
 

@@ -84,6 +84,7 @@ fun AppRoot() {
     val conversationInputText = conversationViewModel.inputText
     val conversationSearchEnabled = conversationViewModel.searchEnabled
     val conversationWebSearchEnabled = conversationViewModel.webSearchEnabled
+    val conversationWebSearchFallbackEnabled = conversationViewModel.webSearchFallbackEnabled
     val conversationModeLabel = conversationViewModel.modeLabel
 
 
@@ -833,12 +834,14 @@ fun AppRoot() {
                             inputText = conversationInputText,
                             searchEnabled = conversationSearchEnabled,
                             webSearchEnabled = conversationWebSearchEnabled,
+                            webSearchFallbackEnabled = conversationWebSearchFallbackEnabled,
                             modeLabel = conversationModeLabel,
                             isRunning = conversationIsRunning,
                             onInputTextChange = conversationViewModel::updateInputText,
                             onSend = conversationViewModel::sendMessage,
                             onToggleSearch = conversationViewModel::toggleSearchEnabled,
                             onToggleWebSearch = conversationViewModel::toggleWebSearchEnabled,
+                            onToggleWebSearchFallback = conversationViewModel::toggleWebSearchFallbackEnabled,
                             onModeChange = conversationViewModel::updateModeLabel,
                             onBack = {
                                 leaveConversationRoomToSessionList()

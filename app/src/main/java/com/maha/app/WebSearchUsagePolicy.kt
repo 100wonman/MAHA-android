@@ -6,7 +6,7 @@ package com.maha.app
  * 쉬운 설명:
  * - RAG 검색은 앱 내부 자료 검색이다.
  * - Web Search grounding은 외부 Google Search 기반 검색이다.
- * - 이번 단계에서는 Web Search를 켜도 실제 외부 검색을 실행하지 않는다.
+ * - Web Search 실제 실행 가능 여부와 fallback 허용 여부를 실행정보에 남긴다.
  */
 data class WebSearchUsagePolicy(
     val enabledByUser: Boolean,
@@ -29,6 +29,11 @@ data class WebSearchUsagePolicy(
             appendLine("citationCount: 0")
             appendLine("searchQueryCount: 0")
             appendLine("fallbackAllowed: $fallbackAllowed")
+            appendLine("fallbackAttempted: false")
+            appendLine("fallbackSucceeded: false")
+            appendLine("groundingErrorType: NONE")
+            appendLine("fallbackErrorType: NONE")
+            appendLine("finalAnswerSource: ${if (enabledByUser) "ERROR" else "NONE"}")
             appendLine("reason: ${reason ?: "NONE"}")
         }.trimEnd()
     }
