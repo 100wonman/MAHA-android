@@ -1,4 +1,287 @@
 ==============================
+[2026-05-02 09:25] 실제 Provider 연결 준비 설계
+==============================
+
+[작업]
+- 기존 Provider / ModelRouter / ApiKeyManager 구조 확인
+- ConversationEngine → Provider 연결 흐름 설계
+- ConversationPromptBuilder 역할 설계
+- Provider/model 선택 정책 설계
+- API Key 미설정/호출 오류 처리 정책 설계
+- 실행정보 기록 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[확인한 기존 구조]
+- Provider: AppRoot에서 ModelProviderType, savedProvider, Google/NVIDIA 모델 검색 흐름, fallback provider/model 설정 흐름 확인 :contentReference[oaicite:0]{index=0}
+- ModelRouter: 현재 제공/검색된 파일 기준 실제 구현 파일은 확인되지 않음
+- ApiKeyManager: Google API Key 저장/로드, selectedProvider 저장/로드, fallbackProvider/fallbackModel 사용 흐름 확인 :contentReference[oaicite:1]{index=1}
+- ModelRequest/Response: 현재 제공/검색된 파일 기준 실제 공통 모델 요청/응답 구조는 확인되지 않음
+- 관련 파일: AppRoot.kt, ConversationViewModel.kt, 기존 ExecutionEngine.runAllAgents 호출 흐름 확인 
+
+[핵심 결정]
+- ConversationViewModel은 Provider/API를 직접 호출하지 않음
+- ConversationEngine이 Provider 호출 준비 흐름을 담당
+- Provider 선택은 기존 ApiKeyManager / ModelProviderType 설정을 우선 재사용
+- ModelRouter가 없거나 불명확하면 1차는 ConversationEngine 내부 dry-run 분기로 준비
+- 실제 Google 호출은 다음 단계로 분리
+
+[Engine → Provider 흐름]
+- 호출 흐름: ConversationViewModel → ConversationEngine → ConversationPromptBuilder → ModelRouter 또는 Provider adapter → ConversationResponse → OutputBlock
+- PromptBuilder: systemInstruction, recentMessages, RAG context, userInput을 모델 입력 문자열 또는 ModelRequest 후보로 변환
+- ModelRouter 역할: selectedProvider/selectedModel이 있으면 우선 사용, 없으면 기본 Provider/Model 선택
+
+[Provider/API Key 정책]
+- 기본 Provider/Model: 기존 selectedProvider / fallbackProvider / fallbackModel 설정을 우선 사용, 없으면 Dummy 유지
+- API Key 없음: status=FAILED, errorType=API_KEY_MISSING, ERROR_BLOCK 생성, 앱 크래시 금지
+- API 오류: TIMEOUT, RATE_LIMIT, SERVER_ERROR, UNKNOWN으로 분류
+
+[실행정보 정책]
+- 실제 호출 Worker: 1차는 Main 또는 ConversationMain 단일 Worker
+- Worker 3개 표시: 기존 Orchestrator/Main/Synthesis 표시는 유지하되 실제 호출은 Main에만 매핑
+- 기록 항목: providerName, modelName, latencySec, status, retryCount, errorType, ragEnabled, ragResultCount, ragFallback, ragFallbackReason
+
+[1차 구현 범위]
+- ConversationPromptBuilder 추가
+- ConversationEngine에 Provider 호출 준비 분기 추가
+- API Key 없음 dry-run ERROR_BLOCK 경로 구현
+- 실제 Provider 호출은 하지 않고 Dummy/ERROR 분기로 검증
+- 기존 ConversationRequest/Response 구조 유지
+
+[보류 항목]
+- 실제 Google Provider 호출
+- ModelRouter 실제 연결
+- ModelRequest/ModelResponse 공통화
+- API Key 유효성 검사
+- Worker 다단계 실행 정식화
+
+[문제]
+- 현재 제공/검색된 파일 기준 ModelRouter, ModelRequest, ModelResponse 실제 구현 파일은 확인되지 않음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+실제 Provider 연결 준비 설계
+
+목표:
+- ConversationEngine skeleton 이후 실제 Provider 호출을 붙이기 위한 연결 구조를 설계한다.
+- 기존 Provider / ModelRouter / API Key 구조를 최대한 재사용한다.
+- 이번 단계는 설계만 수행한다.
+- 실제 API 호출 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료:
+- ConversationRequest / ConversationResponse 모델
+- ConversationEngine skeleton
+- ConversationViewModel → ConversationEngine 경로
+- Dummy 응답 Engine 경유
+- RAG context 연결
+- 실행정보 블록 유지
+
+이번 단계 목표:
+- ConversationEngine이 어떤 인터페이스로 Provider를 호출할지 확정
+- ModelRouter와 선택 모델/Provider 흐름 확정
+- API Key 미설정/오류 처리 정책 확정
+- 1차 실제 호출 구현 범위 확정
+
+--------------------------------------------------
+2. 확인할 기존 구조
+--------------------------------------------------
+
+기존 프로젝트에서 아래 구조를 확인한다.
+
+- Provider 관련 interface/class
+- ModelRouter
+- ModelRequest / ModelResponse 유사 구조
+- ApiKeyManager
+- GoogleModelProvider
+- DummyProvider 또는 DummyModelProvider
+- ExecutionEngine 또는 Worker 실행 구조
+
+이번 설계 보고서에는 실제 파일명/역할을 간단히 포함한다.
+
+--------------------------------------------------
+3. ConversationEngine → Provider 흐름 설계
+--------------------------------------------------
+
+권장 흐름:
+
+ConversationEngine
+→ ConversationPromptBuilder
+→ ModelRouter
+→ Selected Provider
+→ ModelResponse
+→ ConversationResponse
+→ OutputBlock
+
+주의:
+- ConversationViewModel이 Provider를 직접 호출하지 않는다.
+- ConversationEngine이 실행 흐름을 담당한다.
+- ModelRouter가 Provider 선택/모델 선택을 담당한다.
+
+--------------------------------------------------
+4. ConversationPromptBuilder 설계
+--------------------------------------------------
+
+신규 컴포넌트 후보:
+
+ConversationPromptBuilder
+
+역할:
+- ConversationRequest를 실제 모델 입력 프롬프트로 변환
+
+입력:
+- systemInstruction
+- recentMessages
+- ragContext
+- userInput
+- selectedMode
+
+출력:
+- ModelRequest 또는 prompt String
+
+프롬프트 순서:
+1. systemInstruction
+2. recentMessages
+3. RAG context
+4. userInput
+
+제한:
+- recentMessages 최대 개수 제한
+- ragContext maxContextChars 유지
+- 전체 prompt 길이 제한은 후속 단계 가능
+
+--------------------------------------------------
+5. Provider 선택 정책
+--------------------------------------------------
+
+1차 정책:
+- selectedProvider / selectedModel이 있으면 사용
+- 없으면 기본 Provider/Model 사용
+- API Key가 없으면 실제 호출하지 않고 ERROR_BLOCK 반환 또는 Dummy fallback
+
+선택 후보:
+- 기본 Provider: Google
+- 기본 Model: 현재 프로젝트에서 이미 정의된 기본 모델
+
+주의:
+- 정확한 Provider/model 이름은 기존 코드 기준으로 확인한다.
+- 하드코딩 최소화.
+
+--------------------------------------------------
+6. API Key 처리 정책
+--------------------------------------------------
+
+API Key 없음:
+- status = FAILED
+- errorType = API_KEY_MISSING 또는 UNKNOWN
+- ERROR_BLOCK에 “API Key가 설정되지 않았습니다” 표시
+- 앱 크래시 금지
+
+API 오류:
+- TIMEOUT
+- RATE_LIMIT
+- SERVER_ERROR
+- UNKNOWN
+
+주의:
+- API Key를 코드에 하드코딩 금지
+- 기존 ApiKeyManager 사용
+
+--------------------------------------------------
+7. 실행정보 기록 정책
+--------------------------------------------------
+
+실제 호출 시 기록:
+
+- providerName
+- modelName
+- latencySec
+- status
+- retryCount
+- errorType
+- ragEnabled
+- ragResultCount
+- ragFallback
+- workerName = Main 또는 ConversationMain
+
+1차 실제 호출:
+- 단일 Main Worker만 실제 호출
+- Orchestrator/Synthesis는 더미/표시 유지 또는 후속 제거/정리 결정
+
+이번 설계에서 Worker 3개 표시를 어떻게 유지할지 결정한다.
+
+--------------------------------------------------
+8. OutputBlock 변환 정책
+--------------------------------------------------
+
+1차:
+- ModelResponse.text → TEXT_BLOCK
+
+실패:
+- ERROR_BLOCK
+
+후속:
+- Markdown/code/json 파싱
+
+주의:
+- 기존 OutputBlock 렌더링 정책 유지
+
+--------------------------------------------------
+9. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- ConversationPromptBuilder 추가
+- ConversationEngine에 Provider 호출 준비 분기 추가
+- API Key 없을 때 ERROR_BLOCK 반환
+- 실제 API 호출은 아직 Dummy Provider 또는 기존 DummyModelProvider로 테스트 가능
+- 또는 실제 Google 호출은 다음 단계로 분리
+
+권장 분리:
+1. Provider 연결 dry-run / API key missing 처리
+2. 실제 Google Provider 호출
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 API 호출
+❌ API Key 하드코딩
+❌ Provider 구조 대규모 변경
+❌ ModelRouter 대규모 변경
+❌ Worker 다단계 실행 구현
+❌ RAG 검색 알고리즘 변경
+❌ 저장소 구조 변경
+
+--------------------------------------------------
+완료 기준:
+- 기존 Provider 관련 파일/역할 확인
+- ConversationEngine → Provider 연결 흐름 확정
+- PromptBuilder 역할 확정
+- Provider/model 선택 정책 확정
+- API Key 오류 처리 정책 확정
+- 실행정보 기록 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+Provider 연결 dry-run 및 API Key 오류 처리 구현
+
+==============================
 [2026-05-02 09:18] ConversationEngine skeleton 1차 구현
 ==============================
 
