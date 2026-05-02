@@ -5,7 +5,8 @@ class ConversationEngine(
     private val apiKeyProvider: (providerName: String) -> String? = { null },
     private val providerProfileProvider: (providerId: String) -> ProviderProfile? = { null },
     private val googleGeminiProviderAdapter: GoogleGeminiProviderAdapter = GoogleGeminiProviderAdapter(),
-    private val openAiCompatibleProviderAdapter: OpenAiCompatibleProviderAdapter = OpenAiCompatibleProviderAdapter()
+    private val openAiCompatibleProviderAdapter: OpenAiCompatibleProviderAdapter = OpenAiCompatibleProviderAdapter(),
+    private val geminiNativeProviderAdapter: GeminiNativeProviderAdapter = GeminiNativeProviderAdapter()
 ) {
     suspend fun execute(request: ConversationRequest): ConversationResponse {
         val startedAt = System.currentTimeMillis()
@@ -54,6 +55,18 @@ class ConversationEngine(
                 )
             }
 
+            if (request.webSearchEnabled && providerProfile.providerType != ProviderType.GOOGLE) {
+                return createProviderSetupFailureResponse(
+                    request = request,
+                    providerName = providerName,
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length,
+                    errorType = "WEB_SEARCH_NOT_SUPPORTED",
+                    toolSupportPolicy = toolSupportPolicy
+                )
+            }
+
             if (isGoogleProvider(providerName, providerProfile)) {
                 val apiKey = apiKeyProvider(providerName)
                 if (apiKey.isNullOrBlank()) {
@@ -65,6 +78,66 @@ class ConversationEngine(
                         promptLength = prompt.length,
                         toolSupportPolicy = toolSupportPolicy
                     )
+                }
+
+                if (request.webSearchEnabled) {
+                    val webSearchPolicy = WebSearchUsageResolver.resolve(
+                        enabledByUser = true,
+                        providerType = providerProfile.providerType,
+                        modelWebSearchStatus = request.selectedModelWebSearchStatus,
+                        nativeGroundingAvailable = true,
+                        fallbackAllowed = false
+                    )
+
+                    if (!webSearchPolicy.canAttemptGrounding) {
+                        val errorType = when (webSearchPolicy.reason) {
+                            WebSearchUsageResolver.REASON_MODEL_CAPABILITY_NOT_ENABLED -> "MODEL_UNSUPPORTED_TOOL"
+                            WebSearchUsageResolver.REASON_PROVIDER_NOT_GOOGLE -> "WEB_SEARCH_NOT_SUPPORTED"
+                            else -> "WEB_SEARCH_NOT_SUPPORTED"
+                        }
+                        return createProviderSetupFailureResponse(
+                            request = request,
+                            providerName = providerName,
+                            modelName = modelName,
+                            startedAt = startedAt,
+                            promptLength = prompt.length,
+                            errorType = errorType,
+                            toolSupportPolicy = toolSupportPolicy
+                        )
+                    }
+
+                    val nativeResult = geminiNativeProviderAdapter.execute(
+                        request = GeminiNativeRequest(
+                            requestId = request.requestId,
+                            modelName = modelName,
+                            prompt = prompt,
+                            systemInstruction = request.systemInstruction,
+                            enableGoogleSearch = true,
+                            createdAt = System.currentTimeMillis()
+                        ),
+                        apiKey = apiKey
+                    )
+
+                    return if (nativeResult.success && nativeResult.rawText.isNotBlank()) {
+                        createNativeGroundingSuccessResponse(
+                            request = request,
+                            rawText = nativeResult.rawText,
+                            providerName = providerName,
+                            modelName = modelName,
+                            promptLength = prompt.length,
+                            nativeResult = nativeResult,
+                            toolSupportPolicy = toolSupportPolicy
+                        )
+                    } else {
+                        createNativeGroundingFailureResponse(
+                            request = request,
+                            providerName = providerName,
+                            modelName = modelName,
+                            promptLength = prompt.length,
+                            nativeResult = nativeResult,
+                            toolSupportPolicy = toolSupportPolicy
+                        )
+                    }
                 }
 
                 val providerResult = googleGeminiProviderAdapter.callGemini(
@@ -100,18 +173,6 @@ class ConversationEngine(
             }
 
             if (isOpenAiCompatibleProvider(providerProfile)) {
-                if (providerProfile == null) {
-                    return createProviderSetupFailureResponse(
-                        request = request,
-                        providerName = providerName,
-                        modelName = modelName,
-                        startedAt = startedAt,
-                        promptLength = prompt.length,
-                        errorType = "PROVIDER_MISSING",
-                        toolSupportPolicy = toolSupportPolicy
-                    )
-                }
-
                 if (providerProfile.baseUrl.isBlank()) {
                     return createProviderSetupFailureResponse(
                         request = request,
@@ -185,6 +246,262 @@ class ConversationEngine(
                 startedAt = startedAt
             )
         }
+    }
+
+    private fun createNativeGroundingSuccessResponse(
+        request: ConversationRequest,
+        rawText: String,
+        providerName: String,
+        modelName: String,
+        promptLength: Int,
+        nativeResult: GeminiNativeResult,
+        toolSupportPolicy: ToolSupportPolicy? = null
+    ): ConversationResponse {
+        val thinkingSplit = splitThinkingTaggedContent(rawText)
+        val displayText = thinkingSplit.finalText.ifBlank { rawText.trim() }
+
+        if (displayText.isBlank()) {
+            return createNativeGroundingFailureResponse(
+                request = request,
+                providerName = providerName,
+                modelName = modelName,
+                promptLength = promptLength,
+                nativeResult = nativeResult.copy(
+                    success = false,
+                    errorType = "INVALID_RESPONSE",
+                    errorMessage = "Gemini native 응답에서 표시 가능한 답변을 찾지 못했습니다."
+                ),
+                toolSupportPolicy = toolSupportPolicy
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        val providerResponseSummary = buildGeminiNativeProviderResponseSummary(nativeResult, displayText.length)
+        val thinkingSummaryTrace = buildGeminiNativeThinkingSummaryTrace(nativeResult, thinkingSplit)
+        val webSearchGroundingTrace = buildNativeWebSearchGroundingTraceText(
+            request = request,
+            providerType = ProviderType.GOOGLE,
+            nativeResult = nativeResult,
+            errorType = null
+        )
+        val traceText = buildNativeTraceText(
+            request = request,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = displayText.length,
+            status = "COMPLETED",
+            latencySec = nativeResult.latencySec,
+            errorType = null,
+            toolSupportPolicy = toolSupportPolicy,
+            thinkingSummaryTrace = thinkingSummaryTrace,
+            providerResponseSummary = providerResponseSummary,
+            webSearchGroundingTrace = webSearchGroundingTrace
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.COMPLETED,
+            totalLatencySec = nativeResult.latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                if (index == 0) {
+                    worker.copy(
+                        status = "COMPLETED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = nativeResult.latencySec,
+                        retryCount = 0,
+                        errorType = "",
+                        outputSummary = "Gemini native grounding 호출 완료",
+                        rawOutput = buildString {
+                            appendLine(displayText.take(800))
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: ${displayText.length}")
+                            appendLine("latencySec: ${nativeResult.latencySec}")
+                            appendLine("actualApiCall: true")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendLine(thinkingSummaryTrace)
+                            appendLine()
+                            appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                            appendLine(providerResponseSummary)
+                            appendLine()
+                            appendLine(webSearchGroundingTrace)
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                } else {
+                    worker
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "SUCCESS",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_assistant_$now",
+                    type = ConversationOutputBlockType.TEXT_BLOCK,
+                    title = "Gemini native grounding 응답",
+                    content = displayText,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = displayText,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = nativeResult.latencySec,
+            errorType = null,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createNativeGroundingFailureResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        promptLength: Int,
+        nativeResult: GeminiNativeResult,
+        toolSupportPolicy: ToolSupportPolicy? = null
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val errorType = nativeResult.errorType ?: "GROUNDING_FAILED"
+        val safeErrorMessage = buildUserFacingErrorMessage(
+            errorType = errorType,
+            fallbackMessage = nativeResult.errorMessage ?: "Gemini native grounding 호출에 실패했습니다."
+        )
+        val providerResponseSummary = buildGeminiNativeProviderResponseSummary(nativeResult, responseLength = 0)
+        val thinkingSummaryTrace = buildGeminiNativeThinkingSummaryTrace(nativeResult, ThinkingSplitResult.notDetected(0))
+        val webSearchGroundingTrace = buildNativeWebSearchGroundingTraceText(
+            request = request,
+            providerType = ProviderType.GOOGLE,
+            nativeResult = nativeResult,
+            errorType = errorType
+        )
+        val traceText = buildNativeTraceText(
+            request = request,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = 0,
+            status = "FAILED",
+            latencySec = nativeResult.latencySec,
+            errorType = errorType,
+            toolSupportPolicy = toolSupportPolicy,
+            thinkingSummaryTrace = thinkingSummaryTrace,
+            providerResponseSummary = providerResponseSummary,
+            webSearchGroundingTrace = webSearchGroundingTrace
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = nativeResult.latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = nativeResult.latencySec,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Gemini native grounding 호출 실패: $errorType",
+                        rawOutput = buildString {
+                            appendLine(safeErrorMessage.take(800))
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("latencySec: ${nativeResult.latencySec}")
+                            appendLine("actualApiCall: true")
+                            appendLine("errorType: $errorType")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendLine(thinkingSummaryTrace)
+                            appendLine()
+                            appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                            appendLine(providerResponseSummary)
+                            appendLine()
+                            appendLine(webSearchGroundingTrace)
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "Gemini native grounding 실패로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "Web Search grounding 실패",
+                    content = safeErrorMessage,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = safeErrorMessage,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = nativeResult.latencySec,
+            errorType = errorType,
+            runInfo = runInfo,
+            createdAt = now
+        )
     }
 
     private fun createProviderSuccessResponse(
@@ -1033,6 +1350,140 @@ class ConversationEngine(
         )
     }
 
+    private fun buildNativeTraceText(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        promptLength: Int,
+        responseLength: Int,
+        status: String,
+        latencySec: Double,
+        errorType: String?,
+        toolSupportPolicy: ToolSupportPolicy?,
+        thinkingSummaryTrace: String,
+        providerResponseSummary: String,
+        webSearchGroundingTrace: String
+    ): String {
+        return buildString {
+            appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → Gemini native grounding 호출 → 응답 생성 → 화면 갱신")
+            appendLine()
+            appendLine("[PROVIDER_CALL]")
+            appendLine("providerName: $providerName")
+            appendLine("providerId: $providerName")
+            appendLine("modelName: $modelName")
+            appendLine("actualApiCall: true")
+            appendLine("status: $status")
+            appendLine("promptLength: $promptLength")
+            appendLine("responseLength: $responseLength")
+            appendLine("latencySec: $latencySec")
+            appendLine("errorType: ${errorType ?: "NONE"}")
+            if (toolSupportPolicy != null) {
+                appendLine()
+                appendLine(toolSupportPolicy.toTraceSummary())
+            }
+            appendLine()
+            appendLine(thinkingSummaryTrace)
+            appendLine()
+            appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+            appendLine(providerResponseSummary.take(1200))
+            appendLine()
+            appendLine(webSearchGroundingTrace)
+            appendLine()
+            append(buildRagTraceText(request.ragContext))
+        }.trim()
+    }
+
+    private fun buildGeminiNativeProviderResponseSummary(
+        result: GeminiNativeResult,
+        responseLength: Int
+    ): String {
+        return buildString {
+            appendLine("providerType=GOOGLE")
+            appendLine("adapter=GeminiNativeProviderAdapter")
+            appendLine("endpoint=generateContent")
+            appendLine("finishReason=${result.finishReason ?: "UNKNOWN"}")
+            appendLine("answerPartCount=${result.answerPartCount}")
+            appendLine("thoughtPartCount=${result.thoughtPartCount}")
+            appendLine("responseLength=$responseLength")
+            appendLine("actualApiCall=true")
+            appendLine("success=${result.success}")
+            appendLine("errorType=${result.errorType ?: "NONE"}")
+            appendLine("groundingUsed=${result.groundingUsed}")
+            appendLine("citationCount=${result.citations.size}")
+            appendLine("searchQueryCount=${result.searchQueries.size}")
+            if (!result.rawMetadataSummary.isNullOrBlank()) {
+                appendLine("rawMetadataSummary=${result.rawMetadataSummary.take(500)}")
+            }
+        }.trim()
+    }
+
+    private fun buildGeminiNativeThinkingSummaryTrace(
+        nativeResult: GeminiNativeResult,
+        thinkingSplit: ThinkingSplitResult
+    ): String {
+        val nativeThinkingPreview = nativeResult.thinkingSummary
+            ?.replace(Regex("""\s+"""), " ")
+            ?.trim()
+            ?.take(300)
+            .orEmpty()
+        val detected = nativeThinkingPreview.isNotBlank() || thinkingSplit.thinkingSummaryDetected
+        val length = nativeResult.thinkingSummary?.length ?: thinkingSplit.thinkingSummaryLength
+        val preview = nativeThinkingPreview.ifBlank { thinkingSplit.thinkingSummaryPreview }
+
+        return buildString {
+            appendLine("[THINKING_SUMMARY]")
+            appendLine("THINKING_SUMMARY_DETECTED=$detected")
+            appendLine("thinkingSummaryLength=$length")
+            if (detected) {
+                appendLine("thinkingSummaryPreview=$preview")
+            }
+        }.trim()
+    }
+
+    private fun buildNativeWebSearchGroundingTraceText(
+        request: ConversationRequest,
+        providerType: ProviderType,
+        nativeResult: GeminiNativeResult,
+        errorType: String?
+    ): String {
+        val modelSupportsWebSearch = request.selectedModelWebSearchStatus == CapabilityStatus.USER_ENABLED ||
+                request.selectedModelWebSearchStatus == CapabilityStatus.SUPPORTED
+        val reason = errorType ?: nativeResult.errorType ?: "NONE"
+
+        return buildString {
+            appendLine("[WEB_SEARCH_GROUNDING]")
+            appendLine("requested: true")
+            appendLine("providerType: ${providerType.name}")
+            appendLine("modelWebSearchStatus: ${request.selectedModelWebSearchStatus?.name ?: "UNKNOWN"}")
+            appendLine("nativeGroundingAvailable: true")
+            appendLine("canAttemptGrounding: true")
+            appendLine("groundingExecuted: true")
+            appendLine("groundingUsed: ${nativeResult.groundingUsed}")
+            appendLine("citationCount: ${nativeResult.citations.size}")
+            appendLine("searchQueryCount: ${nativeResult.searchQueries.size}")
+            appendLine("modelSupportsWebSearch: $modelSupportsWebSearch")
+            appendLine("fallbackAllowed: false")
+            appendLine("errorType: ${errorType ?: nativeResult.errorType ?: "NONE"}")
+            appendLine("reason: $reason")
+            if (nativeResult.searchQueries.isNotEmpty()) {
+                appendLine("searchQueries:")
+                nativeResult.searchQueries.take(5).forEachIndexed { index, query ->
+                    appendLine("${index + 1}. ${query.take(160)}")
+                }
+            }
+            if (nativeResult.citations.isNotEmpty()) {
+                appendLine("sources:")
+                nativeResult.citations.take(5).forEachIndexed { index, citation ->
+                    appendLine("${index + 1}. title=${citation.title ?: "UNKNOWN"}")
+                    appendLine("   url=${citation.url?.take(240) ?: "UNKNOWN"}")
+                    if (!citation.snippet.isNullOrBlank()) {
+                        appendLine("   snippet=${citation.snippet.take(240)}")
+                    }
+                }
+            }
+        }.trim()
+    }
+
     private fun buildTraceText(
         ragContext: RagContext?,
         providerName: String,
@@ -1152,8 +1603,8 @@ class ConversationEngine(
             enabledByUser = request?.webSearchEnabled ?: false,
             providerType = providerType,
             modelWebSearchStatus = request?.selectedModelWebSearchStatus,
-            nativeGroundingAvailable = false,
-            fallbackAllowed = true
+            nativeGroundingAvailable = providerType == ProviderType.GOOGLE,
+            fallbackAllowed = request?.webSearchEnabled != true
         )
         return policy.toTraceSummary()
     }
@@ -1201,6 +1652,10 @@ class ConversationEngine(
             "INVALID_REQUEST" -> "요청 형식 또는 모델명이 올바르지 않습니다. 모델명과 Provider 설정을 확인하세요."
             "INVALID_RESPONSE" -> "응답에서 표시 가능한 텍스트를 찾지 못했습니다."
             "TOOL_CALL_NOT_SUPPORTED" -> "모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
+            "WEB_SEARCH_NOT_SUPPORTED" -> "현재 선택한 Provider에서는 Web Search grounding을 지원하지 않습니다. Google Provider와 Web Search 지원 모델을 선택하세요."
+            "MODEL_UNSUPPORTED_TOOL" -> "현재 선택한 모델의 Web Search capability가 활성화되어 있지 않습니다. Model 관리에서 webSearch capability를 USER_ENABLED 또는 SUPPORTED 상태로 설정하세요."
+            "GROUNDING_FAILED" -> "Gemini native Web Search grounding 호출에 실패했습니다. 실행정보의 WEB_SEARCH_GROUNDING 섹션을 확인하세요."
+            "SAFETY_BLOCKED" -> "Provider 안전 정책에 의해 응답이 차단되었습니다. 입력 내용을 조정한 뒤 다시 시도하세요."
             "RATE_LIMIT" -> "요청 한도에 도달했습니다. 잠시 후 다시 시도하세요."
             "SERVER_ERROR" -> "Provider 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요."
             "AUTH_FAILED" -> "Provider 인증에 실패했습니다. API Key와 Provider 설정을 확인하세요."

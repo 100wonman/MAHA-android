@@ -1,4 +1,325 @@
 ==============================
+[2026-05-02 21:17] ConversationEngine Gemini native grounding 분기 연결
+==============================
+
+[작업]
+- ConversationEngine에 Gemini native grounding 호출 분기 추가
+- Web Search ON + GOOGLE + webSearch capability 조건에서 GeminiNativeProviderAdapter 호출
+- WebSearchUsagePolicy nativeGroundingAvailable 정책 보정
+- GeminiNativeResult를 ConversationResponse / OutputBlock으로 변환
+- WEB_SEARCH_GROUNDING 실행정보에 groundingExecuted/citationCount/searchQueryCount 반영
+- PROVIDER_RESPONSE_SUMMARY에 native adapter / finishReason / answerPartCount 기록
+- Web Search OFF 기존 GoogleGeminiProviderAdapter 경로 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationEngine에 Web Search ON + GOOGLE + webSearch capability 허용 조건 native 분기 추가
+- 조건 충족 시 GeminiNativeProviderAdapter.execute(...) 호출 연결
+- native 성공 응답은 TEXT_BLOCK으로 표시하고 citations/searchQueries는 실행정보에만 기록
+- native 실패 시 일반 Gemini fallback 없이 ERROR_BLOCK 처리
+- Web Search OFF 기존 GoogleGeminiProviderAdapter 호출 경로 유지
+
+[Native Grounding 호출 테스트]
+- Web Search OFF: 빠른 설정 Web Search OFF → Google Provider 전송 → PROVIDER_RESPONSE_SUMMARY adapter가 기존 Gemini 경로인지 확인
+- Web Search ON + GOOGLE: Web Search ON + Google Provider + 모델 webSearch USER_ENABLED/SUPPORTED → 전송 → adapter=GeminiNativeProviderAdapter 확인
+- webSearch capability UNKNOWN: Model 관리에서 webSearch UNKNOWN 상태 → Web Search ON 전송 → MODEL_UNSUPPORTED_TOOL 확인
+- Provider 미지원: OPENAI_COMPATIBLE/LOCAL/CUSTOM Provider 선택 → Web Search ON 전송 → WEB_SEARCH_NOT_SUPPORTED 확인
+- API Key 없음: Google Provider API Key 제거 → Web Search ON 전송 → API_KEY_MISSING 확인
+
+[Web Search 실행정보 테스트]
+- groundingExecuted: Web Search ON + native 조건 충족 전송 → [WEB_SEARCH_GROUNDING] groundingExecuted=true 확인
+- groundingUsed: 실행정보 → groundingUsed=true/false 표시 확인
+- citationCount: 실행정보 → citationCount 값 표시 확인
+- searchQueryCount: 실행정보 → searchQueryCount 값 표시 확인
+- source 요약: citation이 있는 응답에서 sources 최대 5개 title/url 표시 확인
+
+[Provider 응답 테스트]
+- adapter: 실행정보 [PROVIDER_RESPONSE_SUMMARY] → adapter=GeminiNativeProviderAdapter 확인
+- finishReason: 실행정보 → finishReason 값 표시 확인
+- answerPartCount: 실행정보 → answerPartCount 값 표시 확인
+- thoughtPartCount: 실행정보 → thoughtPartCount 값 표시 확인
+- ERROR_BLOCK: native 실패 상황에서 Web Search grounding 실패 ERROR_BLOCK 표시 확인
+
+[기존 기능 영향]
+- Gemini 기존 호출: Web Search OFF 상태에서 기존 GoogleGeminiProviderAdapter 호출 유지
+- OpenAI-compatible 호출: Web Search OFF 상태에서 기존 OpenAI-compatible 호출 유지
+- RAG: RAG ON/OFF와 Web Search ON/OFF 독립 유지
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ConversationEngine.kt
+- ConversationRequestResponse.kt
+- WebSearchUsagePolicy.kt
+- GeminiNativeModels.kt
+- GeminiNativeProviderAdapter.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ConversationEngine Gemini native grounding 분기 연결
+
+목표:
+- 대화방 Web Search ON 조건에서 GeminiNativeProviderAdapter를 호출할 수 있게 한다.
+- providerType=GOOGLE + webSearchEnabled=true + 모델 webSearch capability 허용 조건에서만 native grounding 호출을 시도한다.
+- 성공 응답은 TEXT_BLOCK으로 표시하고, citations/searchQueries는 실행정보에 기록한다.
+- 기존 GoogleGeminiProviderAdapter 기본 호출 경로는 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ConversationEngine에서 Gemini native grounding 분기 추가
+✔ WebSearchUsagePolicy nativeGroundingAvailable=true 전환 또는 Engine 내부 조건부 true 처리
+✔ providerType=GOOGLE + webSearchEnabled=true 조건 확인
+✔ model.capabilitiesV2.tools.webSearch USER_ENABLED/SUPPORTED 조건 확인
+✔ GeminiNativeProviderAdapter.execute(...) 호출
+✔ GeminiNativeResult → ConversationResponse 변환
+✔ WEB_SEARCH_GROUNDING 실행정보에 groundingExecuted/groundingUsed/citationCount/searchQueryCount 반영
+✔ citations/source 요약을 실행정보 TRACE에 기록
+✔ 실패 시 ERROR_BLOCK 처리
+
+이번 단계에서 금지:
+
+❌ 기존 GoogleGeminiProviderAdapter 제거
+❌ Google 기본 호출을 native로 전면 대체
+❌ OpenAI-compatible Adapter 변경
+❌ Citation UX 별도 화면 구현
+❌ streaming 구현
+❌ tool execution 구현
+❌ RAG 로직 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. native grounding 분기 조건
+--------------------------------------------------
+
+Gemini native adapter 호출 조건:
+
+- providerType == GOOGLE
+- request.webSearchEnabled == true
+- model.capabilitiesV2.tools.webSearch == USER_ENABLED 또는 SUPPORTED
+- provider API Key 존재
+- rawModelName 존재
+- WebSearchUsagePolicy.canAttemptGrounding == true 또는 이번 구현에서 nativeGroundingAvailable=true 처리
+
+조건 불만족 시:
+
+A. webSearchEnabled=false
+- 기존 GoogleGeminiProviderAdapter 호출 유지
+
+B. webSearchEnabled=true인데 capability가 UNKNOWN/UNSUPPORTED
+- WEB_SEARCH_NOT_SUPPORTED 또는 MODEL_UNSUPPORTED_TOOL ERROR_BLOCK
+- 권장: MODEL_UNSUPPORTED_TOOL
+
+C. webSearchEnabled=true인데 providerType != GOOGLE
+- WEB_SEARCH_NOT_SUPPORTED
+
+D. API Key 없음
+- API_KEY_MISSING
+
+E. rawModelName 없음
+- MODEL_MISSING
+
+--------------------------------------------------
+3. WebSearchUsagePolicy 보정
+--------------------------------------------------
+
+기존:
+- nativeGroundingAvailable=false 고정
+- canAttemptGrounding=false
+
+이번 단계:
+- GeminiNativeProviderAdapter 실제 호출 코드가 있으므로 GOOGLE에 한해 nativeGroundingAvailable=true로 전환 가능
+
+정책:
+- providerType=GOOGLE일 때 nativeGroundingAvailable=true
+- 그 외 ProviderType은 false
+- modelWebSearchStatus가 USER_ENABLED/SUPPORTED일 때 canAttemptGrounding=true
+
+주의:
+- Web Search ON만으로 자동 허용하지 않는다
+- 모델 capability가 UNKNOWN이면 사용자가 Model 관리에서 webSearch를 활성화해야 함
+
+--------------------------------------------------
+4. GeminiNativeResult 변환 정책
+--------------------------------------------------
+
+성공:
+- result.success == true
+- result.rawText가 blank가 아니면 TEXT_BLOCK 생성
+- ConversationResponse.status = SUCCESS
+- rawText = result.rawText
+- providerName/modelName/latencySec 기록
+
+실패:
+- ERROR_BLOCK 생성
+- ConversationResponse.status = FAILED
+- errorType = result.errorType
+- errorMessage = result.errorMessage
+
+주의:
+- result.thinkingSummary는 본문에 표시하지 않음
+- citations는 본문에 직접 삽입하지 않음
+
+--------------------------------------------------
+5. WEB_SEARCH_GROUNDING 실행정보 갱신
+--------------------------------------------------
+
+native 호출 시 실행정보에 기록:
+
+[WEB_SEARCH_GROUNDING]
+- requested=true
+- nativeGroundingAvailable=true
+- groundingExecuted=true
+- groundingUsed=result.groundingUsed
+- citationCount=result.citations.size
+- searchQueryCount=result.searchQueries.size
+- modelSupportsWebSearch=true
+- errorType=result.errorType
+- reason
+
+source 요약:
+- citation title/url 최대 3~5개만 TRACE에 표시
+- URL 전체 표시 가능하나 너무 길면 줄임
+- raw grounding metadata 전체 노출 금지
+
+--------------------------------------------------
+6. PROVIDER_RESPONSE_SUMMARY 갱신
+--------------------------------------------------
+
+native 호출 시:
+
+[PROVIDER_RESPONSE_SUMMARY]
+- providerType=GOOGLE
+- adapter=GeminiNativeProviderAdapter
+- endpoint=generateContent
+- finishReason=result.finishReason
+- answerPartCount=result.answerPartCount
+- thoughtPartCount=result.thoughtPartCount
+- responseLength=result.rawText.length
+- actualApiCall=true
+
+기존 OpenAI-compatible / GoogleGeminiProviderAdapter summary는 유지
+
+--------------------------------------------------
+7. THINKING_SUMMARY 유지
+--------------------------------------------------
+
+GeminiNativeResult.thinkingSummary가 있으면:
+
+[THINKING_SUMMARY]
+- detected=true
+- length
+- preview only
+
+없으면:
+- detected=false
+
+주의:
+- thinking 원문 ASSISTANT 본문 노출 금지
+- 저장 rawText에도 thinking 포함 금지
+
+--------------------------------------------------
+8. fallback 정책
+--------------------------------------------------
+
+이번 단계:
+- Web Search ON + native 조건 충족 후 native 호출 실패 시 ERROR_BLOCK
+- 일반 GoogleGeminiProviderAdapter fallback은 하지 않음
+
+이유:
+- 사용자가 Web Search를 명시적으로 켰는데 grounding 실패를 숨기면 디버깅이 어려움
+
+후속:
+- “Web Search 실패 시 일반 답변으로 계속” 옵션 검토
+
+--------------------------------------------------
+9. 테스트 기준
+--------------------------------------------------
+
+A. Web Search OFF + Google Provider
+- 기존 GoogleGeminiProviderAdapter 호출
+- WEB_SEARCH_GROUNDING requested=false 또는 groundingExecuted=false
+
+B. Web Search ON + Google Provider + webSearch capability USER_ENABLED + API Key 있음
+- GeminiNativeProviderAdapter 호출
+- actualApiCall=true
+- groundingExecuted=true
+- citationCount/searchQueryCount 표시
+
+C. Web Search ON + Google Provider + webSearch capability UNKNOWN
+- MODEL_UNSUPPORTED_TOOL 또는 WEB_SEARCH_NOT_SUPPORTED
+- native 호출하지 않음
+
+D. Web Search ON + OpenAI-compatible Provider
+- WEB_SEARCH_NOT_SUPPORTED
+
+E. Web Search ON + API Key 없음
+- API_KEY_MISSING
+
+F. RAG ON/OFF와 Web Search ON/OFF 독립 유지
+
+--------------------------------------------------
+10. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Web Search OFF 기존 Gemini 호출
+- OpenAI-compatible 호출
+- ToolSupportPolicy
+- RAG 검색/인덱싱
+- Provider 관리
+- Model 관리
+- 저장/복구
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ Google 기본 호출 전체 native 전환 금지
+❌ citation 별도 UI 구현 금지
+❌ streaming 구현 금지
+❌ tool execution 구현 금지
+❌ RAG와 Web Search 토글 통합 금지
+❌ OpenAI-compatible Adapter 변경 금지
+❌ 작업모드 수정 금지
+❌ raw grounding metadata 전체 본문 노출 금지
+
+--------------------------------------------------
+완료 기준:
+- Web Search ON 조건에서 GeminiNativeProviderAdapter 호출 가능
+- Web Search OFF에서는 기존 GoogleGeminiProviderAdapter 유지
+- WEB_SEARCH_GROUNDING에 groundingExecuted/citationCount/searchQueryCount 표시
+- native 실패 시 ERROR_BLOCK 표시
+- RAG와 Web Search 분리 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Grounding citation UX 구현 또는 Web Search fallback 옵션 설계
+
+==============================
 [2026-05-02 21:09] GeminiNativeProviderAdapter 실제 HTTP 호출 1차 구현
 ==============================
 
