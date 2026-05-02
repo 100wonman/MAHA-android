@@ -1,4 +1,313 @@
 ==============================
+[2026-05-02 09:05] 실제 모델 연결 준비 설계
+==============================
+
+[작업]
+- ConversationRequest / ConversationResponse 구조 설계
+- ConversationEngine 역할 설계
+- ConversationViewModel과 Provider 호출 책임 분리 설계
+- RAG context 전달 방식 설계
+- OutputBlock 변환 정책 설계
+- 실행정보 블록 실제 모델 호출 기록 정책 설계
+- 1차 구현 범위 확정
+
+[설계 모드]
+
+작업명:
+실제 모델 연결 준비 설계
+
+목표:
+- 현재 DummyConversationWorker 기반 대화 흐름을 실제 모델 호출 구조로 전환하기 위한 설계를 확정한다.
+- 기존 Provider / ModelRouter / API Key 구조를 최대한 활용한다.
+- 대화모드, RAG, 실행정보 블록, OutputBlock 구조가 실제 모델 응답과 연결될 수 있게 준비한다.
+- 이번 단계는 설계만 수행한다. 실제 API 호출 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료된 구조:
+- 대화 세션 저장/복구
+- SAF 백업/복원
+- RAG keyword 검색
+- RagContext 생성
+- OutputBlock 렌더링
+- 실행정보 블록
+- DummyConversationWorker 응답
+- 빠른 설정 searchEnabled / mode 선택
+
+현재 문제:
+- 실제 LLM 호출 없음
+- Dummy 응답만 생성됨
+- Conversation 전용 요청/응답 구조가 아직 명확하지 않음
+
+--------------------------------------------------
+2. 설계 목표
+--------------------------------------------------
+
+확정할 것:
+
+1. ConversationRequest 구조
+2. ConversationResponse 구조
+3. Provider 호출 위치
+4. RAG context 전달 방식
+5. OutputBlock 변환 방식
+6. 실행정보 기록 방식
+7. 실패/fallback 처리 방식
+8. 1차 구현 범위
+
+--------------------------------------------------
+3. ConversationRequest 설계
+--------------------------------------------------
+
+필드 후보:
+
+- requestId
+- sessionId
+- userInput
+- selectedMode
+- searchEnabled
+- ragContext?
+- recentMessages
+- systemInstruction?
+- selectedProvider?
+- selectedModel?
+- createdAt
+
+정책:
+- userInput은 필수
+- ragContext는 검색 ON일 때만 포함
+- recentMessages는 최근 N개만 포함
+- 전체 대화 history 무제한 전달 금지
+- systemInstruction은 후속 Worker 설정과 연결 가능하게 설계
+
+--------------------------------------------------
+4. ConversationResponse 설계
+--------------------------------------------------
+
+필드 후보:
+
+- responseId
+- requestId
+- status
+- blocks
+- rawText
+- providerName
+- modelName
+- latencySec
+- errorType?
+- runInfo
+- createdAt
+
+정책:
+- rawText를 바로 화면에 표시하지 말고 OutputBlock으로 변환
+- 기본은 TEXT_BLOCK
+- 코드/JSON 감지 시 CODE_BLOCK / JSON_BLOCK 변환은 후속 단계 가능
+- 실패 시 ERROR_BLOCK 생성
+
+--------------------------------------------------
+5. Provider 호출 위치 설계
+--------------------------------------------------
+
+권장 흐름:
+
+ConversationViewModel
+→ ConversationEngine
+→ ModelRouter / Provider
+→ ConversationResponse
+→ OutputBlock 변환
+→ 세션 메시지 저장
+
+권장 신규 컴포넌트:
+- ConversationEngine
+- ConversationRequestBuilder
+- ConversationResponseParser
+
+주의:
+- ConversationViewModel이 Provider API를 직접 호출하지 않도록 설계
+- ViewModel은 상태/흐름 제어
+- Engine은 실행 담당
+- Provider/ModelRouter는 기존 구조 재사용
+
+--------------------------------------------------
+6. RAG context 연결 방식
+--------------------------------------------------
+
+검색 OFF:
+- ragContext = null
+- 일반 요청 생성
+
+검색 ON:
+- RagContextBuilder 실행
+- RagContext를 ConversationRequest에 포함
+
+Prompt 구성 순서 후보:
+
+1. systemInstruction
+2. recentMessages
+3. RAG context
+4. userInput
+
+주의:
+- RAG context 전체를 무제한 삽입 금지
+- maxContextChars 유지
+- RAG 실패 시 ragContext.fallback=true 상태로 일반 답변 흐름 유지
+
+--------------------------------------------------
+7. OutputBlock 변환 정책
+--------------------------------------------------
+
+1차:
+- 모델 응답 전체를 TEXT_BLOCK으로 표시
+
+후속:
+- Markdown 감지
+- 코드블록 감지
+- JSON 감지
+- ERROR_BLOCK 변환
+- TRACE/MEMORY_BLOCK 분리
+
+이번 설계에서는 1차 변환 정책을 단순하게 확정한다.
+
+--------------------------------------------------
+8. 실행정보 블록 연동
+--------------------------------------------------
+
+실제 모델 호출 시 기록할 항목:
+
+- status
+- totalLatencySec
+- providerName
+- modelName
+- workerName
+- retryCount
+- errorType
+- ragEnabled
+- ragResultCount
+- ragFallback
+- ragFallbackReason
+
+주의:
+- 기존 Worker 3개 표시 정책을 실제 실행 구조와 어떻게 맞출지 설계
+- 1차 실제 모델 호출은 단일 Main Worker만 사용 가능
+- Orchestrator/Synthesis는 더미 표시 유지 또는 후속 단계로 분리
+
+--------------------------------------------------
+9. 실패 처리 정책
+--------------------------------------------------
+
+Provider 호출 실패 시:
+
+- ERROR_BLOCK 생성
+- 실행정보 status = FAILED
+- errorType 설정
+  - TIMEOUT
+  - RATE_LIMIT
+  - SERVER_ERROR
+  - UNKNOWN
+- 세션에는 실패 메시지도 저장
+- 앱 크래시 금지
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- ConversationRequest data class 추가
+- ConversationResponse data class 추가
+- ConversationEngine skeleton 추가
+- 실제 API 호출은 아직 Dummy Provider로 유지
+- ViewModel → Engine 경로만 연결
+- 현재 Dummy 응답을 Engine을 통해 반환하도록 변경
+
+그 다음 단계:
+- 실제 Google Provider 연결
+- API Key 확인
+- 모델 선택 연결
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ 실제 API 호출
+❌ Google API 연결
+❌ Provider 구조 대규모 변경
+❌ ModelRouter 대규모 변경
+❌ RAG 검색 알고리즘 변경
+❌ 저장소 구조 변경
+❌ OutputBlock 대규모 변경
+
+--------------------------------------------------
+완료 기준:
+- ConversationRequest 구조 확정
+- ConversationResponse 구조 확정
+- ConversationEngine 역할 확정
+- RAG context 연결 방식 확정
+- OutputBlock 변환 정책 확정
+- 실행정보 기록 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- ConversationViewModel은 상태/흐름 제어만 담당하고 Provider 직접 호출은 하지 않음
+- 실제 호출 흐름은 ConversationEngine을 통해 ModelRouter / Provider로 위임
+- 1차 응답 변환은 모델 rawText를 TEXT_BLOCK으로 변환하는 단순 정책으로 확정
+- RAG context는 검색 ON일 때만 ConversationRequest에 포함
+- 1차 구현은 실제 API 호출 없이 기존 Dummy 응답을 Engine 경유로 반환하는 구조까지 진행 :contentReference[oaicite:0]{index=0}
+
+[Request 구조]
+- 필드: requestId, sessionId, userInput, selectedMode, searchEnabled, ragContext?, recentMessages, systemInstruction?, selectedProvider?, selectedModel?, createdAt
+- recentMessages 정책: 최근 N개만 포함하고 전체 history 무제한 전달은 금지
+- ragContext 정책: 검색 ON일 때만 포함하고 검색 실패/결과 없음이면 fallback 상태로 일반 답변 흐름 유지
+
+[Response 구조]
+- 필드: responseId, requestId, status, blocks, rawText, providerName, modelName, latencySec, errorType?, runInfo, createdAt
+- OutputBlock 변환: 1차는 rawText 전체를 TEXT_BLOCK으로 변환, CODE/JSON 자동 감지는 후속
+- 실패 처리: Provider 실패 시 ERROR_BLOCK 생성, status=FAILED, errorType 기록, 세션에 실패 메시지도 저장
+
+[Engine 구조]
+- ConversationViewModel 역할: 입력 상태, searchEnabled, 세션 메시지 추가, Engine 호출 흐름 제어
+- ConversationEngine 역할: ConversationRequest 실행, Provider/ModelRouter 호출, ConversationResponse 생성
+- Provider/ModelRouter 연결: 기존 Provider / ModelRouter / API Key 구조를 재사용하고 ViewModel 직접 호출은 금지
+
+[RAG 연결]
+- 검색 OFF: ragContext=null로 일반 ConversationRequest 생성
+- 검색 ON: RagContextBuilder 실행 후 RagContext를 ConversationRequest에 포함
+- prompt 구성 순서: systemInstruction → recentMessages → RAG context → userInput
+
+[실행정보 정책]
+- 기록 항목: status, totalLatencySec, providerName, modelName, workerName, retryCount, errorType, ragEnabled, ragResultCount, ragFallback, ragFallbackReason
+- Worker 표시 정책: 1차 실제 모델 호출은 단일 Main Worker 기준, Orchestrator/Synthesis는 더미 유지 또는 후속 분리
+- errorType: TIMEOUT, RATE_LIMIT, SERVER_ERROR, UNKNOWN
+
+[1차 구현 범위]
+- ConversationRequest data class 추가
+- ConversationResponse data class 추가
+- ConversationEngine skeleton 추가
+- 기존 Dummy 응답을 ConversationEngine을 통해 반환하도록 변경
+- ViewModel → Engine 경로만 연결하고 실제 API 호출은 보류
+
+[보류 항목]
+- 실제 Google Provider 연결
+- API Key 검증 및 모델 선택 연결
+- CODE/JSON 자동 OutputBlock 변환
+- Worker 다단계 실행 구조 정식화
+- 실제 LLM API 호출
+
+[문제]
+- 없음
+
+[다음 작업]
+ConversationEngine skeleton 1차 구현
+
+==============================
 [2026-05-02 08:55] ASSISTANT 본문 RAG 중복 표시 제거
 ==============================
 
