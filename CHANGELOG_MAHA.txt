@@ -1,4 +1,260 @@
 ==============================
+[2026-05-02 14:40] Google Provider API Key 경로 보정
+==============================
+
+[작업]
+- providerId별 API Key 저장/로드/삭제 경로 추가
+- Provider 관리 UI의 API Key 입력값을 실제 저장 경로와 연결
+- Provider 카드 API Key 설정 상태 표시 보정
+- Provider 삭제 시 API Key 함께 삭제
+- ConversationEngine이 Google 호출 시 providerId 기준 API Key 조회
+- API_KEY_MISSING 오동작 보정
+- 기존 작업모드 ApiKeyManager 구조 유지
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ProviderSettingsStore에 provider_api_keys.json 저장/로드/삭제 기능 추가
+- Provider 관리 UI의 API Key 입력값을 providerId 기준 저장 경로에 연결
+- Provider 삭제 시 해당 providerId의 API Key도 함께 삭제
+- Provider 카드의 API Key 상태 표시를 hasProviderApiKey(providerId) 기준으로 변경
+- ConversationEngine 호출 경로가 providerId 기준 API Key를 조회하도록 ConversationViewModel 연결 보정
+
+[API Key 경로 테스트]
+- Provider 추가 시 API Key 저장: Provider 추가 → Google 선택 → API Key 입력/저장 → provider_api_keys.json 생성 확인
+- Provider 수정 시 API Key 교체: Google Provider 수정 → 새 API Key 입력/저장 → Gemini 호출 시 API_KEY_MISSING이 아닌지 확인
+- Provider 삭제 시 API Key 삭제: Provider 삭제 → provider_api_keys.json에서 해당 providerId key 제거 확인
+- Provider 카드 상태 표시: API Key 저장 후 “설정됨”, 삭제 후 “미설정” 표시 확인
+- ConversationEngine providerId 기준 조회: 기본 모델의 providerId가 Google Provider일 때 메시지 전송 → 저장된 key 사용 여부 확인
+
+[Gemini 재검증]
+- API Key 없음: Google Provider/Model 선택 + API Key 없음 → API_KEY_MISSING ERROR_BLOCK 확인
+- API Key 있음: Google Provider에 API Key 저장 → API_KEY_MISSING이 사라지는지 확인
+- 실제 Gemini 호출: Google API Key + 유효 rawModelName → 실제 응답 TEXT_BLOCK 표시 확인
+- 잘못된 모델명: 잘못된 rawModelName → API_KEY_MISSING이 아니라 INVALID_REQUEST/UNKNOWN 계열 오류 확인
+- 실행정보 errorType: 실행정보 펼침 → provider/model/latency/errorType 표시 확인
+
+[기존 기능 영향]
+- Provider 관리: 추가/수정/삭제/활성 토글 확인
+- Model 관리: 모델 추가/수정/기본 지정 확인
+- ConversationEngine DUMMY: 기본 모델 미지정 또는 DUMMY 흐름에서 기존 더미 응답 확인
+- RAG: 검색 ON/OFF, RAG 섹션, 참조 컨텍스트 보기 확인
+- SAF 백업/복원: 저장소 관리 → 백업/복원 버튼 동작 확인
+- 작업모드: 작업모드 진입/기존 화면 표시 확인
+
+[문제]
+- 없음
+
+[변경 파일]
+- ProviderSettingsStore.kt
+- ProviderManagementScreen.kt
+- ConversationViewModel.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+구현 모드]
+
+작업명:
+Google Provider API Key 경로 보정
+
+목표:
+- Provider 관리 UI에서 입력한 Google API Key가 실제 Gemini 호출에 사용되도록 연결한다.
+- 대화모드 ProviderSettingsStore 기준으로 providerId별 API Key 저장/로드/삭제 경로를 만든다.
+- 기존 작업모드 ApiKeyManager 흐름은 건드리지 않는다.
+- Gemini 실제 호출을 다시 검증할 수 있는 상태로 만든다.
+
+--------------------------------------------------
+1. 현재 문제
+--------------------------------------------------
+
+현재:
+- Provider 관리 UI에서 API Key를 입력해도 Gemini 호출 시 API_KEY_MISSING이 발생함
+- ProviderProfile.apiKeyAlias는 실제 API Key 원문 저장 필드로 확정되지 않음
+- ConversationEngine이 Provider UI 입력값이 아니라 기존 ApiKeyManager 또는 별도 경로를 보고 있음
+
+목표:
+- Provider 관리 UI API Key 입력값
+→ ProviderSettingsStore
+→ providerId 기준 저장
+→ ConversationEngine
+→ GoogleGeminiProviderAdapter
+
+흐름으로 단일화한다.
+
+--------------------------------------------------
+2. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ providerId별 API Key 저장
+✔ providerId별 API Key 로드
+✔ providerId별 API Key 삭제
+✔ Provider 추가 Dialog의 API Key 입력값 저장 연결
+✔ Provider 수정 Dialog의 API Key 교체 저장 연결
+✔ Provider 삭제 시 API Key 함께 삭제
+✔ ConversationEngine이 Google 호출 시 providerId 기준 API Key 조회
+✔ API Key 있으면 API_KEY_MISSING이 뜨지 않도록 수정
+
+이번 단계에서 금지:
+
+❌ Google 모델 목록 조회 구현
+❌ ApiKeyManager 대규모 수정
+❌ 작업모드 API Key 구조 변경
+❌ Android Keystore 암호화 구현
+❌ 실제 Provider 구조 대규모 변경
+❌ ModelRouter 구현
+❌ RAG 검색 알고리즘 변경
+
+--------------------------------------------------
+3. 저장 파일 정책
+--------------------------------------------------
+
+권장 저장 위치:
+
+MAHA/settings/provider_api_keys.json
+
+구조 예:
+
+{
+  "version": 1,
+  "keys": [
+    {
+      "providerId": "provider_xxx",
+      "apiKey": "..."
+    }
+  ]
+}
+
+주의:
+- 1차 구현에서는 앱 전용 저장소 JSON 파일 저장 허용
+- UI에 원문 전체 노출 금지
+- Android Keystore 암호화는 후속 단계로 분리
+
+--------------------------------------------------
+4. ProviderSettingsStore 추가 함수
+--------------------------------------------------
+
+추가 권장:
+
+- saveProviderApiKey(providerId: String, apiKey: String)
+- loadProviderApiKey(providerId: String): String?
+- deleteProviderApiKey(providerId: String)
+- hasProviderApiKey(providerId: String): Boolean
+- ensureProviderApiKeyFile()
+
+주의:
+- apiKey가 blank이면 저장하지 않거나 기존 key 삭제 정책 중 하나를 명확히 적용
+- 권장:
+  - blank 저장 시 해당 providerId key 삭제
+
+--------------------------------------------------
+5. Provider 관리 UI 연결
+--------------------------------------------------
+
+Provider 추가 Dialog:
+- API Key 입력값이 있으면 saveProviderApiKey(providerId, apiKey)
+- ProviderProfile.apiKeyAlias는 상태 표시용으로만 사용 가능
+  - 예: "stored"
+
+Provider 수정 Dialog:
+- API Key 입력란은 비워 두면 기존 Key 유지
+- 새 API Key 입력 시 교체 저장
+- “API Key 삭제” 옵션이 있으면 deleteProviderApiKey(providerId)
+
+Provider 카드:
+- hasProviderApiKey(providerId) 기준으로 표시
+  - 설정됨
+  - 미설정
+- 원문 표시 금지
+
+Provider 삭제:
+- deleteProviderProfile(providerId)
+- deleteProviderApiKey(providerId)
+
+--------------------------------------------------
+6. ConversationEngine 연결
+--------------------------------------------------
+
+Google Provider 호출 시:
+
+1. selected ProviderProfile 확인
+2. providerProfile.providerId 확인
+3. ProviderSettingsStore.loadProviderApiKey(providerId) 호출
+4. key blank/null이면 API_KEY_MISSING
+5. key 있으면 GoogleGeminiProviderAdapter에 전달
+
+주의:
+- 기존 ApiKeyManager는 작업모드용으로 유지
+- 대화모드 Google 호출은 ProviderSettingsStore 기준을 우선 사용
+- fallback으로 기존 ApiKeyManager를 볼지 여부는 이번 단계에서 구현하지 말 것
+
+--------------------------------------------------
+7. Gemini 실제 호출 재검증
+--------------------------------------------------
+
+테스트 기준:
+
+A. Google Provider + API Key 없음
+- API_KEY_MISSING 유지
+
+B. Google Provider + Provider 관리 UI에서 API Key 저장
+- API_KEY_MISSING이 뜨지 않아야 함
+
+C. Google Provider + API Key + 유효 모델 rawModelName
+- Gemini 실제 응답 표시 확인
+
+D. 잘못된 모델명
+- API_KEY_MISSING이 아니라 INVALID_REQUEST 또는 UNKNOWN 계열 오류가 나와야 함
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Provider 추가/수정/삭제
+- Provider 활성/비활성
+- Model 관리
+- ConversationEngine DUMMY 흐름
+- RAG context
+- 실행정보 블록
+- 저장/복구
+- SAF 백업/복원
+- 작업모드 기능
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 작업모드 ApiKeyManager 구조 변경 금지
+❌ Google 모델 목록 조회 구현 금지
+❌ Android Keystore 구현 금지
+❌ API Key 로그 출력 금지
+❌ API Key 원문 UI 노출 금지
+❌ API Key 하드코딩 금지
+❌ RAG/저장소 구조 변경 금지
+
+--------------------------------------------------
+완료 기준:
+- Provider 관리 UI에서 입력한 Google API Key가 providerId 기준으로 저장됨
+- Provider 카드에 API Key 설정됨/미설정 표시가 정확함
+- Provider 삭제 시 해당 API Key도 삭제됨
+- ConversationEngine이 providerId 기준 API Key를 읽음
+- API Key 저장 후 Gemini 호출 시 API_KEY_MISSING이 사라짐
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Google 모델 목록 조회 및 ModelProfile 저장 구현
+
+==============================
 [2026-05-02 14:24] Google Gemini Provider 실제 호출 1차 구현
 ==============================
 

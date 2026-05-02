@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
@@ -46,12 +47,16 @@ fun ProviderManagementScreen(
     val store = remember { ProviderSettingsStore(context.applicationContext) }
 
     var providers by remember { mutableStateOf<List<ProviderProfile>>(emptyList()) }
+    var providerApiKeyStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var editingProvider by remember { mutableStateOf<ProviderProfile?>(null) }
     var isAddDialogOpen by remember { mutableStateOf(false) }
     var providerToDelete by remember { mutableStateOf<ProviderProfile?>(null) }
 
     fun reloadProviders() {
         providers = store.loadProviderProfiles().sortedBy { it.displayName.lowercase() }
+        providerApiKeyStates = providers.associate { provider ->
+            provider.providerId to store.hasProviderApiKey(provider.providerId)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -112,6 +117,7 @@ fun ProviderManagementScreen(
             providers.forEach { provider ->
                 ProviderProfileCard(
                     provider = provider,
+                    hasApiKey = providerApiKeyStates[provider.providerId] == true,
                     onEditClick = { editingProvider = provider },
                     onDeleteClick = { providerToDelete = provider },
                     onEnabledChange = { enabled ->
@@ -135,8 +141,14 @@ fun ProviderManagementScreen(
         ProviderProfileEditDialog(
             initialProvider = null,
             onDismiss = { isAddDialogOpen = false },
-            onSave = { profile ->
+            onSave = { profile, apiKey, shouldDeleteApiKey ->
                 store.addProviderProfile(profile)
+                if (shouldDeleteApiKey) {
+                    store.deleteProviderApiKey(profile.providerId)
+                } else if (!apiKey.isNullOrBlank()) {
+                    store.saveProviderApiKey(profile.providerId, apiKey)
+                    store.updateProviderProfile(profile.copy(apiKeyAlias = "stored"))
+                }
                 reloadProviders()
                 isAddDialogOpen = false
             }
@@ -147,8 +159,18 @@ fun ProviderManagementScreen(
         ProviderProfileEditDialog(
             initialProvider = provider,
             onDismiss = { editingProvider = null },
-            onSave = { profile ->
-                store.updateProviderProfile(profile)
+            onSave = { profile, apiKey, shouldDeleteApiKey ->
+                val profileWithKeyState = when {
+                    shouldDeleteApiKey -> profile.copy(apiKeyAlias = null)
+                    !apiKey.isNullOrBlank() -> profile.copy(apiKeyAlias = "stored")
+                    else -> profile
+                }
+                store.updateProviderProfile(profileWithKeyState)
+                if (shouldDeleteApiKey) {
+                    store.deleteProviderApiKey(profile.providerId)
+                } else if (!apiKey.isNullOrBlank()) {
+                    store.saveProviderApiKey(profile.providerId, apiKey)
+                }
                 reloadProviders()
                 editingProvider = null
             }
@@ -166,6 +188,7 @@ fun ProviderManagementScreen(
                 TextButton(
                     onClick = {
                         store.deleteProviderProfile(provider.providerId)
+                        store.deleteProviderApiKey(provider.providerId)
                         reloadProviders()
                         providerToDelete = null
                     }
@@ -185,6 +208,7 @@ fun ProviderManagementScreen(
 @Composable
 private fun ProviderProfileCard(
     provider: ProviderProfile,
+    hasApiKey: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
@@ -235,9 +259,9 @@ private fun ProviderProfileCard(
             ProviderInfoRow(
                 label = "API Key",
                 value = when {
-                    provider.providerType == ProviderType.LOCAL && provider.apiKeyAlias.isNullOrBlank() -> "선택 사항 / 미설정"
-                    provider.apiKeyAlias.isNullOrBlank() -> "미설정"
-                    else -> "설정됨"
+                    hasApiKey -> "설정됨"
+                    provider.providerType == ProviderType.LOCAL -> "선택 사항 / 미설정"
+                    else -> "미설정"
                 }
             )
             if (provider.providerType == ProviderType.LOCAL) {
@@ -321,7 +345,7 @@ private fun LocalProviderGuideCard() {
 private fun ProviderProfileEditDialog(
     initialProvider: ProviderProfile?,
     onDismiss: () -> Unit,
-    onSave: (ProviderProfile) -> Unit
+    onSave: (ProviderProfile, String?, Boolean) -> Unit
 ) {
     val now = remember { System.currentTimeMillis() }
     val providerId = remember(initialProvider) {
@@ -332,6 +356,7 @@ private fun ProviderProfileEditDialog(
     var providerType by remember(initialProvider) { mutableStateOf(initialProvider?.providerType ?: ProviderType.GOOGLE) }
     var baseUrl by remember(initialProvider) { mutableStateOf(initialProvider?.baseUrl.orEmpty()) }
     var apiKeyInput by remember(initialProvider) { mutableStateOf("") }
+    var shouldDeleteApiKey by remember(initialProvider) { mutableStateOf(false) }
     var modelListEndpoint by remember(initialProvider) { mutableStateOf(initialProvider?.modelListEndpoint.orEmpty()) }
     var isEnabled by remember(initialProvider) { mutableStateOf(initialProvider?.isEnabled ?: true) }
 
@@ -392,7 +417,10 @@ private fun ProviderProfileEditDialog(
 
                 OutlinedTextField(
                     value = apiKeyInput,
-                    onValueChange = { apiKeyInput = it },
+                    onValueChange = {
+                        apiKeyInput = it
+                        if (it.isNotBlank()) shouldDeleteApiKey = false
+                    },
                     label = { Text(text = if (providerType == ProviderType.LOCAL) "API Key (optional)" else "API Key") },
                     placeholder = {
                         Text(
@@ -407,6 +435,23 @@ private fun ProviderProfileEditDialog(
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (initialProvider?.apiKeyAlias?.isNotBlank() == true) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = shouldDeleteApiKey,
+                            onCheckedChange = {
+                                shouldDeleteApiKey = it
+                                if (it) apiKeyInput = ""
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "저장된 API Key 삭제")
+                    }
+                }
 
                 OutlinedTextField(
                     value = modelListEndpoint,
@@ -437,7 +482,8 @@ private fun ProviderProfileEditDialog(
                     val createdAt = initialProvider?.createdAt ?: now
                     val updatedAt = System.currentTimeMillis()
                     val nextApiKeyAlias = when {
-                        apiKeyInput.isNotBlank() -> "stored:$providerId"
+                        shouldDeleteApiKey -> null
+                        apiKeyInput.isNotBlank() -> "stored"
                         initialProvider?.apiKeyAlias.isNullOrBlank() -> null
                         else -> initialProvider?.apiKeyAlias
                     }
@@ -453,7 +499,9 @@ private fun ProviderProfileEditDialog(
                             isEnabled = isEnabled,
                             createdAt = createdAt,
                             updatedAt = updatedAt
-                        )
+                        ),
+                        apiKeyInput.takeIf { it.isNotBlank() },
+                        shouldDeleteApiKey
                     )
                 },
                 enabled = canSave

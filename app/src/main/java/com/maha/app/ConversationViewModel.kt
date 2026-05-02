@@ -386,21 +386,10 @@ class ConversationViewModel(
         }
 
         if (providerForModel != null) {
-            return providerForModel.providerType.name
+            return providerForModel.providerId
         }
 
-        val context = getApplication<Application>().applicationContext
-        val selectedProvider = runCatching {
-            ApiKeyManager.getSelectedProvider(context)
-        }.getOrNull()
-
-        val fallbackProvider = runCatching {
-            ApiKeyManager.getFallbackProvider(context)
-        }.getOrNull()
-
-        return selectedProvider?.takeIf { it.isNotBlank() }
-            ?: fallbackProvider?.takeIf { it.isNotBlank() }
-            ?: "DUMMY"
+        return "DUMMY"
     }
 
     private fun resolveSelectedModelName(): String {
@@ -428,17 +417,8 @@ class ConversationViewModel(
         }.getOrNull()
     }
 
-    private fun resolveProviderApiKey(providerName: String): String? {
-        val context = getApplication<Application>().applicationContext
-        return when {
-            providerName.equals("GOOGLE", ignoreCase = true) ||
-                    providerName.contains("google", ignoreCase = true) ||
-                    providerName.contains("gemini", ignoreCase = true) -> {
-                runCatching { ApiKeyManager.getGoogleApiKey(context) }.getOrNull()
-            }
-
-            else -> null
-        }
+    private fun resolveProviderApiKey(providerId: String): String? {
+        return providerSettingsStore.loadProviderApiKey(providerId)
     }
 
     private fun loadInitialSessions() {

@@ -18,6 +18,9 @@ class ProviderSettingsStore(
     private val modelProfilesFile: File
         get() = File(settingsDir, "model_profiles.json")
 
+    private val providerApiKeysFile: File
+        get() = File(settingsDir, "provider_api_keys.json")
+
     fun ensureSettingsFiles() {
         if (!settingsDir.exists()) {
             settingsDir.mkdirs()
@@ -29,6 +32,10 @@ class ProviderSettingsStore(
 
         if (!modelProfilesFile.exists()) {
             createEmptyModelFile()
+        }
+
+        if (!providerApiKeysFile.exists()) {
+            createEmptyProviderApiKeyFile()
         }
 
         ensureDefaultProviderProfiles()
@@ -51,6 +58,16 @@ class ProviderSettingsStore(
             JSONObject()
                 .put("version", 1)
                 .put("models", JSONArray())
+                .toString(2)
+        )
+    }
+
+    fun createEmptyProviderApiKeyFile() {
+        ensureSettingsDirOnly()
+        providerApiKeysFile.writeText(
+            JSONObject()
+                .put("version", 1)
+                .put("keys", JSONArray())
                 .toString(2)
         )
     }
@@ -116,6 +133,108 @@ class ProviderSettingsStore(
     fun deleteProviderProfile(providerId: String) {
         val updated = loadProviderProfiles().filterNot { it.providerId == providerId }
         saveProviderProfiles(updated)
+        deleteProviderApiKey(providerId)
+    }
+
+    fun ensureProviderApiKeyFile() {
+        ensureSettingsDirOnly()
+        if (!providerApiKeysFile.exists()) {
+            createEmptyProviderApiKeyFile()
+        }
+    }
+
+    fun saveProviderApiKey(providerId: String, apiKey: String) {
+        ensureProviderApiKeyFile()
+        val trimmedProviderId = providerId.trim()
+        val trimmedKey = apiKey.trim()
+        if (trimmedProviderId.isBlank()) return
+
+        if (trimmedKey.isBlank()) {
+            deleteProviderApiKey(trimmedProviderId)
+            return
+        }
+
+        val root = readProviderApiKeyRoot()
+        val currentKeys = root.optJSONArray("keys") ?: JSONArray()
+        val updatedKeys = JSONArray()
+        var replaced = false
+
+        for (index in 0 until currentKeys.length()) {
+            val item = currentKeys.optJSONObject(index) ?: continue
+            val existingProviderId = item.optString("providerId")
+            if (existingProviderId == trimmedProviderId) {
+                updatedKeys.put(
+                    JSONObject()
+                        .put("providerId", trimmedProviderId)
+                        .put("apiKey", trimmedKey)
+                        .put("updatedAt", System.currentTimeMillis())
+                )
+                replaced = true
+            } else if (existingProviderId.isNotBlank()) {
+                updatedKeys.put(item)
+            }
+        }
+
+        if (!replaced) {
+            updatedKeys.put(
+                JSONObject()
+                    .put("providerId", trimmedProviderId)
+                    .put("apiKey", trimmedKey)
+                    .put("updatedAt", System.currentTimeMillis())
+            )
+        }
+
+        providerApiKeysFile.writeText(
+            JSONObject()
+                .put("version", 1)
+                .put("keys", updatedKeys)
+                .toString(2)
+        )
+    }
+
+    fun loadProviderApiKey(providerId: String): String? {
+        ensureProviderApiKeyFile()
+        val trimmedProviderId = providerId.trim()
+        if (trimmedProviderId.isBlank()) return null
+
+        return runCatching {
+            val keys = readProviderApiKeyRoot().optJSONArray("keys") ?: JSONArray()
+            for (index in 0 until keys.length()) {
+                val item = keys.optJSONObject(index) ?: continue
+                if (item.optString("providerId") == trimmedProviderId) {
+                    return item.optString("apiKey").takeIf { it.isNotBlank() }
+                }
+            }
+            null
+        }.getOrNull()
+    }
+
+    fun deleteProviderApiKey(providerId: String) {
+        ensureProviderApiKeyFile()
+        val trimmedProviderId = providerId.trim()
+        if (trimmedProviderId.isBlank()) return
+
+        val keys = readProviderApiKeyRoot().optJSONArray("keys") ?: JSONArray()
+        val updatedKeys = JSONArray()
+
+        for (index in 0 until keys.length()) {
+            val item = keys.optJSONObject(index) ?: continue
+            val existingProviderId = item.optString("providerId")
+            if (existingProviderId.isNotBlank() && existingProviderId != trimmedProviderId) {
+                updatedKeys.put(item)
+            }
+        }
+
+        providerApiKeysFile.writeText(
+            JSONObject()
+                .put("version", 1)
+                .put("keys", updatedKeys)
+                .toString(2)
+        )
+    }
+
+    fun hasProviderApiKey(providerId: String): Boolean {
+        return !loadProviderApiKey(providerId).isNullOrBlank()
     }
 
     fun loadModelProfiles(): List<ConversationModelProfile> {
@@ -263,6 +382,17 @@ class ProviderSettingsStore(
                 updatedAt = now
             )
         )
+    }
+
+    private fun readProviderApiKeyRoot(): JSONObject {
+        ensureProviderApiKeyFile()
+        return runCatching {
+            JSONObject(providerApiKeysFile.readText())
+        }.getOrElse {
+            JSONObject()
+                .put("version", 1)
+                .put("keys", JSONArray())
+        }
     }
 
     private fun readProviderSeedFlag(): Boolean {
