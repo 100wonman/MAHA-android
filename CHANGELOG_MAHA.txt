@@ -1,4 +1,290 @@
 ==============================
+[2026-05-02 11:51] 로컬 LLM Provider 구조 설계
+==============================
+
+[작업]
+- LOCAL Provider 유형 설계
+- Local Server / On-device Runtime 방식 분리
+- Local ModelProfile 정책 설계
+- 로컬 모델 파일 저장 구조 후보 설계
+- ConversationEngine LOCAL Provider 연결 정책 설계
+- 로컬 LLM 성능/안정성 정책 설계
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- LOCAL Provider는 Local Server 방식과 On-device Runtime 방식으로 분리
+- 1차 구현은 Local Server 방식 UX 보강과 dry-run skeleton 중심으로 제한
+- On-device Runtime은 GGUF/Q4 등 모델 파일 직접 로드 구조만 후보로 확정
+- 실제 로컬 추론, native runtime, HTTP 호출은 이번 단계에서 제외
+- 기존 ProviderProfile은 크게 변경하지 않고 필요한 확장은 후속 최소 추가 :contentReference[oaicite:0]{index=0}
+
+[LOCAL Provider 구조]
+- Local Server: 사용자가 baseUrl을 입력하고 OpenAI-compatible API 형태로 연결하는 방식
+- On-device Runtime: 앱 내부에서 GGUF/Q4 모델 파일을 직접 로드하는 후속 방식
+- ProviderProfile 확장: providerType=LOCAL 사용, 후속 확장 필드 후보는 localRuntimeType, modelStoragePath, runtimeBackend
+
+[Local Model 정책]
+- ModelProfile: providerId는 LOCAL Provider, rawModelName은 서버 모델명 또는 로컬 모델 파일명 사용
+- capability: text/code 기본 true, vision/audio/video/toolCalling/webSearch 등은 기본 false 후 사용자 수정
+- 기본 모델/즐겨찾기: 기존 ConversationModelProfile의 isDefaultForConversation, isFavorite 정책 그대로 사용
+
+[로컬 모델 파일 정책]
+- 저장 위치: 앱 전용 저장소 MAHA/local_models/model_{modelId}/ 후보
+- 로딩 정책: 앱 시작 시 전체 로드 금지, 사용자가 모델 선택 후 실행할 때만 로드
+- SAF 역할: 모델 가져오기/내보내기 용도만 담당, 실시간 실행 저장소로 사용하지 않음
+
+[ConversationEngine 연결]
+- Local Server: ConversationEngine → ConversationPromptBuilder → LocalServerProviderAdapter → ConversationResponse 후보
+- On-device Runtime: ConversationEngine → ConversationPromptBuilder → LocalRuntimeAdapter → ConversationResponse 후보
+- 오류 처리: 메모리 부족, 모델 파일 없음, 서버 연결 실패는 ERROR_BLOCK과 실행정보 errorType으로 표시
+
+[1차 구현 범위]
+- ProviderType.LOCAL UI 설명 보강
+- LOCAL Provider 추가 시 API Key optional 처리 명확화
+- Model 관리에서 LOCAL 모델 추가/수정 UX 보강
+- Local Server dry-run skeleton 추가
+- 실제 로컬 모델 실행은 보류
+
+[보류 항목]
+- llama.cpp/native library 연동
+- GGUF/Q4 모델 파일 로드
+- 실제 Local Server HTTP 호출
+- 스트리밍 출력
+- 로컬 모델 파일 관리 화면
+
+[문제]
+- 없음
+
+--------------------------------------------------
+[구현 모드]
+
+작업명:
+Model 관리 UI skeleton 구현
+
+목표:
+- 대화모드 전용 모델 목록을 사용자가 직접 추가/수정/삭제할 수 있게 한다.
+- ProviderSettingsStore의 model_profiles.json 저장/로드 기능을 실제 UI와 연결한다.
+- 모델 즐겨찾기와 대화모드 기본 모델 지정 기능을 구현한다.
+- 이번 단계에서는 실제 Provider 모델 목록 조회 API를 호출하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 모델/API 설정 하위에 “Model 관리” 진입 카드 추가
+✔ Model 관리 화면 추가
+✔ 모델 목록 표시
+✔ 모델 추가 Dialog
+✔ 모델 수정 Dialog
+✔ 모델 삭제
+✔ 즐겨찾기 토글
+✔ 대화모드 기본 모델 지정
+✔ 활성/비활성 토글
+✔ model_profiles.json 저장/로드 연결
+
+이번 단계에서 금지:
+
+❌ 실제 모델 목록 API 조회
+❌ Provider 연결 테스트 네트워크 호출
+❌ 실제 LLM API 호출
+❌ ConversationEngine 실제 Provider 호출 연결
+❌ 작업모드 Provider 구조 수정
+❌ 모델 자동 capability 조회
+
+--------------------------------------------------
+2. 화면 위치
+--------------------------------------------------
+
+경로:
+
+대화모드 전역 설정
+→ 모델 / API 설정
+→ Model 관리
+
+기존 Provider 관리 카드와 같은 계층에 추가한다.
+
+예:
+- Provider 관리
+- Model 관리
+
+--------------------------------------------------
+3. Model 관리 화면
+--------------------------------------------------
+
+표시 항목:
+
+- 모델 표시 이름
+- rawModelName
+- Provider 이름 또는 providerId
+- capability badge
+- 즐겨찾기 ★
+- 대화모드 기본 모델 여부
+- 활성 상태
+- 수정 버튼
+- 삭제 버튼
+
+상단 또는 하단:
+- 모델 추가 버튼
+
+--------------------------------------------------
+4. 모델 추가 Dialog
+--------------------------------------------------
+
+입력 필드:
+
+- 모델 표시 이름
+- Provider 선택
+  - 기존 provider_profiles.json에서 로드된 Provider 목록 사용
+- rawModelName
+- contextWindow optional
+- inputModalities
+- outputModalities
+- capability 체크박스
+  - text
+  - code
+  - vision
+  - audio
+  - video
+  - toolCalling
+  - functionCalling
+  - webSearch
+  - jsonMode
+  - imageGeneration
+  - structuredOutput
+- 즐겨찾기 여부
+- 대화모드 기본 모델 여부
+- 활성화 여부
+
+저장 시:
+- modelId 생성
+- ConversationModelProfile 생성
+- ProviderSettingsStore.addModelProfile 호출
+- UI 목록 갱신
+
+주의:
+- Provider가 하나도 없을 경우 모델 추가 비활성 또는 안내 표시
+- 기본 모델로 지정하면 기존 기본 모델은 해제한다
+
+--------------------------------------------------
+5. 모델 수정 Dialog
+--------------------------------------------------
+
+수정 가능:
+- displayName
+- providerId
+- rawModelName
+- contextWindow
+- input/output modalities
+- capabilities
+- isFavorite
+- isDefaultForConversation
+- enabled
+
+수정 후:
+- ProviderSettingsStore.updateModelProfile 호출
+- UI 목록 갱신
+
+--------------------------------------------------
+6. 모델 삭제
+--------------------------------------------------
+
+삭제 버튼 클릭:
+- 확인 Dialog 표시
+- 확인 시 ProviderSettingsStore.deleteModelProfile(modelId)
+- UI 목록 갱신
+
+주의:
+- 기본 모델을 삭제하면 기본 모델 없음 상태 허용
+- 후속 단계에서 기본 모델 자동 재지정 가능
+
+--------------------------------------------------
+7. 즐겨찾기 / 기본 모델 정책
+--------------------------------------------------
+
+즐겨찾기:
+- 모델 카드에서 ★ 토글
+- model_profiles.json에 isFavorite 저장
+
+대화모드 기본 모델:
+- 모델 카드 또는 수정 Dialog에서 지정
+- 하나만 true가 되도록 처리
+- 새 기본 모델 지정 시 다른 모델의 isDefaultForConversation=false
+
+--------------------------------------------------
+8. Provider 표시 정책
+--------------------------------------------------
+
+모델 카드에서 providerId만 표시하지 말고 가능하면 Provider displayName 표시.
+
+방법:
+- Provider 목록을 함께 로드
+- providerId → displayName 매핑
+- Provider가 삭제되어 없으면 “Provider 없음” 또는 providerId 표시
+
+--------------------------------------------------
+9. 상태 관리
+--------------------------------------------------
+
+권장:
+- UI local state로 providers/models 유지
+- 화면 진입 시 loadProviderProfiles(), loadModelProfiles()
+- 추가/수정/삭제 후 reload 또는 state 갱신
+
+주의:
+- recomposition마다 파일 읽기 금지
+- LaunchedEffect(Unit) 사용
+
+--------------------------------------------------
+10. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Provider 관리 UI
+- Provider 저장/로드
+- ConversationEngine dry-run
+- RAG 검색/인덱싱
+- SAF 백업/복원
+- 대화방 기능
+- 작업모드 기능
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ 네트워크 호출 금지
+❌ 실제 모델 목록 조회 금지
+❌ 실제 API 호출 금지
+❌ ConversationEngine 호출 정책 변경 금지
+❌ 작업모드 Provider 코드 수정 금지
+❌ ProviderSettingsStore 대규모 재설계 금지
+❌ 외부 라이브러리 추가 금지
+
+--------------------------------------------------
+완료 기준:
+- 모델/API 설정에서 Model 관리 진입 가능
+- 모델 목록 표시
+- 모델 추가 가능
+- 모델 수정 가능
+- 모델 삭제 가능
+- 즐겨찾기 토글 가능
+- 대화모드 기본 모델 지정 가능
+- 앱 재시작 후 모델 목록/상태 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+통합 모델 선택 UX 보정 또는 ConversationEngine 모델 선택 연결
+
+==============================
 [2026-05-02 11:45] Model 관리 UI skeleton 구현
 ==============================
 
