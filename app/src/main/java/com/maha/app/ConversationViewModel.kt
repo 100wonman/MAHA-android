@@ -19,6 +19,7 @@ class ConversationViewModel(
         ragIndexStore = ragIndexStore
     )
     private val ragContextBuilder = RagContextBuilder(ragKeywordSearchEngine)
+    private val conversationEngine = ConversationEngine()
     private val conversationFileStore = ConversationFileStore(
         context = application.applicationContext,
         storageManager = storageManager
@@ -231,12 +232,14 @@ class ConversationViewModel(
         val nowText = getCurrentTimeText()
         val currentTimeMillis = System.currentTimeMillis()
         val runId = "conversation_run_$currentTimeMillis"
-        val ragContext = ragContextBuilder.build(
-            query = textToSend,
-            enabled = searchEnabled
-        )
-        val ragStatusText = buildRagStatusText(ragContext)
-        val ragTraceText = buildRagTraceText(ragContext)
+        val ragContext = if (searchEnabled) {
+            ragContextBuilder.build(
+                query = textToSend,
+                enabled = true
+            )
+        } else {
+            null
+        }
 
         val userMessage = ConversationMessage(
             messageId = "message_user_$currentTimeMillis",
@@ -255,65 +258,36 @@ class ConversationViewModel(
             linkedRunId = runId
         )
 
+        val request = ConversationRequest(
+            requestId = runId,
+            sessionId = targetSession.sessionId,
+            userInput = textToSend,
+            selectedMode = modeLabel,
+            searchEnabled = searchEnabled,
+            ragContext = ragContext,
+            recentMessages = targetSession.messages.takeLast(10),
+            systemInstruction = null,
+            selectedProvider = null,
+            selectedModel = null,
+            createdAt = currentTimeMillis
+        )
+
+        val response = conversationEngine.execute(request)
+
         val assistantMessage = ConversationMessage(
             messageId = "message_assistant_$currentTimeMillis",
             sessionId = targetSession.sessionId,
             role = ConversationRole.ASSISTANT,
             createdAt = nowText,
-            blocks = listOf(
-                ConversationOutputBlock(
-                    blockId = "block_assistant_$currentTimeMillis",
-                    type = ConversationOutputBlockType.TEXT_BLOCK,
-                    title = "더미 응답",
-                    content = "더미 실행 결과입니다. 실제 API 호출은 아직 연결하지 않았습니다.",
-                    collapsed = false
-                ),
-                ConversationOutputBlock(
-                    blockId = "block_trace_$currentTimeMillis",
-                    type = ConversationOutputBlockType.TRACE_BLOCK,
-                    title = "실행 과정",
-                    content = buildString {
-                        appendLine("입력 수신 → RAG 확인 → 더미 응답 생성 → 화면 갱신")
-                        append(ragTraceText)
-                    },
-                    collapsed = true
-                )
-            ),
+            blocks = response.blocks,
             linkedRunId = runId
-        )
-
-        val baseRun = createDummyConversationRun(targetSession.sessionId)
-        val latestRun = baseRun.copy(
-            runId = runId,
-            userInput = textToSend,
-            totalLatencySec = 1.1,
-            totalRetryCount = 0,
-            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
-                if (index == 0) {
-                    worker.copy(
-                        outputSummary = buildString {
-                            append(worker.outputSummary)
-                            append(" / ")
-                            append(ragStatusText)
-                        },
-                        rawOutput = buildString {
-                            appendLine(worker.rawOutput)
-                            appendLine()
-                            appendLine("[RAG]")
-                            append(ragTraceText)
-                        }.trim()
-                    )
-                } else {
-                    worker
-                }
-            }
         )
 
         val updatedSession = targetSession.copy(
             lastMessageSummary = textToSend.take(60),
             updatedAt = nowText,
             messages = targetSession.messages + userMessage + assistantMessage,
-            latestRun = latestRun
+            latestRun = response.runInfo
         )
 
         conversationSessions[targetIndex] = updatedSession
@@ -372,52 +346,6 @@ class ConversationViewModel(
             session = updatedSession,
             isFavorite = favoriteSessionIds.contains(targetSessionId)
         )
-    }
-
-    private fun buildRagStatusText(ragContext: RagContext): String {
-        if (!ragContext.enabled) {
-            return "RAG 검색: OFF"
-        }
-
-        val fallbackText = if (ragContext.fallback) {
-            val reasonText = ragContext.fallbackReason?.let { reason -> " ($reason)" }.orEmpty()
-            " / fallback=true$reasonText"
-        } else {
-            " / fallback=false"
-        }
-
-        return "RAG 검색: ON / 결과 ${ragContext.results.size}개 / 사용 chunk ${ragContext.results.size}개 / maxContextChars ${ragContext.maxContextChars}$fallbackText"
-    }
-
-    private fun buildRagTraceText(ragContext: RagContext): String {
-        if (!ragContext.enabled) {
-            return "RAG: OFF"
-        }
-
-        return buildString {
-            appendLine("RAG: ON")
-            appendLine("query: ${ragContext.query}")
-            appendLine("resultCount: ${ragContext.results.size}")
-            appendLine("usedChunkCount: ${ragContext.results.size}")
-            appendLine("totalTokenEstimate: ${ragContext.totalTokenEstimate}")
-            appendLine("maxResults: ${ragContext.maxResults}")
-            appendLine("maxContextChars: ${ragContext.maxContextChars}")
-            appendLine("fallback: ${ragContext.fallback}")
-            if (ragContext.fallbackReason != null) {
-                appendLine("fallbackReason: ${ragContext.fallbackReason}")
-            }
-            if (ragContext.results.isNotEmpty()) {
-                appendLine("results:")
-                ragContext.results.forEachIndexed { index, result ->
-                    appendLine("${index + 1}. ${result.title} / score=${result.score} / ${result.filePath}")
-                }
-            }
-            if (ragContext.contextText.isNotBlank()) {
-                appendLine("[RAG_CONTEXT_BEGIN]")
-                appendLine(ragContext.contextText)
-                appendLine("[RAG_CONTEXT_END]")
-            }
-        }.trim()
     }
 
     private fun loadInitialSessions() {
