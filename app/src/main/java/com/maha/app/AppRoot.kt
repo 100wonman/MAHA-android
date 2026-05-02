@@ -1,5 +1,6 @@
 package com.maha.app
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -1694,6 +1695,15 @@ private fun ConversationGlobalSettingsScreen(
     onDeleteAppSpecificSession: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    var modelApiSettingsSummary by remember { mutableStateOf(ModelApiSettingsSummary()) }
+
+    LaunchedEffect(selectedPage) {
+        if (selectedPage == null || selectedPage == "modelApi") {
+            modelApiSettingsSummary = loadModelApiSettingsSummary(context)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1874,60 +1884,79 @@ private fun ConversationGlobalSettingsScreen(
 
                 item {
                     Text(
-                        text = "상세 설정 placeholder",
+                        text = if (selectedPage == "modelApi") {
+                            "현재 Provider / Model / Web Search 상태"
+                        } else {
+                            "상세 설정 placeholder"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFFB8BCC6)
                     )
                 }
 
-                item {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF3A3F49)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                if (selectedPage != "modelApi") {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF3A3F49)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = when (selectedPage) {
-                                    "conversation" -> "대화 설정 상세 페이지"
-                                    "general" -> "일반 설정 상세 페이지"
-                                    "output" -> "출력 블록 설정 상세 페이지"
-                                    "rag" -> "메모리 / RAG 상세 페이지"
-                                    "modelApi" -> "모델 / API 설정 상세 페이지"
-                                    "providerManagement" -> "Provider 관리"
-                                    "modelManagement" -> "Model 관리"
-                                    else -> "대화 설정 상세 페이지"
-                                },
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = when (selectedPage) {
+                                        "conversation" -> "대화 설정 상세 페이지"
+                                        "general" -> "일반 설정 상세 페이지"
+                                        "output" -> "출력 블록 설정 상세 페이지"
+                                        "rag" -> "메모리 / RAG 상세 페이지"
+                                        "providerManagement" -> "Provider 관리"
+                                        "modelManagement" -> "Model 관리"
+                                        else -> "대화 설정 상세 페이지"
+                                    },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
 
-                            Text(
-                                text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
-                                color = Color(0xFFD0D3DA)
-                            )
+                                Text(
+                                    text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
+                                    color = Color(0xFFD0D3DA)
+                                )
+                            }
                         }
                     }
                 }
 
                 if (selectedPage == "modelApi") {
                     item {
-                        ConversationGlobalSettingsCard(
+                        ModelApiSettingsSummaryCard(
+                            summary = modelApiSettingsSummary
+                        )
+                    }
+
+                    item {
+                        ModelApiWarningCards(
+                            summary = modelApiSettingsSummary
+                        )
+                    }
+
+                    item {
+                        ModelApiNavigationCard(
                             title = "Provider 관리",
                             subtitle = "대화모드 Provider 추가, 수정, 삭제, 활성 상태 관리",
+                            summaryText = "Provider ${modelApiSettingsSummary.providerTotalCount}개 · 활성 ${modelApiSettingsSummary.activeProviderCount}개 · Key 설정 ${modelApiSettingsSummary.apiKeyConfiguredProviderCount}개 · Base URL 미설정 ${modelApiSettingsSummary.baseUrlMissingProviderCount}개",
                             onClick = { onPageSelected("providerManagement") }
                         )
                     }
 
                     item {
-                        ConversationGlobalSettingsCard(
+                        ModelApiNavigationCard(
                             title = "Model 관리",
                             subtitle = "대화모드 모델 추가, 수정, 삭제, 즐겨찾기, 기본 모델 설정",
+                            summaryText = "Model ${modelApiSettingsSummary.modelTotalCount}개 · 활성 ${modelApiSettingsSummary.activeModelCount}개 · 즐겨찾기 ${modelApiSettingsSummary.favoriteModelCount}개 · 기본: ${modelApiSettingsSummary.defaultModelDisplayName ?: "없음"}",
                             onClick = { onPageSelected("modelManagement") }
                         )
                     }
@@ -2015,6 +2044,209 @@ private fun ConversationGlobalSettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+
+private data class ModelApiSettingsSummary(
+    val providerTotalCount: Int = 0,
+    val activeProviderCount: Int = 0,
+    val apiKeyConfiguredProviderCount: Int = 0,
+    val apiKeyMissingRequiredProviderCount: Int = 0,
+    val baseUrlMissingProviderCount: Int = 0,
+    val modelTotalCount: Int = 0,
+    val activeModelCount: Int = 0,
+    val favoriteModelCount: Int = 0,
+    val defaultModelDisplayName: String? = null,
+    val webSearchCandidateModelCount: Int = 0,
+    val providerlessModelCount: Int = 0
+)
+
+private fun loadModelApiSettingsSummary(context: Context): ModelApiSettingsSummary {
+    val store = ProviderSettingsStore(context)
+    val providers = store.loadProviderProfiles()
+    val models = store.loadModelProfiles()
+    val providerIds = providers.map { it.providerId }.toSet()
+
+    val apiKeyConfiguredCount = providers.count { provider ->
+        store.hasProviderApiKey(provider.providerId)
+    }
+
+    val apiKeyMissingRequiredCount = providers.count { provider ->
+        provider.isEnabled &&
+                provider.providerType.requiresApiKeyForConversation() &&
+                !store.hasProviderApiKey(provider.providerId)
+    }
+
+    val webSearchCandidateCount = models.count { model ->
+        val webSearchStatus = (model.capabilitiesV2 ?: model.capabilities.toModelCapabilityV2()).tools.webSearch
+        model.enabled &&
+                (webSearchStatus == CapabilityStatus.SUPPORTED || webSearchStatus == CapabilityStatus.USER_ENABLED)
+    }
+
+    val defaultModel = models.firstOrNull { it.isDefaultForConversation }
+
+    return ModelApiSettingsSummary(
+        providerTotalCount = providers.size,
+        activeProviderCount = providers.count { it.isEnabled },
+        apiKeyConfiguredProviderCount = apiKeyConfiguredCount,
+        apiKeyMissingRequiredProviderCount = apiKeyMissingRequiredCount,
+        baseUrlMissingProviderCount = providers.count { it.baseUrl.isBlank() },
+        modelTotalCount = models.size,
+        activeModelCount = models.count { it.enabled },
+        favoriteModelCount = models.count { it.isFavorite },
+        defaultModelDisplayName = defaultModel?.displayName?.ifBlank { defaultModel.rawModelName },
+        webSearchCandidateModelCount = webSearchCandidateCount,
+        providerlessModelCount = models.count { it.providerId !in providerIds }
+    )
+}
+
+private fun ProviderType.requiresApiKeyForConversation(): Boolean {
+    return when (this) {
+        ProviderType.GOOGLE,
+        ProviderType.OPENAI_COMPATIBLE,
+        ProviderType.NVIDIA -> true
+        ProviderType.LOCAL,
+        ProviderType.CUSTOM -> false
+    }
+}
+
+@Composable
+private fun ModelApiSettingsSummaryCard(
+    summary: ModelApiSettingsSummary
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1F2937)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "모델/API 설정 요약",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = "Provider: 전체 ${summary.providerTotalCount}개 / 활성 ${summary.activeProviderCount}개",
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = "API Key: 설정됨 ${summary.apiKeyConfiguredProviderCount}개",
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = "Model: 전체 ${summary.modelTotalCount}개 / 활성 ${summary.activeModelCount}개",
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = "기본 모델: ${summary.defaultModelDisplayName ?: "없음"}",
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = "Web Search 가능 후보: ${summary.webSearchCandidateModelCount}개",
+                color = Color(0xFFD0D3DA)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelApiWarningCards(
+    summary: ModelApiSettingsSummary
+) {
+    val warnings = buildList {
+        if (summary.defaultModelDisplayName == null) {
+            add("기본 대화 모델이 지정되지 않았습니다.")
+        }
+        if (summary.activeProviderCount == 0) {
+            add("활성화된 Provider가 없습니다.")
+        }
+        if (summary.apiKeyMissingRequiredProviderCount > 0) {
+            add("API Key가 필요한 Provider 중 미설정 항목이 있습니다. (${summary.apiKeyMissingRequiredProviderCount}개)")
+        }
+        if (summary.providerlessModelCount > 0) {
+            add("삭제되었거나 연결되지 않은 Provider를 참조하는 모델이 있습니다. (${summary.providerlessModelCount}개)")
+        }
+    }
+
+    if (warnings.isEmpty()) {
+        return
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF4A2E12)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "설정 경고",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            warnings.forEach { warning ->
+                Text(
+                    text = "- $warning",
+                    color = Color(0xFFFFD9A8)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelApiNavigationCard(
+    title: String,
+    subtitle: String,
+    summaryText: String,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF3A3F49)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color(0xFFD0D3DA)
+            )
+
+            Text(
+                text = summaryText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF9FB7D9)
+            )
         }
     }
 }
