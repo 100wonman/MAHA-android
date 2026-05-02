@@ -48,7 +48,8 @@ class ConversationEngine(
                         latencySec = providerResult.latencySec,
                         promptLength = prompt.length,
                         errorType = providerResult.errorType ?: "UNKNOWN",
-                        errorMessage = providerResult.errorMessage ?: "Gemini API 호출에 실패했습니다."
+                        errorMessage = providerResult.errorMessage ?: "Gemini API 호출에 실패했습니다.",
+                        responseSummary = providerResult.responseSummary
                     )
                 }
             }
@@ -173,7 +174,8 @@ class ConversationEngine(
         latencySec: Double,
         promptLength: Int,
         errorType: String,
-        errorMessage: String
+        errorMessage: String,
+        responseSummary: String? = null
     ): ConversationResponse {
         val now = System.currentTimeMillis()
         val safeErrorMessage = errorMessage.ifBlank { "Provider 호출에 실패했습니다." }
@@ -184,7 +186,8 @@ class ConversationEngine(
             promptLength = promptLength,
             responseLength = 0,
             actualApiCall = true,
-            errorType = errorType
+            errorType = errorType,
+            providerResponseSummary = responseSummary
         )
         val baseRun = createDummyConversationRun(request.sessionId)
 
@@ -214,6 +217,11 @@ class ConversationEngine(
                             appendLine("latencySec: $latencySec")
                             appendLine("actualApiCall: true")
                             appendLine("errorType: $errorType")
+                            if (!responseSummary.isNullOrBlank()) {
+                                appendLine()
+                                appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                                appendLine(responseSummary.take(1200))
+                            }
                             appendLine()
                             appendLine("[RAG]")
                             append(buildRagTraceText(request.ragContext))
@@ -511,7 +519,8 @@ class ConversationEngine(
         promptLength: Int,
         responseLength: Int,
         actualApiCall: Boolean,
-        errorType: String?
+        errorType: String?,
+        providerResponseSummary: String? = null
     ): String {
         return buildString {
             appendLine("입력 수신 → PromptBuilder 실행 → Provider 확인 → 응답 생성 → 화면 갱신")
@@ -522,6 +531,10 @@ class ConversationEngine(
             appendLine("actualApiCall: $actualApiCall")
             if (errorType != null) {
                 appendLine("errorType: $errorType")
+            }
+            if (!providerResponseSummary.isNullOrBlank()) {
+                appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                appendLine(providerResponseSummary.take(1200))
             }
             append(buildRagTraceText(ragContext))
         }.trim()
