@@ -1,4 +1,317 @@
 ==============================
+[2026-05-03 06:07] 모델/API 설정 백업 포함 정책 설계
+==============================
+
+[작업]
+- Provider / Model 설정 백업 대상 정책 설계
+- API Key 백업 제외 정책 확정
+- SAF settings backup 폴더 구조 설계
+- backup_manifest.json 구조 설계
+- Provider/Model 설정 병합 복원 정책 설계
+- 모델/API 설정 화면 백업/복원 UI 위치 설계
+- 기존 세션 백업과 설정 백업 분리 정책 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 결정]
+- 모델/API 설정 백업은 세션 백업과 분리한다
+- provider_profiles.json / model_profiles.json은 1차 백업 대상에 포함한다
+- provider_api_keys.json은 기본 백업 대상에서 제외한다
+- 복원은 덮어쓰기보다 병합 복원을 기본으로 한다
+- API Key는 복원 후 사용자가 다시 입력한다
+
+[백업 대상]
+- 포함: provider_profiles.json, model_profiles.json
+- 제외: provider_api_keys.json, RAG 저장소, 대화 세션 파일
+- API Key 정책: 보안상 기본 백업/복원 제외, 고급 옵션은 후속 검토
+
+[백업 구조]
+- SAF 위치: Documents/MAHA/backups/settings/settings_backup_{timestamp}/
+- manifest: backupVersion, createdAt, includesApiKeys=false, providerCount, modelCount 기록
+- 파일 구성: provider_profiles.json, model_profiles.json, backup_manifest.json
+
+[복원 정책]
+- 방식: providerId/modelId 기준 병합 복원
+- 중복 처리: 같은 providerId 또는 modelId가 있으면 skip
+- API Key 복원: 제외, 복원 후 Provider 관리에서 재입력
+- 복원 후 검증: Provider/Model 목록 reload, Provider 없는 Model 경고, 기본 모델 연결 상태 확인
+
+[UI 정책]
+- 위치: 대화모드 전역 설정 → 모델/API 설정
+- 버튼: 모델/API 설정 백업, 모델/API 설정 복원
+- 안내 문구: “API Key는 보안상 백업되지 않습니다. 복원 후 다시 입력해야 합니다.”
+
+[1차 구현 범위]
+- SettingsBackupManager 추가
+- provider_profiles.json / model_profiles.json SAF 백업
+- backup_manifest.json 생성
+- 병합 복원 구현
+- 모델/API 설정 화면에 백업/복원 카드 추가
+
+[보류 항목]
+- API Key 포함 백업
+- 암호화 백업
+- 덮어쓰기 복원 옵션
+- 세션/RAG 포함 전체 백업 통합
+- 백업 목록 UI 고도화
+
+[문제]
+- 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+모델/API 설정 백업 포함 정책 설계
+
+목표:
+- Provider / Model / API Key / capability / Web Search 관련 설정을 SAF 백업/복원에 어떻게 포함할지 설계한다.
+- API Key 원문 백업 여부를 명확히 결정한다.
+- 기존 세션 백업/복원 구조와 충돌하지 않게 설정 백업 범위를 분리한다.
+- 이번 단계는 설계만 수행한다. 실제 백업 구현은 하지 않는다.
+
+--------------------------------------------------
+1. 현재 전제
+--------------------------------------------------
+
+현재 완료:
+- Provider 관리
+- Model 관리
+- Google 모델 목록 조회
+- OpenAI-compatible 모델 목록 조회
+- ProviderSettingsStore
+- provider_profiles.json
+- provider_api_keys.json
+- model_profiles.json
+- RAG 저장소
+- 세션 SAF 백업/복원
+
+현재 문제:
+- Provider/Model 설정은 앱 전용 저장소에 있으나 SAF 백업 대상 정책이 아직 없음
+- API Key 원문 백업 여부가 정해지지 않음
+- 앱 재설치/기기 변경 시 Provider/Model 설정 복구 방식이 없음
+
+--------------------------------------------------
+2. 설정 파일 후보
+--------------------------------------------------
+
+앱 전용 저장소:
+
+MAHA/settings/
+- provider_profiles.json
+- provider_api_keys.json
+- model_profiles.json
+
+관련 가능 파일:
+- 기타 설정 파일이 있다면 후속 확인
+
+RAG:
+- MAHA/rag/...
+- 이번 설계의 주 대상 아님
+
+세션:
+- MAHA/conversations/...
+- 기존 백업 구조 유지
+
+--------------------------------------------------
+3. 백업 범위 정책
+--------------------------------------------------
+
+1차 백업 포함 후보:
+
+포함:
+- provider_profiles.json
+- model_profiles.json
+
+기본 제외:
+- provider_api_keys.json
+
+이유:
+- API Key 원문을 SAF Documents/MAHA에 평문 백업하면 보안 위험이 큼
+- 사용자에게 명시 동의 없이 API Key를 외부 접근 가능한 폴더에 저장하면 안 됨
+
+후속 선택 옵션:
+- “API Key도 백업에 포함” 고급 옵션
+- 기본 OFF
+- 경고 Dialog 필수
+- 가능하면 암호화 후 백업
+
+--------------------------------------------------
+4. 백업 파일 구조
+--------------------------------------------------
+
+SAF Documents/MAHA 후보:
+
+MAHA/
+└─ backups/
+   └─ settings/
+      └─ settings_backup_{timestamp}/
+         ├─ provider_profiles.json
+         ├─ model_profiles.json
+         └─ backup_manifest.json
+
+backup_manifest.json 후보:
+- backupVersion
+- createdAt
+- includesProviderProfiles
+- includesModelProfiles
+- includesApiKeys
+- providerCount
+- modelCount
+- appVersion?
+- note
+
+주의:
+- provider_api_keys.json은 기본 포함하지 않음
+- API Key 미포함 사실을 manifest에 기록
+
+--------------------------------------------------
+5. 복원 정책
+--------------------------------------------------
+
+복원 대상:
+- provider_profiles.json
+- model_profiles.json
+
+복원 방식 후보:
+
+A. 덮어쓰기
+- 현재 설정 파일을 백업본으로 교체
+- 간단하지만 기존 설정 손실 위험
+
+B. 병합
+- providerId/modelId 기준 중복 방지
+- 같은 ID 있으면 skip 또는 update 선택
+- 복잡하지만 안전
+
+권장 1차:
+- 병합 복원
+- 같은 providerId/modelId는 skip
+- 결과에 restored/skipped 표시
+
+후속:
+- 덮어쓰기 복원 옵션 추가
+
+--------------------------------------------------
+6. API Key 복원 정책
+--------------------------------------------------
+
+기본:
+- API Key는 백업/복원하지 않음
+
+복원 후:
+- Provider 카드에 API Key 미설정 표시
+- 사용자가 다시 입력
+
+고급 옵션 후보:
+- API Key 포함 백업
+- 강력 경고
+- PIN/비밀번호 기반 암호화
+- Android Keystore 기반은 기기 이동 복원과 맞지 않을 수 있음
+
+1차 결론:
+- API Key 백업 제외
+- UI에 “API Key는 보안상 백업되지 않습니다” 안내
+
+--------------------------------------------------
+7. UI 위치
+--------------------------------------------------
+
+위치 후보:
+
+대화모드 전역 설정
+→ 모델/API 설정
+→ 설정 백업/복원
+
+또는:
+저장소 관리
+→ 설정 백업/복원
+
+권장:
+- 모델/API 설정 안에 “모델/API 설정 백업” 카드 추가
+- 저장소 관리에는 전체 백업 통합 시 후속 연결
+
+버튼:
+- 모델/API 설정 백업
+- 모델/API 설정 복원
+- 백업 폴더 보기/목록 새로고침
+
+--------------------------------------------------
+8. 복원 후 검증
+--------------------------------------------------
+
+복원 후 확인:
+- Provider 목록 reload
+- Model 목록 reload
+- 기본 모델 providerId가 존재하는지 확인
+- Provider 없는 Model 경고 표시 가능
+- API Key는 미설정 상태로 표시
+
+주의:
+- 기본 모델이 복원됐지만 API Key 없으면 호출 시 API_KEY_MISSING 정상
+
+--------------------------------------------------
+9. 기존 세션 백업과 관계
+--------------------------------------------------
+
+기존 세션 백업:
+- conversations/session_...
+- 메시지/요약/세션 정보
+
+설정 백업:
+- settings/provider/model profile
+
+정책:
+- 1차에서는 별도 버튼/별도 폴더
+- 전체 백업 통합은 후속
+
+--------------------------------------------------
+10. 1차 구현 범위 제안
+--------------------------------------------------
+
+다음 구현 단계 권장:
+
+- SettingsBackupManager 추가
+- provider_profiles.json / model_profiles.json SAF 백업
+- backup_manifest.json 생성
+- SAF settings backup 목록 읽기
+- 병합 복원
+- 모델/API 설정 화면에 백업/복원 카드 추가
+- API Key 제외 안내 표시
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+이번 설계 단계 금지:
+❌ 코드 구현
+❌ API Key 평문 백업 기본 포함
+❌ provider_api_keys.json 자동 백업
+❌ 기존 세션 백업 구조 변경
+❌ RAG 백업 구조 변경
+❌ 덮어쓰기 복원 기본값
+❌ 작업모드 수정
+
+--------------------------------------------------
+완료 기준:
+- 설정 백업 대상 확정
+- API Key 백업 제외 정책 확정
+- SAF 백업 폴더 구조 확정
+- 병합 복원 정책 확정
+- UI 위치 확정
+- 1차 구현 범위 확정
+
+--------------------------------------------------
+
+[다음 작업]
+모델/API 설정 백업·복원 구현
+
+==============================
 [2026-05-03 06:00] OpenAI-compatible 모델 목록 조회 구현
 ==============================
 
