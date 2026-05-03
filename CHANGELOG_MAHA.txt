@@ -1,4 +1,344 @@
 ==============================
+[2026-05-03 01:10] 실행정보 / 에러블록 가독성 및 정보 밀도 보정
+==============================
+
+[작업]
+- 대화방 실행정보 기본 화면을 요약 중심으로 보정
+- Provider 오류를 RATE_LIMIT (HTTP 429) 형태로 중복 없이 표시
+- providerErrorType / providerErrorCode / providerRawMessage 표시 보강
+- 긴 errorMessage와 providerRawMessage 자동 줄바꿈 보정
+- Provider 응답 / PROVIDER_RESPONSE_SUMMARY / Worker 내부 summary 중복 노출 축소
+- 상세 trace/raw 정보는 접힘 또는 복사용 정보로 유지
+- 코드/JSON 렌더링 정책은 유지
+- Provider 호출 / Web Search / RAG / 작업모드 로직은 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationRoomScreen 실행정보 UI를 직전 안정 기준으로 복구
+- 실행정보 헤더에는 오류 발생 시 “오류발생”만 표시
+- 실행정보 하위 “Provider 오류 요약” 블록 제거
+- Worker별 블록에 “작업: 성공/실패/건너뜀” 표시 및 오류 정보 표시
+- Provider 응답 상세를 Worker 하위 접힘 블록으로 이동
+
+[실행정보 가독성 테스트]
+- 상단 요약 표시: 성공
+- Provider 오류 요약: 제거 완료
+- 중복 Provider summary 축소: Worker 하위로 이동 완료
+- Worker별 정보 축소: 성공
+- 상세 로그 접힘 유지: 성공
+- 복사 기능 유지: 성공
+
+[에러블록 자동 줄바꿈 테스트]
+- 긴 errorMessage 줄바꿈: 성공
+- providerRawMessage 줄바꿈: 성공
+- 가로 스크롤 감소: 성공
+- 코드블록 스타일 미적용: 성공
+
+[실행정보블록 자동 줄바꿈 테스트]
+- key=value 원문 직접 노출 감소: 성공
+- 긴 값 줄바꿈: 성공
+- 라벨형 표시: 성공
+- 상세 raw trace 접근 가능: 성공
+
+[기존 기능 영향]
+- 대화 전송: 정상
+- 오류 block: 정상
+- 실행정보 접힘: 정상
+- Worker별 실행정보: 정상
+- RAG 실행정보: 정상
+- Web Search 실행정보: 정상
+- Provider trace: 정상
+- 코드/JSON 렌더링: 정상
+- OpenAI Responses 대화: 영향 없음
+- Google/Gemini 대화: 영향 없음
+- OpenAI-compatible 대화: 영향 없음
+- Gemini Web Search: 영향 없음
+- RAG: 영향 없음
+- SAF 백업/복원: 영향 없음
+- 작업모드: 영향 없음
+
+[문제]
+- 기존 보정본에서 빌드 에러 발생: Unsupported escape sequence
+- 기존 보정본에서 빌드 에러 발생: Expecting '"', Expecting ',', Expecting ')'
+- 원인: Regex 문자열 escape와 joinToString 문자열 리터럴 깨짐
+- 조치: Regex("""^\d+\. .+""") 및 joinToString("\n")로 보정
+- 사진 확인 문제: Worker에는 RATE_LIMIT이 표시되지만 HTTP 429가 누락됨
+- 사진 확인 문제: ERROR_BLOCK에 “오류 정보 없음”이 표시됨
+- 사진 확인 문제: 실행정보 하위에 Provider 오류 요약이 별도 공통 블록으로 표시됨
+- 사진 확인 문제: Provider 응답 상세가 Worker 하위가 아니라 실행정보 공통 영역에 표시됨
+- 조치: RATE_LIMIT 기본 HTTP 429 병기, “오류 정보 없음” 제거, Provider 오류 요약 제거, Provider 응답 상세 Worker 하위 이동
+- 빌드 에러 발생: Argument type mismatch, actual type is ConversationRunStatus, but String was expected
+- 원인: buildAnswerOutcomeLabel/statusToKorean/isFailedStatus가 String만 받도록 작성됨
+- 조치: 상태 표시 함수들이 ConversationRunStatus와 String을 모두 처리하도록 보정
+- 최종 확인: 빌드 성공
+- 최종 확인: 가독성 및 정보 밀도 상당 부분 확보
+
+[변경 파일]
+- ConversationRoomScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+실행정보 / 에러블록 가독성 및 정보 밀도 보정
+
+목표:
+- 대화방 실행정보와 에러블록을 사람이 읽기 쉬운 구조로 보정한다.
+- 반복되는 Provider / Worker / Trace 정보를 화면 표시에서 압축한다.
+- 상세 원문은 복사용/접힘 영역에 유지하되, 기본 화면은 요약 중심으로 표시한다.
+- 에러블록과 실행정보블록은 코드블록처럼 가로 스크롤하지 않고 자동 줄바꿈되도록 보정한다.
+- 코드/JSON/테이블 렌더링은 기존 가독성 정책을 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 실행정보 상단 요약 가독성 보정
+✔ Provider 오류 요약 카드 또는 요약 행 추가
+✔ RATE_LIMIT / AUTH_ERROR / SERVER_ERROR 등 errorType을 사람이 읽기 쉽게 표시
+✔ HTTP 상태 코드가 있으면 RATE_LIMIT (HTTP 429)처럼 중복 없이 병기
+✔ providerErrorType / providerErrorCode / providerRawMessage 요약 표시
+✔ providerRawMessage 긴 문장 자동 줄바꿈
+✔ 실행정보 중복 섹션 화면 표시 축소
+✔ Provider 응답 / PROVIDER_RESPONSE_SUMMARY / Worker 내부 summary 중복 노출 완화
+✔ 상세 trace/raw 정보는 접힘 섹션 또는 복사용 텍스트로 유지
+✔ 에러블록 자동 줄바꿈 보정
+✔ 실행정보블록 자동 줄바꿈 보정
+✔ 코드/JSON block은 기존 서식 유지
+
+이번 단계에서 금지:
+
+❌ ConversationEngine trace schema 대규모 변경
+❌ 저장 schema 변경
+❌ Provider 호출 로직 변경
+❌ OpenAI Responses API 로직 변경
+❌ Gemini Web Search 변경
+❌ RAG 구조 변경
+❌ 작업모드 수정
+❌ 코드/JSON 렌더링의 줄바꿈/서식 정책 훼손
+
+--------------------------------------------------
+2. 실행정보 UI 보정 정책
+--------------------------------------------------
+
+대상 파일:
+
+- ConversationRoomScreen.kt
+- ConversationBlocks.kt 필요 시
+
+우선 원칙:
+- trace 원문 생성 로직은 가능하면 유지한다.
+- 화면 표시 renderer/parser 중심으로 가독성을 개선한다.
+- 복사 기능에는 상세 정보가 유지되어도 된다.
+- 기본 화면 표시는 요약 중심으로 줄인다.
+
+상단 요약 표시 권장:
+- 상태
+- Provider
+- Model
+- Error
+- Latency
+- RAG 상태
+- Web Search 상태
+
+예시 표시:
+- 상태: 실패
+- Provider: OPENAI
+- Model: gpt-4o-mini
+- 오류: RATE_LIMIT (HTTP 429)
+- 원인: insufficient_quota
+- 설명: 현재 quota 또는 billing 한도 초과
+- 지연시간: 6.399초
+
+주의:
+- 동일한 errorType이 여러 섹션에 반복 표시되면 화면에서는 1회만 강조한다.
+- Worker별 상세에는 필요한 최소 정보만 표시한다.
+- raw trace는 “상세 실행 로그” 접힘 안으로 이동 가능하다.
+
+--------------------------------------------------
+3. Provider 오류 요약 표시 정책
+--------------------------------------------------
+
+파싱 대상:
+- errorType
+- httpStatus
+- providerErrorType
+- providerErrorCode
+- providerRawMessage
+- rawMetadataSummary
+
+표시 정책:
+- errorType + httpStatus:
+  - RATE_LIMIT (HTTP 429)
+  - AUTH_ERROR (HTTP 401)
+  - SERVER_ERROR (HTTP 500)
+- providerErrorType:
+  - 원인 또는 Provider 오류 유형으로 표시
+- providerErrorCode:
+  - Provider 오류 코드로 표시
+- providerRawMessage:
+  - 설명으로 표시
+  - 긴 문장은 자동 줄바꿈
+  - API Key 등 민감정보가 들어가지 않도록 기존 정책 유지
+
+주의:
+- `errorType=RATE_LIMIT`와 `httpStatus=429`를 각각 독립 반복 노출하지 않는다.
+- 화면 표시에서는 key=value 나열을 줄이고 라벨형 행으로 표시한다.
+- 복사 텍스트에는 원문 trace를 유지해도 된다.
+
+--------------------------------------------------
+4. 중복 정보 축소 정책
+--------------------------------------------------
+
+현재 문제:
+- Provider 응답
+- PROVIDER_RESPONSE_SUMMARY
+- Worker 내부 PROVIDER_RESPONSE_SUMMARY
+- PROVIDER_CALL
+- TOOL_SUPPORT_SUMMARY
+- WEB_SEARCH_GROUNDING
+
+위 정보가 같은 내용을 반복해서 사용자가 읽기 어렵다.
+
+보정 방향:
+- 기본 화면에는 요약 정보만 표시
+- 세부 Provider raw summary는 접힘 처리
+- Worker별 정보에는 다음 중심으로 표시:
+  - worker 이름
+  - status
+  - model
+  - latency
+  - errorType
+  - 짧은 summary
+- 동일한 provider response summary는 Worker 내부에서 반복 표시하지 않거나 접힘으로 숨긴다.
+
+주의:
+- 디버깅에 필요한 정보는 완전히 삭제하지 말 것
+- 복사 기능 또는 상세 접힘에서 접근 가능하게 유지
+
+--------------------------------------------------
+5. 자동 줄바꿈 정책
+--------------------------------------------------
+
+에러블록:
+- 긴 errorMessage/providerRawMessage 자동 줄바꿈
+- 가로 스크롤 최소화
+- SelectableText 또는 Text 사용 시 width 제약 안에서 wrap 되도록 설정
+- 코드블록 스타일 적용 금지
+
+실행정보블록:
+- key=value 원문을 그대로 코드블록처럼 표시하지 않는다.
+- 라벨/값 행 또는 일반 텍스트로 표시한다.
+- 긴 값은 자동 줄바꿈한다.
+
+코드/JSON block:
+- 기존 코드/JSON 서식 유지
+- 코드/JSON은 가로 스크롤 또는 preserve formatting 허용
+- 이번 보정 대상에서 제외
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 전송
+- 오류 block 출력
+- 실행정보 접힘 UI
+- 실행정보 복사
+- Worker별 실행정보
+- RAG 실행정보
+- Web Search 실행정보
+- Provider 응답 trace
+- OpenAI Responses 기본 대화 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- Gemini native Web Search
+- RAG
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 실행정보 가독성
+- 상단 요약 표시:
+- Provider 오류 요약:
+- 중복 Provider summary 축소:
+- Worker별 정보 축소:
+- 상세 로그 접힘 유지:
+- 복사 기능 유지:
+
+B. 에러블록 자동 줄바꿈
+- 긴 errorMessage 줄바꿈:
+- providerRawMessage 줄바꿈:
+- 가로 스크롤 감소:
+- 코드블록 스타일 미적용:
+
+C. 실행정보블록 자동 줄바꿈
+- key=value 원문 직접 노출 감소:
+- 긴 값 줄바꿈:
+- 라벨형 표시:
+- 상세 raw trace 접근 가능:
+
+D. 기존 기능 영향
+- 대화 전송:
+- 오류 block:
+- 실행정보 접힘:
+- Worker별 실행정보:
+- RAG 실행정보:
+- Web Search 실행정보:
+- Provider trace:
+- 코드/JSON 렌더링:
+- OpenAI Responses 대화:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- Gemini Web Search:
+- RAG:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ ConversationEngine trace schema 대규모 변경 금지
+❌ 저장 schema 변경 금지
+❌ Provider 호출 로직 변경 금지
+❌ OpenAI Responses API 로직 변경 금지
+❌ Gemini Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ 작업모드 수정 금지
+❌ 코드/JSON 렌더링 정책 훼손 금지
+❌ 디버깅 정보 완전 삭제 금지
+
+--------------------------------------------------
+완료 기준:
+- 실행정보 기본 화면이 요약 중심으로 읽기 쉬워짐
+- Provider 오류가 RATE_LIMIT (HTTP 429)처럼 중복 없이 표시됨
+- providerRawMessage가 자동 줄바꿈됨
+- 중복 Provider summary가 기본 화면에서 축소됨
+- 상세 trace/raw 정보는 접힘 또는 복사로 유지됨
+- 코드/JSON 렌더링 영향 없음
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI Responses 성공 응답 실사용 검증 또는 Provider 실행정보 UX 추가 정리
+
+==============================
 [2026-05-03 23:50] 공통 모델 목록 Dialog 검색 UX 및 Provider 오류 요약 정책 보강
 ==============================
 
