@@ -252,7 +252,7 @@ fun ProviderManagementScreen(
             ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
 
             val matchesProviderType = selectedProviderTypeFilter == null ||
-                    provider.providerType == selectedProviderTypeFilter
+                provider.providerType == selectedProviderTypeFilter
             val matchesEnabled = !showOnlyEnabledProviders || provider.isEnabled
             val matchesApiKey = !showOnlyApiKeyConfigured || providerApiKeyStates[provider.providerId] == true
             val matchesMissingBaseUrl = !showOnlyMissingBaseUrl || provider.baseUrl.isBlank()
@@ -271,10 +271,10 @@ fun ProviderManagementScreen(
     val apiKeyConfiguredCount = providers.count { providerApiKeyStates[it.providerId] == true }
     val missingBaseUrlCount = providers.count { it.baseUrl.isBlank() }
     val isFilterApplied = providerSearchQuery.isNotBlank() ||
-            selectedProviderTypeFilter != null ||
-            showOnlyEnabledProviders ||
-            showOnlyApiKeyConfigured ||
-            showOnlyMissingBaseUrl
+        selectedProviderTypeFilter != null ||
+        showOnlyEnabledProviders ||
+        showOnlyApiKeyConfigured ||
+        showOnlyMissingBaseUrl
 
     Column(
         modifier = modifier
@@ -571,6 +571,11 @@ private fun ProviderListControlPanel(
                     text = ProviderType.GOOGLE.name,
                     selected = selectedProviderType == ProviderType.GOOGLE,
                     onClick = { onProviderTypeSelected(ProviderType.GOOGLE) }
+                )
+                ProviderFilterButton(
+                    text = ProviderType.OPENAI.name,
+                    selected = selectedProviderType == ProviderType.OPENAI,
+                    onClick = { onProviderTypeSelected(ProviderType.OPENAI) }
                 )
             }
             Row(
@@ -1092,6 +1097,7 @@ private fun isDefaultSeedProvider(provider: ProviderProfile): Boolean {
 private fun providerCallStyleLabel(providerType: ProviderType): String {
     return when (providerType) {
         ProviderType.GOOGLE -> "Google Gemini"
+        ProviderType.OPENAI -> "OpenAI official API"
         ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible"
         ProviderType.NVIDIA -> "NVIDIA API"
         ProviderType.LOCAL -> "Local OpenAI-compatible"
@@ -1102,6 +1108,7 @@ private fun providerCallStyleLabel(providerType: ProviderType): String {
 private fun providerCallStyleColor(providerType: ProviderType): Color {
     return when (providerType) {
         ProviderType.GOOGLE -> Color(0xFF9EC7FF)
+        ProviderType.OPENAI -> Color(0xFFAEC6FF)
         ProviderType.OPENAI_COMPATIBLE -> Color(0xFFB7D7FF)
         ProviderType.LOCAL -> Color(0xFF9FE3B1)
         ProviderType.CUSTOM -> Color(0xFFFFD08A)
@@ -1111,6 +1118,7 @@ private fun providerCallStyleColor(providerType: ProviderType): Color {
 
 private fun isApiKeyRequiredForProvider(providerType: ProviderType): Boolean {
     return when (providerType) {
+        ProviderType.OPENAI,
         ProviderType.OPENAI_COMPATIBLE,
         ProviderType.NVIDIA,
         ProviderType.GOOGLE -> true
@@ -1124,7 +1132,8 @@ private fun apiKeyRequirementLabel(providerType: ProviderType): String {
 }
 
 private fun isBaseUrlRecommended(providerType: ProviderType): Boolean {
-    return providerType == ProviderType.OPENAI_COMPATIBLE ||
+    return providerType == ProviderType.OPENAI ||
+            providerType == ProviderType.OPENAI_COMPATIBLE ||
             providerType == ProviderType.LOCAL ||
             providerType == ProviderType.CUSTOM
 }
@@ -1132,6 +1141,7 @@ private fun isBaseUrlRecommended(providerType: ProviderType): Boolean {
 private fun baseUrlPlaceholder(providerType: ProviderType): String {
     return when (providerType) {
         ProviderType.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/openai/"
+        ProviderType.OPENAI -> "https://api.openai.com/v1"
         ProviderType.OPENAI_COMPATIBLE -> "https://api.groq.com/openai/v1 또는 https://openrouter.ai/api/v1"
         ProviderType.LOCAL -> "http://192.168.0.25:1234/v1 또는 http://192.168.0.25:11434/v1"
         ProviderType.CUSTOM -> "https://your-server.example.com/v1"
@@ -1146,6 +1156,7 @@ private fun providerCardGuideText(providerType: ProviderType, hasApiKey: Boolean
         } else {
             "모델 목록 조회와 Gemini 호출은 API Key 저장 후 사용할 수 있습니다."
         }
+        ProviderType.OPENAI -> "OpenAI 공식 API Provider입니다. Web Search는 후속 Responses API adapter에서 지원 예정입니다. API Key는 필수입니다."
         ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible /chat/completions 엔드포인트를 사용합니다. API Key는 필수입니다."
         ProviderType.LOCAL -> "LM Studio, Ollama OpenAI-compatible 서버 등에 연결합니다. 휴대폰에서는 127.0.0.1 대신 PC의 LAN IP를 사용하세요."
         ProviderType.CUSTOM -> "OpenAI-compatible 응답 형식을 따르는 사용자 지정 서버입니다. API Key는 선택입니다."
@@ -1377,8 +1388,8 @@ private fun ProviderProfileEditDialog(
 
 private fun isOpenAiCompatibleModelListProvider(providerType: ProviderType): Boolean {
     return providerType == ProviderType.OPENAI_COMPATIBLE ||
-            providerType == ProviderType.LOCAL ||
-            providerType == ProviderType.CUSTOM
+        providerType == ProviderType.LOCAL ||
+        providerType == ProviderType.CUSTOM
 }
 
 private fun canLoadOpenAiCompatibleModelList(

@@ -133,9 +133,9 @@ fun ModelManagementScreen(
                 .thenBy { it.displayName.lowercase() }
         )
     val isFilterApplied = searchQuery.isNotBlank() ||
-            selectedProviderTypeFilter != MODEL_PROVIDER_FILTER_ALL ||
-            favoriteOnly ||
-            enabledOnly
+        selectedProviderTypeFilter != MODEL_PROVIDER_FILTER_ALL ||
+        favoriteOnly ||
+        enabledOnly
 
     Column(
         modifier = modifier
@@ -848,6 +848,7 @@ private fun ModelProfileEditDialog(
 
 private fun rawModelNameLabel(providerType: ProviderType?): String {
     return when (providerType) {
+        ProviderType.OPENAI -> "OpenAI Model ID"
         ProviderType.LOCAL -> "Local Server Model ID"
         ProviderType.OPENAI_COMPATIBLE -> "OpenAI-compatible Model ID"
         ProviderType.CUSTOM -> "Custom Server Model ID"
@@ -859,6 +860,7 @@ private fun rawModelNameLabel(providerType: ProviderType?): String {
 private fun rawModelNamePlaceholder(providerType: ProviderType?): String {
     return when (providerType) {
         ProviderType.GOOGLE -> "gemini-2.5-flash 또는 gemma-4-31b-it"
+        ProviderType.OPENAI -> "gpt-4.1-mini 또는 gpt-4o-mini"
         ProviderType.OPENAI_COMPATIBLE -> "llama-3.1-8b-instant, llama-3.3-70b-versatile, openrouter/free"
         ProviderType.LOCAL -> "LM Studio 모델 ID, llama3.2, gemma3, qwen2.5"
         ProviderType.CUSTOM -> "서버가 요구하는 model id"
@@ -870,6 +872,7 @@ private fun rawModelNamePlaceholder(providerType: ProviderType?): String {
 private fun rawModelNameGuideText(providerType: ProviderType?): String {
     return when (providerType) {
         ProviderType.GOOGLE -> "Google 모델 목록에서 추가한 모델은 rawModelName이 자동 저장됩니다. 수동 입력 시 Gemini 호출에 사용할 모델 ID를 입력하세요."
+        ProviderType.OPENAI -> "OpenAI 공식 API 모델 ID를 입력합니다. 예: gpt-4.1-mini, gpt-4o-mini. Web Search capability는 기본 UNKNOWN이며 실제 호출은 후속 Responses API adapter에서 지원합니다."
         ProviderType.OPENAI_COMPATIBLE -> "Groq, OpenRouter 등 OpenAI-compatible 서버가 요구하는 model id를 입력합니다. 예시는 안내용이며 자동 저장되지 않습니다."
         ProviderType.LOCAL -> "Local Server에 실제 로드된 모델 ID를 입력합니다. 휴대폰에서 PC 서버를 사용할 경우 Provider의 Base URL은 PC LAN IP를 사용해야 합니다."
         ProviderType.CUSTOM -> "사용자 지정 서버가 요구하는 model id를 입력합니다. 서버별 규칙을 확인하세요."

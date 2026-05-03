@@ -2,6 +2,7 @@ package com.maha.app
 
 enum class ProviderType {
     GOOGLE,
+    OPENAI,
     OPENAI_COMPATIBLE,
     NVIDIA,
     LOCAL,

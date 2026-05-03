@@ -74,6 +74,17 @@ object ToolSupportResolver {
                 notes = "Google provider normal conversation calls are enabled, but native tool execution is not implemented in conversation mode."
             )
 
+            ProviderType.OPENAI -> ToolSupportPolicy(
+                providerType = providerType,
+                supportsFunctionCalling = ToolSupportStatus.UNKNOWN,
+                supportsWebSearch = ToolSupportStatus.NOT_IMPLEMENTED,
+                supportsCodeExecution = ToolSupportStatus.UNKNOWN,
+                supportsStructuredOutput = ToolSupportStatus.UNKNOWN,
+                supportsThinkingSummary = ToolSupportStatus.UNKNOWN,
+                requestToolCallsEnabled = false,
+                notes = "OpenAI official Responses API and hosted web_search are separated from OpenAI-compatible chat/completions. Actual OpenAI Web Search is not implemented yet."
+            )
+
             ProviderType.OPENAI_COMPATIBLE -> ToolSupportPolicy(
                 providerType = providerType,
                 supportsFunctionCalling = ToolSupportStatus.NOT_IMPLEMENTED,

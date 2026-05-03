@@ -2157,14 +2157,14 @@ private fun loadModelApiSettingsSummary(context: Context): ModelApiSettingsSumma
 
     val apiKeyMissingRequiredCount = providers.count { provider ->
         provider.isEnabled &&
-                provider.providerType.requiresApiKeyForConversation() &&
-                !store.hasProviderApiKey(provider.providerId)
+            provider.providerType.requiresApiKeyForConversation() &&
+            !store.hasProviderApiKey(provider.providerId)
     }
 
     val webSearchCandidateCount = models.count { model ->
         val webSearchStatus = (model.capabilitiesV2 ?: model.capabilities.toModelCapabilityV2()).tools.webSearch
         model.enabled &&
-                (webSearchStatus == CapabilityStatus.SUPPORTED || webSearchStatus == CapabilityStatus.USER_ENABLED)
+            (webSearchStatus == CapabilityStatus.SUPPORTED || webSearchStatus == CapabilityStatus.USER_ENABLED)
     }
 
     val defaultModel = models.firstOrNull { it.isDefaultForConversation }
@@ -2187,6 +2187,7 @@ private fun loadModelApiSettingsSummary(context: Context): ModelApiSettingsSumma
 private fun ProviderType.requiresApiKeyForConversation(): Boolean {
     return when (this) {
         ProviderType.GOOGLE,
+        ProviderType.OPENAI,
         ProviderType.OPENAI_COMPATIBLE,
         ProviderType.NVIDIA -> true
         ProviderType.LOCAL,

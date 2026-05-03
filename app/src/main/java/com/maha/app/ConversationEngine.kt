@@ -2038,6 +2038,7 @@ class ConversationEngine(
 
     private fun isApiKeyRequired(providerType: ProviderType): Boolean {
         return when (providerType) {
+            ProviderType.OPENAI,
             ProviderType.OPENAI_COMPATIBLE,
             ProviderType.NVIDIA,
             ProviderType.GOOGLE -> true
