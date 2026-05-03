@@ -63,6 +63,7 @@ fun ProviderManagementScreen(
     val coroutineScope = rememberCoroutineScope()
     val googleModelListFetcher = remember { GoogleModelListFetcher() }
     val openAiCompatibleModelListFetcher = remember { OpenAiCompatibleModelListFetcher() }
+    val openAIModelListFetcher = remember { OpenAIModelListFetcher() }
     var modelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
     var googleModels by remember { mutableStateOf<List<GoogleModelListItem>>(emptyList()) }
     var googleModelListError by remember { mutableStateOf<String?>(null) }
@@ -77,8 +78,9 @@ fun ProviderManagementScreen(
     var openAiModelListEndpoint by remember { mutableStateOf<String?>(null) }
 
     var openAIOfficialModelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
-    var openAIOfficialModelListErrorType by remember { mutableStateOf<String?>(null) }
-    var openAIOfficialModelListErrorMessage by remember { mutableStateOf<String?>(null) }
+    var openAIOfficialModels by remember { mutableStateOf<List<OpenAIModelListItem>>(emptyList()) }
+    var openAIOfficialModelListError by remember { mutableStateOf<String?>(null) }
+    var openAIOfficialModelListMessage by remember { mutableStateOf<String?>(null) }
     var openAIOfficialModelListEndpoint by remember { mutableStateOf<String?>(null) }
     var isOpenAIOfficialModelListLoading by remember { mutableStateOf(false) }
 
@@ -194,23 +196,77 @@ fun ProviderManagementScreen(
     }
 
     fun openOpenAIOfficialModelList(provider: ProviderProfile) {
-        // OPENAI 공식 모델 목록 조회는 현재 skeleton 단계다.
-        // 실제 OpenAI API 호출, Fetcher 실행, 네트워크 요청을 하지 않고 준비중 Dialog만 연다.
-        // 이렇게 해야 OPENAI Provider 클릭 시 런타임 예외가 Provider 목록 화면을 종료시키지 않는다.
-        val endpoint = provider.modelListEndpoint
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: provider.baseUrl
-                .trim()
-                .trimEnd('/')
-                .ifBlank { "https://api.openai.com/v1" }
-                .let { "$it/models" }
-
         openAIOfficialModelListProvider = provider
-        openAIOfficialModelListErrorType = "OPENAI_MODEL_LIST_NOT_IMPLEMENTED"
-        openAIOfficialModelListErrorMessage = "OpenAI 공식 모델 목록 조회는 아직 구현되지 않았습니다."
-        openAIOfficialModelListEndpoint = endpoint
-        isOpenAIOfficialModelListLoading = false
+        openAIOfficialModels = emptyList()
+        openAIOfficialModelListError = null
+        openAIOfficialModelListMessage = null
+        openAIOfficialModelListEndpoint = null
+        isOpenAIOfficialModelListLoading = true
+
+        coroutineScope.launch {
+            val apiKey = store.loadProviderApiKey(provider.providerId)
+            val result = openAIModelListFetcher.fetchModels(
+                provider = provider,
+                apiKey = apiKey
+            )
+            isOpenAIOfficialModelListLoading = false
+            openAIOfficialModelListEndpoint = result.endpoint
+            if (result.success) {
+                openAIOfficialModels = result.models
+                openAIOfficialModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
+            } else {
+                openAIOfficialModelListError = result.errorMessage ?: result.errorType ?: "OpenAI 공식 모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun addOpenAIOfficialModelProfile(provider: ProviderProfile, item: OpenAIModelListItem) {
+        val rawModelName = item.rawModelName.trim()
+        if (rawModelName.isBlank()) {
+            openAIOfficialModelListMessage = "rawModelName이 비어 있어 추가할 수 없습니다."
+            return
+        }
+
+        val current = store.loadModelProfiles()
+        val alreadyExists = current.any { model ->
+            model.providerId == provider.providerId && model.rawModelName == rawModelName
+        }
+        if (alreadyExists) {
+            openAIOfficialModelListMessage = "이미 추가된 모델입니다: $rawModelName"
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val safeIdPart = rawModelName
+            .replace(Regex("[^A-Za-z0-9_-]"), "_")
+            .take(48)
+            .ifBlank { "openai_model" }
+
+        val profile = ConversationModelProfile(
+            modelId = "model_${provider.providerId}_${safeIdPart}_$now",
+            providerId = provider.providerId,
+            displayName = item.displayName.ifBlank { rawModelName },
+            rawModelName = rawModelName,
+            contextWindow = null,
+            inputModalities = listOf("text"),
+            outputModalities = listOf("text"),
+            capabilities = ConversationModelCapability(
+                text = true
+            ),
+            isFavorite = false,
+            isDefaultForConversation = false,
+            lastUsedAt = null,
+            enabled = true,
+            capabilitiesV2 = createOpenAiCompatibleMetadataCapabilityV2(),
+            capabilitySource = "METADATA",
+            supportedGenerationMethods = emptyList(),
+            inputTokenLimit = null,
+            outputTokenLimit = null,
+            metadataRawSummary = item.metadataRawSummary,
+            lastMetadataFetchedAt = now
+        )
+        store.addModelProfile(profile)
+        openAIOfficialModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
     }
 
     fun addOpenAiCompatibleModelProfile(provider: ProviderProfile, candidate: OpenAiModelListCandidate) {
@@ -517,19 +573,23 @@ fun ProviderManagementScreen(
     }
 
     openAIOfficialModelListProvider?.let { provider ->
-        OpenAIModelListSkeletonDialog(
+        OpenAIModelListDialog(
             provider = provider,
             isLoading = isOpenAIOfficialModelListLoading,
-            errorType = openAIOfficialModelListErrorType,
-            errorMessage = openAIOfficialModelListErrorMessage,
+            models = openAIOfficialModels,
+            errorMessage = openAIOfficialModelListError,
+            resultMessage = openAIOfficialModelListMessage,
             endpoint = openAIOfficialModelListEndpoint,
+            existingModels = store.loadModelProfiles(),
             onDismiss = {
                 openAIOfficialModelListProvider = null
-                openAIOfficialModelListErrorType = null
-                openAIOfficialModelListErrorMessage = null
+                openAIOfficialModels = emptyList()
+                openAIOfficialModelListError = null
+                openAIOfficialModelListMessage = null
                 openAIOfficialModelListEndpoint = null
                 isOpenAIOfficialModelListLoading = false
-            }
+            },
+            onAddModel = { item -> addOpenAIOfficialModelProfile(provider, item) }
         )
     }
 }
@@ -977,13 +1037,16 @@ private fun GoogleModelListDialog(
 
 
 @Composable
-private fun OpenAIModelListSkeletonDialog(
+private fun OpenAIModelListDialog(
     provider: ProviderProfile,
     isLoading: Boolean,
-    errorType: String?,
+    models: List<OpenAIModelListItem>,
     errorMessage: String?,
+    resultMessage: String?,
     endpoint: String?,
-    onDismiss: () -> Unit
+    existingModels: List<ConversationModelProfile>,
+    onDismiss: () -> Unit,
+    onAddModel: (OpenAIModelListItem) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -992,7 +1055,7 @@ private fun OpenAIModelListSkeletonDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -1002,17 +1065,54 @@ private fun OpenAIModelListSkeletonDialog(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "OpenAI 공식 /v1/models 조회는 후속 단계에서 지원 예정입니다.",
-                    style = MaterialTheme.typography.bodyMedium
+                    text = "endpoint: ${endpoint ?: "https://api.openai.com/v1/models"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 if (isLoading) {
-                    Text(text = "모델 목록 조회 준비 상태를 확인하는 중입니다...")
+                    Text(text = "OpenAI 공식 모델 목록을 불러오는 중입니다...")
                 }
 
-                if (errorType != null || errorMessage != null || endpoint != null) {
+                errorMessage?.let { message ->
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B3222)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFFFC4C4)
+                        )
+                    }
+                }
+
+                resultMessage?.let { message ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF203020)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(12.dp),
+                            color = Color(0xFFBFECC4)
+                        )
+                    }
+                }
+
+                if (!isLoading && errorMessage == null && models.isEmpty()) {
+                    Text(text = "표시할 모델이 없습니다.")
+                }
+
+                models.forEach { item ->
+                    val alreadyAdded = existingModels.any { model ->
+                        model.providerId == provider.providerId && model.rawModelName == item.rawModelName
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -1020,23 +1120,38 @@ private fun OpenAIModelListSkeletonDialog(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = errorType ?: "OPENAI_MODEL_LIST_NOT_IMPLEMENTED",
-                                style = MaterialTheme.typography.labelLarge,
+                                text = item.displayName.ifBlank { item.rawModelName },
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFFD08A)
+                                color = Color.White
                             )
                             Text(
-                                text = errorMessage ?: "OpenAI 공식 모델 목록 조회는 아직 구현되지 않았습니다.",
+                                text = "rawModelName: ${item.rawModelName}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFFD0D3DA)
                             )
                             Text(
-                                text = "endpoint: ${endpoint ?: "https://api.openai.com/v1/models"}",
+                                text = "createdAt: ${item.createdAt ?: "unknown"}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFD0D3DA),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
+                                color = Color(0xFFD0D3DA)
                             )
+                            item.metadataRawSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFD0D3DA),
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Button(
+                                onClick = { onAddModel(item) },
+                                enabled = !alreadyAdded,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(text = if (alreadyAdded) "이미 추가됨" else "추가")
+                            }
                         }
                     }
                 }

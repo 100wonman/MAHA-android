@@ -1,4 +1,263 @@
 ==============================
+[2026-05-03 22:20] OpenAI 공식 모델 목록 조회 실제 호출 구현
+==============================
+
+[작업]
+- OpenAIModelListFetcher에서 공식 OpenAI /v1/models 실제 조회 구현
+- ProviderType.OPENAI 전용 모델 목록 조회 흐름 연결
+- API Key 누락, 인증 오류, rate limit, server error, timeout, parse error 분류
+- OpenAI 모델 목록 data[] 파싱
+- 선택한 OpenAI 모델을 ModelProfile로 추가하는 UI 흐름 연결
+- OpenAI-compatible 모델 목록 조회와 분리 유지
+- Responses API / Web Search / ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- OpenAIModelListFetcher에 공식 OpenAI /v1/models 실제 GET 호출 구현
+- OPENAI Provider 모델 목록 버튼을 OpenAIModelListFetcher에 연결
+- 조회 결과 Dialog에서 선택 모델을 ModelProfile로 추가 가능하게 연결
+- OpenAI-compatible 조회와 OpenAI 공식 조회 분리 유지
+- 기존 result class 충돌 보정본 유지
+
+[OpenAI 공식 모델 목록 조회 테스트]
+- API Key 없음 처리: 완료
+- endpoint 보정: 완료
+- 실제 조회: 완료
+- data[] 파싱: 완료
+- errorType 분류: 확인 안됨
+
+[Provider 관리 UI 테스트]
+- OPENAI 모델 목록 조회 버튼: 완료
+- 성공 Dialog: 안뜸
+- 모델 선택 추가:  완료
+- Dialog 스크롤/높이:  완료
+- 미구현 문구 처리: 제거
+
+[분리 유지 테스트]
+- OpenAIModelListFetcher: 공식 OpenAI 전용
+- OpenAiCompatibleModelListFetcher: Groq/OpenRouter/LOCAL/CUSTOM 유지
+- GoogleModelListFetcher: 변경 없음
+- Result class 충돌: OpenAiCompatibleModelListResult 이름 유지
+
+[기존 기능 영향]
+- Google 모델 목록 조회: 유지
+- OpenAI-compatible 모델 목록 조회: 유지
+- Provider 검색: 유지
+- Provider CRUD/API Key: 유지
+- Model 관리: 변경 없음
+- Web Search/RAG: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ProviderManagementScreen.kt
+- OpenAIModelListFetcher.kt
+- OpenAiCompatibleModelListFetcher.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+OpenAI 공식 모델 목록 조회 실제 호출 구현
+
+목표:
+- OpenAIModelListFetcher skeleton에 공식 OpenAI /v1/models 실제 조회를 연결한다.
+- ProviderType.OPENAI Provider에서만 OpenAI 공식 모델 목록 조회를 사용한다.
+- 조회된 모델을 기존 ModelProfile 추가 흐름에 연결한다.
+- OpenAI-compatible 모델 목록 조회와 OpenAI 공식 모델 목록 조회를 계속 분리한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ OpenAIModelListFetcher.kt에서 OpenAI 공식 /v1/models 실제 호출 구현
+✔ ProviderType.OPENAI Provider 전용 모델 목록 조회 흐름 연결
+✔ API Key 누락 시 API_KEY_MISSING 반환
+✔ baseUrl 누락 시 기본값 https://api.openai.com/v1 사용 또는 UI 입력값 사용
+✔ /models endpoint 보정
+✔ OpenAI 모델 목록 응답 data[] 파싱
+✔ id를 rawModelName으로 사용
+✔ 조회된 모델을 ModelProfile로 추가하는 기존 UI 흐름 연결
+✔ 모델 목록 Dialog 높이 제한/스크롤 유지
+✔ 기존 Google/OpenAI-compatible 모델 목록 조회 영향 없음
+
+이번 단계에서 금지:
+
+❌ OpenAI Responses API 호출
+❌ OpenAI Web Search 호출
+❌ ConversationEngine OPENAI 실제 대화 분기 연결
+❌ OpenAI-compatible fetcher 재사용 또는 통합
+❌ OpenAiCompatibleModelListFetcher 구조 재변경
+❌ Gemini native Web Search 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. OpenAIModelListFetcher 구현 정책
+--------------------------------------------------
+
+대상 파일:
+
+- OpenAIModelListFetcher.kt
+
+호출 방식:
+- GET {baseUrl}/models
+- 기본 baseUrl:
+  - https://api.openai.com/v1
+- Authorization:
+  - Bearer {apiKey}
+
+endpoint 보정:
+- baseUrl이 비어 있으면 https://api.openai.com/v1 사용
+- baseUrl 끝의 / 제거
+- 이미 /models로 끝나면 그대로 사용
+- 아니면 /models 추가
+
+응답 파싱:
+- 최상위 data 배열 파싱
+- 각 item의 id를 모델명으로 사용
+- created가 있으면 createdAt 또는 metadataRawSummary에 반영 가능
+- object, owned_by 등은 metadataRawSummary에 요약 가능
+
+실패 처리:
+- API Key 없음:
+  - errorType = "API_KEY_MISSING"
+- HTTP 401/403:
+  - errorType = "AUTH_ERROR"
+- HTTP 429:
+  - errorType = "RATE_LIMIT"
+- HTTP 5xx:
+  - errorType = "SERVER_ERROR"
+- timeout:
+  - errorType = "TIMEOUT"
+- parse 실패:
+  - errorType = "PARSE_ERROR"
+- 기타:
+  - errorType = "UNKNOWN_ERROR"
+
+주의:
+- API Key 원문 로그 출력 금지
+- errorMessage에도 API Key 원문 포함 금지
+- raw response 전체를 UI에 과도하게 노출하지 말 것
+
+--------------------------------------------------
+3. ProviderManagementScreen 연결
+--------------------------------------------------
+
+OPENAI Provider에서 모델 목록 조회 클릭 시:
+
+- OpenAIModelListFetcher 사용
+- ProviderSettingsStore에서 해당 providerId의 API Key 로드
+- API Key 없으면 API_KEY_MISSING 메시지 표시
+- 성공 시 OpenAI 모델 목록 Dialog 표시
+- 사용자가 선택한 모델만 ModelProfile로 추가
+
+OPENAI 모델 profile 생성 기본값:
+
+- providerId = 선택한 OPENAI Provider의 providerId
+- providerType = OPENAI Provider 기준으로 표시
+- displayName = 모델 id
+- rawModelName = 모델 id
+- enabled = true
+- isDefaultForConversation = false
+- webSearch capability = UNKNOWN 또는 기존 기본값 유지
+- metadataRawSummary = OpenAI model list metadata 요약
+
+주의:
+- 모델을 자동으로 대량 추가하지 말 것
+- 사용자가 선택한 모델만 추가
+- 기존 OPENAI_COMPATIBLE Dialog와 함수명/Result 타입 충돌 금지
+
+--------------------------------------------------
+4. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google 모델 목록 조회
+- OpenAI-compatible 모델 목록 조회
+- Groq 모델 목록 Dialog 스크롤/높이 보정
+- Provider 검색 보정
+- Provider CRUD
+- API Key 저장/삭제
+- Model 관리
+- 모델/API 설정 요약
+- Gemini native Web Search
+- RAG
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+5. 테스트 기준
+--------------------------------------------------
+
+A. OpenAI 공식 모델 목록 조회
+- API Key 없음 처리:
+- /models endpoint 보정:
+- 실제 모델 목록 조회:
+- data[] 파싱:
+- errorType 분류:
+
+B. Provider 관리 UI
+- OPENAI Provider 모델 목록 조회 버튼:
+- 성공 Dialog 표시:
+- 모델 선택 후 ModelProfile 추가:
+- Dialog 스크롤/높이:
+- 준비중/미구현 문구 제거 또는 실제 조회 결과와 충돌 없음:
+
+C. 분리 유지
+- OpenAIModelListFetcher:
+- OpenAiCompatibleModelListFetcher:
+- GoogleModelListFetcher:
+- Result class 이름 충돌 없음:
+
+D. 기존 기능 영향
+- Google 모델 목록 조회:
+- OpenAI-compatible 모델 목록 조회:
+- Provider 검색:
+- Provider CRUD/API Key:
+- Model 관리:
+- Web Search/RAG:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+6. 금지 사항
+--------------------------------------------------
+
+❌ Responses API 구현 금지
+❌ Web Search 구현 금지
+❌ ConversationEngine OPENAI 연결 금지
+❌ OpenAI-compatible fetcher와 통합 금지
+❌ Gemini Web Search 변경 금지
+❌ 저장 schema 대규모 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- OpenAI 공식 /v1/models 실제 조회 성공
+- OPENAI Provider에서만 OpenAIModelListFetcher 사용
+- 조회 모델을 선택적으로 ModelProfile에 추가 가능
+- 기존 Google/OpenAI-compatible 모델 목록 조회 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI Responses API 대화 호출 skeleton 연결 설계 또는 OPENAI Provider 기본 대화 호출 연결 준비
+
+==============================
 [2026-05-03 22:00] OpenAI 모델 목록 조회 skeleton 및 Provider 검색 보정
 ==============================
 

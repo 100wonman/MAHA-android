@@ -2,13 +2,17 @@ package com.maha.app
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONException
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.URL
 
 /**
  * OpenAIModelListItem
  *
  * 쉬운 설명:
- * OpenAI 공식 /v1/models 응답을 후속 단계에서 앱 모델 후보로 바꾸기 위한 임시 구조다.
- * 현재 skeleton 단계에서는 실제 HTTP 호출을 하지 않으므로 빈 목록만 반환한다.
+ * OpenAI 공식 /v1/models 응답에서 앱의 ModelProfile로 추가하기 전 임시로 들고 있는 모델 후보다.
  */
 data class OpenAIModelListItem(
     val id: String,
@@ -33,25 +37,31 @@ data class OpenAIModelListFetchResult(
     val endpoint: String? = null
 ) {
     companion object {
-        fun notImplemented(endpoint: String): OpenAIModelListFetchResult {
+        fun success(
+            models: List<OpenAIModelListItem>,
+            latencySec: Double,
+            endpoint: String
+        ): OpenAIModelListFetchResult {
             return OpenAIModelListFetchResult(
-                success = false,
-                models = emptyList(),
-                errorType = "OPENAI_MODEL_LIST_NOT_IMPLEMENTED",
-                errorMessage = "OpenAI 공식 모델 목록 조회는 아직 구현되지 않았습니다.",
-                latencySec = 0.0,
+                success = true,
+                models = models,
+                latencySec = latencySec,
                 endpoint = endpoint
             )
         }
 
-        fun unsupportedProvider(providerType: ProviderType): OpenAIModelListFetchResult {
+        fun failure(
+            errorType: String,
+            errorMessage: String,
+            latencySec: Double = 0.0,
+            endpoint: String? = null
+        ): OpenAIModelListFetchResult {
             return OpenAIModelListFetchResult(
                 success = false,
-                models = emptyList(),
-                errorType = "PROVIDER_NOT_SUPPORTED",
-                errorMessage = "ProviderType.${providerType.name}은 OpenAI 공식 모델 목록 조회 대상이 아닙니다.",
-                latencySec = 0.0,
-                endpoint = null
+                errorType = errorType,
+                errorMessage = errorMessage,
+                latencySec = latencySec,
+                endpoint = endpoint
             )
         }
     }
@@ -61,12 +71,8 @@ data class OpenAIModelListFetchResult(
  * OpenAIModelListFetcher
  *
  * 쉬운 설명:
- * OpenAI 공식 /v1/models 조회를 후속 단계에서 구현하기 위한 skeleton이다.
- *
- * 주의:
- * - 현재 단계에서는 실제 네트워크 호출을 하지 않는다.
- * - API Key를 로그나 UI에 노출하지 않는다.
- * - OpenAiCompatibleModelListFetcher와 분리한다.
+ * OpenAI 공식 Provider에서만 /v1/models 목록을 불러온다.
+ * OpenAI-compatible Provider용 OpenAiCompatibleModelListFetcher와 분리한다.
  */
 class OpenAIModelListFetcher {
 
@@ -74,29 +80,166 @@ class OpenAIModelListFetcher {
         provider: ProviderProfile,
         apiKey: String?
     ): OpenAIModelListFetchResult = withContext(Dispatchers.IO) {
+        val endpoint = buildModelsEndpoint(provider)
+        val startedAt = System.nanoTime()
+
         if (provider.providerType != ProviderType.OPENAI) {
-            return@withContext OpenAIModelListFetchResult.unsupportedProvider(provider.providerType)
+            return@withContext OpenAIModelListFetchResult.failure(
+                errorType = "PROVIDER_NOT_SUPPORTED",
+                errorMessage = "ProviderType.${provider.providerType.name}은 OpenAI 공식 모델 목록 조회 대상이 아닙니다.",
+                endpoint = endpoint
+            )
         }
 
-        // 후속 실제 구현에서 x-goog/openai가 아닌 OpenAI Authorization header에 apiKey를 사용한다.
-        // 현재 skeleton 단계에서는 apiKey 존재 여부를 검사하지 않고, 실제 HTTP 호출도 하지 않는다.
-        @Suppress("UNUSED_VARIABLE")
-        val apiKeyReservedForFuture = apiKey
+        if (apiKey.isNullOrBlank()) {
+            return@withContext OpenAIModelListFetchResult.failure(
+                errorType = "API_KEY_MISSING",
+                errorMessage = "OpenAI 공식 모델 목록 조회에는 API Key가 필요합니다.",
+                endpoint = endpoint
+            )
+        }
 
-        OpenAIModelListFetchResult.notImplemented(
-            endpoint = buildModelsEndpoint(provider)
-        )
+        runCatching {
+            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Authorization", "Bearer $apiKey")
+            }
+
+            try {
+                val statusCode = connection.responseCode
+                val responseText = readResponseText(connection, statusCode)
+                val latencySec = elapsedSec(startedAt)
+
+                if (statusCode !in 200..299) {
+                    OpenAIModelListFetchResult.failure(
+                        errorType = mapHttpStatusToErrorType(statusCode),
+                        errorMessage = parseErrorMessage(responseText)
+                            ?: "OpenAI 모델 목록 조회에 실패했습니다. HTTP $statusCode",
+                        latencySec = latencySec,
+                        endpoint = endpoint
+                    )
+                } else {
+                    val models = parseModelsResponse(responseText)
+                    if (models.isEmpty()) {
+                        OpenAIModelListFetchResult.failure(
+                            errorType = "PARSE_ERROR",
+                            errorMessage = "OpenAI 응답에서 data[].id를 찾을 수 없습니다.",
+                            latencySec = latencySec,
+                            endpoint = endpoint
+                        )
+                    } else {
+                        OpenAIModelListFetchResult.success(
+                            models = models,
+                            latencySec = latencySec,
+                            endpoint = endpoint
+                        )
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrElse { throwable ->
+            OpenAIModelListFetchResult.failure(
+                errorType = mapThrowableToErrorType(throwable),
+                errorMessage = throwable.message?.take(240) ?: "OpenAI 모델 목록 조회 중 오류가 발생했습니다.",
+                latencySec = elapsedSec(startedAt),
+                endpoint = endpoint
+            )
+        }
     }
 
     private fun buildModelsEndpoint(provider: ProviderProfile): String {
-        provider.modelListEndpoint
+        val rawEndpoint = provider.modelListEndpoint
             ?.trim()
             ?.takeIf { it.isNotBlank() }
-            ?.let { return it }
+            ?: provider.baseUrl.trim().ifBlank { "https://api.openai.com/v1" }
 
-        val baseUrl = provider.baseUrl.trim().trimEnd('/').ifBlank {
-            "https://api.openai.com/v1"
+        val endpoint = rawEndpoint.trimEnd('/')
+        return if (endpoint.endsWith("/models")) endpoint else "$endpoint/models"
+    }
+
+    private fun readResponseText(
+        connection: HttpURLConnection,
+        statusCode: Int
+    ): String {
+        val stream = if (statusCode in 200..299) {
+            connection.inputStream
+        } else {
+            connection.errorStream
+        } ?: return ""
+
+        return stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+    }
+
+    private fun parseModelsResponse(responseText: String): List<OpenAIModelListItem> {
+        val root = JSONObject(responseText)
+        val data = root.optJSONArray("data") ?: throw JSONException("data array missing")
+
+        return buildList {
+            for (index in 0 until data.length()) {
+                val item = data.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim()
+                if (id.isBlank()) continue
+
+                add(
+                    OpenAIModelListItem(
+                        id = id,
+                        displayName = id,
+                        rawModelName = id,
+                        createdAt = item.optLongOrNull("created"),
+                        metadataRawSummary = buildMetadataSummary(item)
+                    )
+                )
+            }
         }
-        return "$baseUrl/models"
+    }
+
+    private fun buildMetadataSummary(item: JSONObject): String {
+        return buildString {
+            append("id=").append(item.optString("id"))
+            item.optString("object").takeIf { it.isNotBlank() }?.let { append("\nobject=").append(it) }
+            item.optLongOrNull("created")?.let { append("\ncreated=").append(it) }
+            item.optString("owned_by").takeIf { it.isNotBlank() }?.let { append("\nowned_by=").append(it) }
+        }
+    }
+
+    private fun parseErrorMessage(responseText: String): String? {
+        if (responseText.isBlank()) return null
+        return runCatching {
+            val root = JSONObject(responseText)
+            val error = root.optJSONObject("error")
+            error?.optString("message")?.takeIf { it.isNotBlank() }?.take(300)
+                ?: root.optString("message").takeIf { it.isNotBlank() }?.take(300)
+        }.getOrNull()
+    }
+
+    private fun mapHttpStatusToErrorType(statusCode: Int): String {
+        return when (statusCode) {
+            401, 403 -> "AUTH_ERROR"
+            408 -> "TIMEOUT"
+            429 -> "RATE_LIMIT"
+            in 500..599 -> "SERVER_ERROR"
+            in 400..499 -> "UNKNOWN_ERROR"
+            else -> "UNKNOWN_ERROR"
+        }
+    }
+
+    private fun mapThrowableToErrorType(throwable: Throwable): String {
+        return when (throwable) {
+            is SocketTimeoutException -> "TIMEOUT"
+            is JSONException -> "PARSE_ERROR"
+            else -> "UNKNOWN_ERROR"
+        }
+    }
+
+    private fun elapsedSec(startedAt: Long): Double {
+        return (System.nanoTime() - startedAt) / 1_000_000_000.0
+    }
+
+    private fun JSONObject.optLongOrNull(name: String): Long? {
+        return if (has(name) && !isNull(name)) optLong(name) else null
     }
 }
