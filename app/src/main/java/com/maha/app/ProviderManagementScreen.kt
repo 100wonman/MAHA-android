@@ -1377,13 +1377,7 @@ private fun googleModelMatchesSearch(
     normalizedSearchQuery: String
 ): Boolean {
     if (normalizedSearchQuery.isBlank()) return true
-    return listOf(
-        item.rawModelName,
-        item.displayName,
-        item.description,
-        item.supportedGenerationMethods.joinToString(),
-        buildGoogleMetadataSummary(item)
-    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+    return buildGoogleModelDialogSearchText(item).lowercase().contains(normalizedSearchQuery)
 }
 
 private fun openAIModelMatchesSearch(
@@ -1391,13 +1385,7 @@ private fun openAIModelMatchesSearch(
     normalizedSearchQuery: String
 ): Boolean {
     if (normalizedSearchQuery.isBlank()) return true
-    return listOfNotNull(
-        item.id,
-        item.rawModelName,
-        item.displayName,
-        item.createdAt?.toString(),
-        item.metadataRawSummary
-    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+    return buildOpenAIModelDialogSearchText(item).lowercase().contains(normalizedSearchQuery)
 }
 
 private fun openAiCompatibleModelMatchesSearch(
@@ -1405,16 +1393,56 @@ private fun openAiCompatibleModelMatchesSearch(
     normalizedSearchQuery: String
 ): Boolean {
     if (normalizedSearchQuery.isBlank()) return true
-    return listOfNotNull(
-        item.rawModelName,
-        item.displayName,
-        item.description,
-        item.contextWindow?.toString(),
-        item.ownedBy,
-        item.inputModalities.joinToString(),
-        item.outputModalities.joinToString(),
-        item.metadataRawSummary
-    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+    return buildOpenAiCompatibleModelDialogSearchText(item).lowercase().contains(normalizedSearchQuery)
+}
+
+private fun buildGoogleModelDialogSearchText(item: GoogleModelListItem): String {
+    return buildString {
+        appendLine(item.rawModelName)
+        appendLine(item.displayName)
+        appendLine(item.description)
+        appendLine("rawModelName: ${item.rawModelName}")
+        appendLine("displayName: ${item.displayName}")
+        appendLine("description: ${item.description}")
+        appendLine("inputTokenLimit: ${item.inputTokenLimit ?: "unknown"}")
+        appendLine("outputTokenLimit: ${item.outputTokenLimit ?: "unknown"}")
+        appendLine("methods: ${item.supportedGenerationMethods.joinToString().ifBlank { "unknown" }}")
+        appendLine("supportedGenerationMethods: ${item.supportedGenerationMethods.joinToString()}")
+        appendLine(buildGoogleMetadataSummary(item))
+    }
+}
+
+private fun buildOpenAIModelDialogSearchText(item: OpenAIModelListItem): String {
+    return buildString {
+        appendLine(item.id)
+        appendLine(item.rawModelName)
+        appendLine(item.displayName)
+        appendLine("id: ${item.id}")
+        appendLine("rawModelName: ${item.rawModelName}")
+        appendLine("displayName: ${item.displayName}")
+        appendLine("createdAt: ${item.createdAt ?: "unknown"}")
+        appendLine("metadataRawSummary: ${item.metadataRawSummary.orEmpty()}")
+        appendLine(item.metadataRawSummary.orEmpty())
+    }
+}
+
+private fun buildOpenAiCompatibleModelDialogSearchText(item: OpenAiModelListCandidate): String {
+    return buildString {
+        appendLine(item.rawModelName)
+        appendLine(item.displayName)
+        appendLine(item.description.orEmpty())
+        appendLine("rawModelName: ${item.rawModelName}")
+        appendLine("displayName: ${item.displayName}")
+        appendLine("description: ${item.description.orEmpty()}")
+        appendLine("contextWindow: ${item.contextWindow ?: "unknown"}")
+        appendLine("ownedBy: ${item.ownedBy ?: "unknown"}")
+        appendLine("input: ${item.inputModalities.joinToString().ifBlank { "text" }}")
+        appendLine("output: ${item.outputModalities.joinToString().ifBlank { "text" }}")
+        appendLine("inputModalities: ${item.inputModalities.joinToString()}")
+        appendLine("outputModalities: ${item.outputModalities.joinToString()}")
+        appendLine("metadataRawSummary: ${item.metadataRawSummary.orEmpty()}")
+        appendLine(item.metadataRawSummary.orEmpty())
+    }
 }
 
 @Composable

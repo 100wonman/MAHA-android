@@ -1,4 +1,355 @@
 ==============================
+[2026-05-04 01:20] OpenAI Responses 성공 응답 실사용 검증 및 파서 보강
+==============================
+
+[작업]
+- OpenAI Responses 성공 응답 output_text 파싱 검증
+- output[].content[].text fallback 파서 보강
+- 복수 content 결합과 빈 text 제외 정책 유지
+- 성공 응답 metadata 요약 보강
+- RATE_LIMIT (HTTP 429) 단일 라벨 표시로 오류 표시 중복 보정
+- 모델 목록 Dialog 요약정보 검색 보정
+- 기존 실행정보 가독성 보정 유지
+- Web Search / streaming / tool execution은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- OpenAI Responses output_text 우선 파싱 유지 및 성공 metadata 요약 보강
+- output[].content[].text / text object / content object fallback 파서 보강
+- RATE_LIMIT (HTTP 429) 단일 라벨 표시 정책 보정
+- ProviderErrorSummary의 fallback 오류 메시지 중복 HTTP 표시 제거
+- 모델 목록 Dialog 검색에 실제 표시 요약 문자열까지 포함
+
+[OpenAI Responses 성공 응답 테스트]
+- 실제 성공 응답: 성공/레이트리미트 (429)
+- output_text 파싱: 유지 확인됨
+- output[].content[].text fallback: 보강
+- 복수 content 결합: 유지
+- 빈 text 제외: 유지
+- 성공 metadata 요약: id/model/status/outputCount/contentTextCount/outputTextParsed/outputContentParsed 표시
+
+[실패 응답 표시 테스트]
+- RATE_LIMIT (HTTP 429) 단일 라벨: 보정
+- AUTH_ERROR (HTTP 401) 단일 라벨: 보정
+- SERVER_ERROR (HTTP 5xx) 단일 라벨: 보정
+- Provider raw message 줄바꿈: 기존 실행정보 보정 유지
+- errorType/httpStatus 중복 표시 없음: 보정
+
+[모델 목록 Dialog 검색 테스트]
+- Google 요약정보 검색: 보정
+- OpenAI-compatible 요약정보 검색: 보정
+- OpenAI 공식 요약정보 검색: 보정
+- 모델명 검색: 유지
+- 빈 검색어 전체 표시: 유지
+- 이미 추가된 모델 버튼 비활성화: 유지
+- 모델 선택 추가: 유지
+
+[실행정보 가독성 유지 테스트]
+- 성공 실행정보: 유지
+- 실패 실행정보: 유지
+- Worker별 상세 접힘: 유지
+- 복사 기능: 유지
+- 코드/JSON 렌더링 영향 없음: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 파서/오류 요약만 보강
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 모델 목록 Dialog 검색만 보정
+- Model 관리: 변경 없음
+- 모델 목록 조회 3종: 유지
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 직전 누적 문제였던 ConversationRoomScreen.kt 실행정보 가독성/정보 밀도 보정은 빌드 성공 및 상당 부분 확보 확인됨
+- 직전 누적 문제였던 OpenAIResponsesProviderAdapter.kt 문자열 syntax error 보정 상태 유지
+- 이번 작업에서 신규 확인된 문제 없음
+
+[변경 파일]
+- ProviderManagementScreen.kt
+- OpenAIResponsesProviderAdapter.kt
+- ProviderErrorSummary.kt
+- OpenAIModelListFetcher.kt
+- OpenAiCompatibleModelListFetcher.kt
+- OpenAIResponsesModels.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+OpenAI Responses 성공 응답 실사용 검증 및 파서 보강
+
+목표:
+- OpenAI Responses API의 성공 응답을 실제 사용 기준으로 검증한다.
+- output_text 및 output[].content[].text 파서를 성공 응답 기준으로 보강한다.
+- 성공/실패 실행정보 표시가 모두 읽기 쉽게 유지되는지 확인한다.
+- 직전 작업의 모델 목록 Dialog 요약정보 검색 문제와 RATE_LIMIT 표시 중복 문제를 함께 보정한다.
+- Web Search, streaming, tool/function execution은 계속 제외한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ OpenAI Responses 성공 응답 output_text 파싱 검증
+✔ output[].content[].text fallback 파싱 검증
+✔ output content 배열 복수 text 결합 유지
+✔ 빈 text 제외 유지
+✔ 성공 응답 rawMetadataSummary 최소 요약 보강
+✔ 성공/실패 실행정보 표시 비교 확인
+✔ 실패 표시에서 RATE_LIMIT (HTTP 429) 단일 라벨 표시로 보정
+✔ RATE_LIMIT와 (HTTP 429)가 따로 분리 표시되는 문제 보정
+✔ 모델 목록 Dialog 요약정보 검색 보정
+✔ Google / OpenAI-compatible / OpenAI 공식 모델 목록 Dialog 검색 동작 유지
+✔ 기존 실행정보 가독성 보정 유지
+
+이번 단계에서 금지:
+
+❌ OpenAI Web Search 구현
+❌ Streaming 구현
+❌ Tool/function execution 구현
+❌ citation/annotation parser 구현
+❌ OpenAI Responses API 고급 옵션 추가
+❌ Provider 모델 자동 대량 추가
+❌ 이미 추가된 모델 재추가 허용
+❌ OpenAI-compatible / OPENAI adapter 통합
+❌ Gemini Web Search 변경
+❌ RAG 구조 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. OpenAI Responses 성공 응답 파서 보강
+--------------------------------------------------
+
+대상 파일:
+
+- OpenAIResponsesProviderAdapter.kt
+- OpenAIResponsesModels.kt
+- ProviderErrorSummary.kt 필요 시
+- ProviderErrorFormatter.kt 필요 시
+- ConversationRoomScreen.kt 필요 시
+
+파싱 우선순위:
+1. output_text
+2. output[].content[].text
+3. output[].content[] 내부 type/text 구조
+4. 실패 시 PARSE_ERROR
+
+보강 기준:
+- output_text가 있으면 최우선 사용
+- output 배열 fallback은 content 배열 전체를 순회
+- type이 output_text 또는 text인 content를 우선 추출
+- text 필드가 문자열이면 사용
+- text가 object인 경우 value/text 필드가 있으면 추출 가능
+- 여러 text는 "\n\n"으로 결합
+- 빈 문자열은 제외
+- 결과 text가 비어 있으면 PARSE_ERROR
+
+성공 metadata 요약:
+- response id
+- model
+- status
+- output item count
+- content text count
+- outputTextParsed=true/false
+- outputContentParsed=true/false
+
+주의:
+- raw response 전체를 UI에 노출하지 않는다.
+- API Key 원문 출력 금지.
+- Web Search citation/annotation parser는 구현하지 않는다.
+
+--------------------------------------------------
+3. RATE_LIMIT 표시 중복 보정
+--------------------------------------------------
+
+현재 문제:
+- HTTP 429 표시가 RATE_LIMIT, (HTTP 429)로 따로 표시됨
+
+목표:
+- 화면 표시에서는 하나의 오류 라벨로 통합한다.
+- 예:
+  - RATE_LIMIT (HTTP 429)
+  - AUTH_ERROR (HTTP 401)
+  - SERVER_ERROR (HTTP 500)
+
+정책:
+- 내부 errorType은 RATE_LIMIT 유지
+- httpStatusCode는 별도 값으로 유지 가능
+- UI 표시용 label은 ProviderErrorFormatter에서 조립
+- ConversationRoomScreen에서 errorType과 httpStatus를 따로 중복 출력하지 않도록 보정
+
+주의:
+- 복사용 raw trace에는 httpStatus가 남아도 된다.
+- 화면 기본 표시에서만 중복을 줄인다.
+
+--------------------------------------------------
+4. 모델 목록 Dialog 요약정보 검색 보정
+--------------------------------------------------
+
+현재 문제:
+- 모델명 검색은 정상
+- 요약정보 검색은 안 됨
+
+대상:
+- Google 모델 목록 Dialog
+- OpenAI-compatible 모델 목록 Dialog
+- OpenAI 공식 모델 목록 Dialog
+- 이후 추가될 Provider 모델 목록 Dialog 패턴
+
+검색 대상에 반드시 포함:
+- rawModelName 또는 id
+- displayName
+- description
+- supportedGenerationMethods
+- metadataRawSummary
+- provider metadata 요약
+- Dialog에 실제 표시되는 요약 문자열
+
+주의:
+- 검색 입력창은 유지
+- 빈 검색어 전체 표시 유지
+- 이미 추가된 모델 버튼 비활성화 유지
+- 모델 자동 대량 추가 금지
+- 사용자가 선택한 모델만 추가
+
+--------------------------------------------------
+5. 실행정보 표시 검증
+--------------------------------------------------
+
+성공 응답일 때:
+- 상태: 성공
+- Provider: OPENAI
+- Model: 사용 모델
+- 응답 길이 또는 latency 표시
+- 불필요한 error block 없음
+
+실패 응답일 때:
+- 상태: 실패
+- 오류: RATE_LIMIT (HTTP 429) 등 단일 라벨
+- Provider raw message는 줄바꿈 유지
+- Provider 상세는 Worker 하위 접힘 또는 상세 로그에 유지
+
+주의:
+- 직전 실행정보 가독성 보정 결과를 되돌리지 않는다.
+- Provider 오류 요약 공통 블록을 다시 만들지 않는다.
+- 상세 정보는 접힘/복사로 접근 가능하게 유지한다.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google 모델 목록 조회/검색
+- OpenAI-compatible 모델 목록 조회/검색
+- OpenAI 공식 모델 목록 조회/검색
+- 모델 선택 후 ModelProfile 추가
+- 이미 추가한 모델의 추가 버튼 비활성화
+- Provider 검색 보정
+- Provider CRUD/API Key
+- Model 관리
+- Google/Gemini 일반 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 기본 대화
+- 실행정보 가독성 보정
+- 에러블록 자동 줄바꿈
+- Gemini native Web Search
+- RAG
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. OpenAI Responses 성공 응답
+- 실제 성공 응답:
+- output_text 파싱:
+- output[].content[].text fallback:
+- 복수 content 결합:
+- 빈 text 제외:
+- 성공 metadata 요약:
+
+B. 실패 응답 표시
+- RATE_LIMIT (HTTP 429) 단일 라벨:
+- AUTH_ERROR (HTTP 401) 단일 라벨:
+- SERVER_ERROR (HTTP 5xx) 단일 라벨:
+- Provider raw message 줄바꿈:
+- errorType/httpStatus 중복 표시 없음:
+
+C. 모델 목록 Dialog 검색
+- Google 요약정보 검색:
+- OpenAI-compatible 요약정보 검색:
+- OpenAI 공식 요약정보 검색:
+- 모델명 검색:
+- 빈 검색어 전체 표시:
+- 이미 추가된 모델 버튼 비활성화:
+- 모델 선택 추가:
+
+D. 실행정보 가독성 유지
+- 성공 실행정보:
+- 실패 실행정보:
+- Worker별 상세 접힘:
+- 복사 기능:
+- 코드/JSON 렌더링 영향 없음:
+
+E. 기존 기능 영향
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- 모델 목록 조회 3종:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ OpenAI Web Search 구현 금지
+❌ Streaming 구현 금지
+❌ Tool/function execution 구현 금지
+❌ citation/annotation parser 구현 금지
+❌ Responses API 고급 옵션 대량 추가 금지
+❌ 모델 자동 대량 추가 금지
+❌ 중복 모델 재추가 허용 금지
+❌ OpenAI-compatible / OPENAI adapter 통합 금지
+❌ Gemini Web Search 변경 금지
+❌ RAG schema 변경 금지
+❌ 저장 schema 대규모 변경 금지
+❌ 작업모드 수정 금지
+❌ 실행정보 가독성 보정 결과 되돌리기 금지
+
+--------------------------------------------------
+완료 기준:
+- OpenAI Responses 성공 응답 파싱이 실제 성공 응답 기준으로 확인됨
+- 실패 오류가 RATE_LIMIT (HTTP 429)처럼 단일 라벨로 표시됨
+- 모델 목록 Dialog 요약정보 검색이 정상 작동함
+- 기존 실행정보 가독성 보정 유지
+- 기존 Provider/RAG/Web Search/작업모드 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI Responses 성공 응답 실사용 검증 완료 후 OpenAI Web Search 설계 또는 Provider 실행정보 UX 잔여 정리
+
+==============================
 [2026-05-03 01:10] 실행정보 / 에러블록 가독성 및 정보 밀도 보정
 ==============================
 

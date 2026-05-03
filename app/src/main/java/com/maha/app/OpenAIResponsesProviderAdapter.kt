@@ -218,23 +218,36 @@ class OpenAIResponsesProviderAdapter(
                 responseStatus = responseStatus,
                 outputTextParsed = true,
                 outputContentParsed = false,
-                rawMetadataSummary = buildMetadataSummary(root, answerSource = "output_text")
+                rawMetadataSummary = buildMetadataSummary(
+                    root = root,
+                    answerSource = "output_text",
+                    outputTextParsed = true,
+                    outputContentParsed = false,
+                    contentTextCount = countOutputContentText(root.optJSONArray("output"))
+                )
             )
         }
 
-        val collected = collectOutputContentText(root.optJSONArray("output"))
+        val collectedParts = collectOutputContentTextParts(root.optJSONArray("output"))
+        val collected = collectedParts.joinToString("\n\n")
         return ParsedOpenAIResponse(
             rawText = collected.trim(),
             responseId = responseId,
             responseStatus = responseStatus,
             outputTextParsed = false,
             outputContentParsed = collected.isNotBlank(),
-            rawMetadataSummary = buildMetadataSummary(root, answerSource = "output.content")
+            rawMetadataSummary = buildMetadataSummary(
+                root = root,
+                answerSource = "output.content",
+                outputTextParsed = false,
+                outputContentParsed = collected.isNotBlank(),
+                contentTextCount = collectedParts.size
+            )
         )
     }
 
-    private fun collectOutputContentText(output: JSONArray?): String {
-        if (output == null) return ""
+    private fun collectOutputContentTextParts(output: JSONArray?): List<String> {
+        if (output == null) return emptyList()
         val parts = mutableListOf<String>()
 
         for (outputIndex in 0 until output.length()) {
@@ -243,34 +256,54 @@ class OpenAIResponsesProviderAdapter(
             for (contentIndex in 0 until content.length()) {
                 val contentItem = content.optJSONObject(contentIndex) ?: continue
                 val type = contentItem.optString("type")
-                val textCandidates = listOfNotNull(
-                    contentItem.optNullableString("text"),
-                    contentItem.optJSONObject("text")?.optNullableString("value"),
-                    contentItem.optJSONObject("text")?.optNullableString("text"),
-                    contentItem.optNullableString("content")
-                )
-                if (isAssistantTextContent(type)) {
-                    textCandidates
-                        .map { it.trim() }
-                        .filter { it.isNotBlank() }
-                        .forEach { parts.add(it) }
-                }
+                if (!isAssistantTextContent(type)) continue
+
+                extractTextCandidates(contentItem)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .forEach { parts.add(it) }
             }
         }
 
-        return parts.distinct().joinToString("\n\n")
+        return parts.distinct()
+    }
+
+    private fun countOutputContentText(output: JSONArray?): Int {
+        return collectOutputContentTextParts(output).size
+    }
+
+    private fun extractTextCandidates(contentItem: JSONObject): List<String> {
+        val candidates = mutableListOf<String>()
+
+        contentItem.optNullableStringStrict("text")?.let { candidates.add(it) }
+        contentItem.optJSONObject("text")?.let { textObject ->
+            textObject.optNullableStringStrict("value")?.let { candidates.add(it) }
+            textObject.optNullableStringStrict("text")?.let { candidates.add(it) }
+            textObject.optNullableStringStrict("content")?.let { candidates.add(it) }
+        }
+        contentItem.optNullableStringStrict("content")?.let { candidates.add(it) }
+        contentItem.optJSONObject("content")?.let { contentObject ->
+            contentObject.optNullableStringStrict("value")?.let { candidates.add(it) }
+            contentObject.optNullableStringStrict("text")?.let { candidates.add(it) }
+        }
+
+        return candidates
     }
 
     private fun isAssistantTextContent(type: String): Boolean {
-        return type.isBlank() ||
-                type == "output_text" ||
-                type == "text" ||
-                type == "message"
+        val normalized = type.trim().lowercase()
+        return normalized.isBlank() ||
+                normalized == "output_text" ||
+                normalized == "text" ||
+                normalized == "message"
     }
 
     private fun buildMetadataSummary(
         root: JSONObject,
-        answerSource: String
+        answerSource: String,
+        outputTextParsed: Boolean,
+        outputContentParsed: Boolean,
+        contentTextCount: Int
     ): String {
         val output = root.optJSONArray("output")
         return buildString {
@@ -279,6 +312,9 @@ class OpenAIResponsesProviderAdapter(
             root.optNullableString("status")?.let { appendLine("status=$it") }
             appendLine("answerSource=$answerSource")
             appendLine("outputCount=${output?.length() ?: 0}")
+            appendLine("contentTextCount=$contentTextCount")
+            appendLine("outputTextParsed=$outputTextParsed")
+            appendLine("outputContentParsed=$outputContentParsed")
         }.trim()
     }
 
@@ -302,6 +338,12 @@ class OpenAIResponsesProviderAdapter(
 
     private fun JSONObject.optNullableString(name: String): String? {
         return if (has(name) && !isNull(name)) optString(name).takeIf { it.isNotBlank() } else null
+    }
+
+    private fun JSONObject.optNullableStringStrict(name: String): String? {
+        if (!has(name) || isNull(name)) return null
+        val value = opt(name)
+        return if (value is String && value.isNotBlank()) value else null
     }
 }
 

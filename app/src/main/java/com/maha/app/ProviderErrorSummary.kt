@@ -50,6 +50,7 @@ data class ProviderErrorSummary(
             providerErrorType?.takeIf { it.isNotBlank() }?.let { appendLine("providerErrorType=$it") }
             providerErrorCode?.takeIf { it.isNotBlank() }?.let { appendLine("providerErrorCode=$it") }
             providerRawMessage?.takeIf { it.isNotBlank() }?.let { appendLine("providerRawMessage=${it.take(300)}") }
+            appendLine("displayErrorLabel=${displayErrorType()}")
         }.trim()
     }
 }
@@ -72,7 +73,7 @@ object ProviderErrorFormatter {
         val message = parsed.message
             ?.takeIf { it.isNotBlank() }
             ?.take(300)
-            ?: "$fallbackMessage HTTP $httpStatusCode"
+            ?: fallbackMessage
 
         return ProviderErrorSummary(
             httpStatusCode = httpStatusCode,
