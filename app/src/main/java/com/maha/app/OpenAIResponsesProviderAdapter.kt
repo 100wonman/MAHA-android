@@ -1,33 +1,311 @@
 package com.maha.app
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.URL
+
 /**
  * OpenAIResponsesProviderAdapter
  *
  * 쉬운 설명:
- * OpenAI 공식 Responses API(/v1/responses)와 web_search built-in tool을
- * 후속 단계에서 연결하기 위한 skeleton Adapter다.
- *
- * 이번 단계 정책:
- * - 실제 HTTP 호출 금지
- * - OpenAI Web Search 실제 호출 금지
- * - ConversationEngine 연결 금지
- * - API Key 원문 출력 금지
+ * OpenAI 공식 Responses API(/v1/responses)를 호출하는 Adapter다.
+ * 이번 단계에서는 일반 텍스트 대화만 지원한다.
+ * Web Search, streaming, tool/function execution은 구현하지 않는다.
  */
-class OpenAIResponsesProviderAdapter {
+class OpenAIResponsesProviderAdapter(
+    private val defaultBaseUrl: String = "https://api.openai.com/v1",
+    private val connectTimeoutMillis: Int = 30_000,
+    private val readTimeoutMillis: Int = 60_000
+) {
 
-    fun execute(
+    suspend fun execute(
         request: OpenAIResponsesRequest,
         apiKey: String
-    ): OpenAIResponsesResult {
-        if (apiKey.isBlank()) {
-            return OpenAIResponsesResult.apiKeyMissing()
+    ): OpenAIResponsesResult = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
+        val endpoint = buildResponsesEndpoint(request.baseUrl)
+
+        try {
+            if (apiKey.isBlank()) {
+                return@withContext OpenAIResponsesResult.apiKeyMissing().copy(
+                    latencySec = elapsedSec(startedAt),
+                    endpoint = endpoint
+                )
+            }
+
+            if (request.modelName.isBlank()) {
+                return@withContext OpenAIResponsesResult.failure(
+                    errorType = "MODEL_MISSING",
+                    errorMessage = "OpenAI Responses API 호출을 위한 모델명이 비어 있습니다.",
+                    latencySec = elapsedSec(startedAt),
+                    endpoint = endpoint,
+                    rawMetadataSummary = "modelName=blank"
+                )
+            }
+
+            if (request.prompt.isBlank()) {
+                return@withContext OpenAIResponsesResult.failure(
+                    errorType = "INVALID_REQUEST",
+                    errorMessage = "OpenAI Responses API 호출을 위한 프롬프트가 비어 있습니다.",
+                    latencySec = elapsedSec(startedAt),
+                    endpoint = endpoint,
+                    rawMetadataSummary = "prompt=blank"
+                )
+            }
+
+            if (request.enableWebSearch) {
+                return@withContext OpenAIResponsesResult.failure(
+                    errorType = "OPENAI_WEB_SEARCH_NOT_IMPLEMENTED",
+                    errorMessage = "OpenAI Web Search 호출은 아직 구현되지 않았습니다. Web Search를 끄고 다시 시도하세요.",
+                    latencySec = elapsedSec(startedAt),
+                    endpoint = endpoint,
+                    rawMetadataSummary = "webSearchRequested=true, webSearchImplemented=false",
+                    actualApiCall = false
+                )
+            }
+
+            val requestBody = buildRequestBody(request).toString()
+            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = connectTimeoutMillis
+                readTimeout = readTimeoutMillis
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Authorization", "Bearer $apiKey")
+            }
+
+            try {
+                OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                    writer.write(requestBody)
+                    writer.flush()
+                }
+
+                val statusCode = connection.responseCode
+                val responseText = readConnectionBody(connection, statusCode)
+                val latencySec = elapsedSec(startedAt)
+
+                if (statusCode !in 200..299) {
+                    return@withContext OpenAIResponsesResult.failure(
+                        errorType = mapHttpStatusToErrorType(statusCode),
+                        errorMessage = parseErrorMessage(responseText)
+                            ?: "OpenAI Responses API 호출에 실패했습니다. HTTP $statusCode",
+                        latencySec = latencySec,
+                        endpoint = endpoint,
+                        rawMetadataSummary = "httpStatus=$statusCode",
+                        actualApiCall = true
+                    )
+                }
+
+                val parsed = parseResponsesBody(responseText)
+                if (parsed.rawText.isBlank()) {
+                    return@withContext OpenAIResponsesResult.failure(
+                        errorType = "PARSE_ERROR",
+                        errorMessage = "OpenAI Responses API 응답에서 표시 가능한 output text를 찾지 못했습니다.",
+                        latencySec = latencySec,
+                        endpoint = endpoint,
+                        rawMetadataSummary = parsed.rawMetadataSummary,
+                        actualApiCall = true
+                    )
+                }
+
+                return@withContext OpenAIResponsesResult.success(
+                    rawText = parsed.rawText,
+                    latencySec = latencySec,
+                    endpoint = endpoint,
+                    responseId = parsed.responseId,
+                    responseStatus = parsed.responseStatus,
+                    rawMetadataSummary = parsed.rawMetadataSummary,
+                    outputTextParsed = parsed.outputTextParsed,
+                    outputContentParsed = parsed.outputContentParsed
+                )
+            } finally {
+                connection.disconnect()
+            }
+        } catch (timeout: SocketTimeoutException) {
+            OpenAIResponsesResult.failure(
+                errorType = "TIMEOUT",
+                errorMessage = timeout.message ?: "OpenAI Responses API 요청 시간이 초과되었습니다.",
+                latencySec = elapsedSec(startedAt),
+                endpoint = endpoint,
+                rawMetadataSummary = "SocketTimeoutException",
+                actualApiCall = true
+            )
+        } catch (json: JSONException) {
+            OpenAIResponsesResult.failure(
+                errorType = "PARSE_ERROR",
+                errorMessage = json.message?.take(240) ?: "OpenAI Responses API 응답 파싱에 실패했습니다.",
+                latencySec = elapsedSec(startedAt),
+                endpoint = endpoint,
+                rawMetadataSummary = "JSONException",
+                actualApiCall = true
+            )
+        } catch (throwable: Throwable) {
+            OpenAIResponsesResult.failure(
+                errorType = "UNKNOWN_ERROR",
+                errorMessage = throwable.message?.take(240) ?: "OpenAI Responses API 호출 중 알 수 없는 오류가 발생했습니다.",
+                latencySec = elapsedSec(startedAt),
+                endpoint = endpoint,
+                rawMetadataSummary = throwable::class.java.simpleName,
+                actualApiCall = true
+            )
+        }
+    }
+
+    private fun buildResponsesEndpoint(baseUrl: String?): String {
+        val rawBase = baseUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultBaseUrl
+
+        val normalized = rawBase.trimEnd('/')
+        return if (normalized.endsWith("/responses")) {
+            normalized
+        } else {
+            "$normalized/responses"
+        }
+    }
+
+    private fun buildRequestBody(request: OpenAIResponsesRequest): JSONObject {
+        val root = JSONObject()
+            .put("model", request.modelName)
+            .put("input", request.prompt)
+
+        request.temperature?.let { root.put("temperature", it) }
+
+        return root
+    }
+
+    private fun readConnectionBody(
+        connection: HttpURLConnection,
+        statusCode: Int
+    ): String {
+        val stream = runCatching {
+            if (statusCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: connection.inputStream
+            }
+        }.getOrNull() ?: return ""
+
+        return BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
+            reader.readText()
+        }
+    }
+
+    private fun parseResponsesBody(responseText: String): ParsedOpenAIResponse {
+        val root = JSONObject(responseText)
+        val responseId = root.optNullableString("id")
+        val responseStatus = root.optNullableString("status")
+
+        val outputText = root.optNullableString("output_text")
+        if (!outputText.isNullOrBlank()) {
+            return ParsedOpenAIResponse(
+                rawText = outputText.trim(),
+                responseId = responseId,
+                responseStatus = responseStatus,
+                outputTextParsed = true,
+                outputContentParsed = false,
+                rawMetadataSummary = buildMetadataSummary(root, answerSource = "output_text")
+            )
         }
 
-        // request 파라미터는 후속 실제 구현을 위한 자리만 확보한다.
-        // 현재 단계에서는 네트워크 호출을 하지 않고 NOT_IMPLEMENTED를 반환한다.
-        @Suppress("UNUSED_VARIABLE")
-        val reservedRequest = request
+        val collected = collectOutputContentText(root.optJSONArray("output"))
+        return ParsedOpenAIResponse(
+            rawText = collected.trim(),
+            responseId = responseId,
+            responseStatus = responseStatus,
+            outputTextParsed = false,
+            outputContentParsed = collected.isNotBlank(),
+            rawMetadataSummary = buildMetadataSummary(root, answerSource = "output.content")
+        )
+    }
 
-        return OpenAIResponsesResult.notImplemented()
+    private fun collectOutputContentText(output: JSONArray?): String {
+        if (output == null) return ""
+        val parts = mutableListOf<String>()
+
+        for (outputIndex in 0 until output.length()) {
+            val item = output.optJSONObject(outputIndex) ?: continue
+            val content = item.optJSONArray("content") ?: continue
+            for (contentIndex in 0 until content.length()) {
+                val contentItem = content.optJSONObject(contentIndex) ?: continue
+                val type = contentItem.optString("type")
+                val text = contentItem.optNullableString("text")
+                    ?: contentItem.optJSONObject("text")?.optNullableString("value")
+                if (!text.isNullOrBlank() && isAssistantTextContent(type)) {
+                    parts.add(text.trim())
+                }
+            }
+        }
+
+        return parts.joinToString("\n\n")
+    }
+
+    private fun isAssistantTextContent(type: String): Boolean {
+        return type.isBlank() ||
+                type == "output_text" ||
+                type == "text" ||
+                type == "message"
+    }
+
+    private fun buildMetadataSummary(
+        root: JSONObject,
+        answerSource: String
+    ): String {
+        val output = root.optJSONArray("output")
+        return buildString {
+            root.optNullableString("id")?.let { appendLine("id=$it") }
+            root.optNullableString("model")?.let { appendLine("model=$it") }
+            root.optNullableString("status")?.let { appendLine("status=$it") }
+            appendLine("answerSource=$answerSource")
+            appendLine("outputCount=${output?.length() ?: 0}")
+        }.trim()
+    }
+
+    private fun parseErrorMessage(responseText: String): String? {
+        if (responseText.isBlank()) return null
+        return runCatching {
+            val root = JSONObject(responseText)
+            val error = root.optJSONObject("error")
+            error?.optString("message")?.takeIf { it.isNotBlank() }?.take(300)
+                ?: root.optString("message").takeIf { it.isNotBlank() }?.take(300)
+        }.getOrNull()
+    }
+
+    private fun mapHttpStatusToErrorType(statusCode: Int): String {
+        return when (statusCode) {
+            400 -> "INVALID_REQUEST"
+            401, 403 -> "AUTH_ERROR"
+            408 -> "TIMEOUT"
+            429 -> "RATE_LIMIT"
+            in 500..599 -> "SERVER_ERROR"
+            else -> "UNKNOWN_ERROR"
+        }
+    }
+
+    private fun elapsedSec(startedAt: Long): Double {
+        return (System.currentTimeMillis() - startedAt).coerceAtLeast(1) / 1000.0
+    }
+
+    private fun JSONObject.optNullableString(name: String): String? {
+        return if (has(name) && !isNull(name)) optString(name).takeIf { it.isNotBlank() } else null
     }
 }
+
+private data class ParsedOpenAIResponse(
+    val rawText: String,
+    val responseId: String?,
+    val responseStatus: String?,
+    val outputTextParsed: Boolean,
+    val outputContentParsed: Boolean,
+    val rawMetadataSummary: String?
+)

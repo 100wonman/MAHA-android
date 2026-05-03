@@ -1,4 +1,329 @@
 ==============================
+[2026-05-03 23:10] OpenAI Responses API 실제 기본 대화 호출 구현
+==============================
+
+[작업]
+- OpenAIResponsesProviderAdapter에 공식 OpenAI /v1/responses 실제 호출 구현
+- ProviderType.OPENAI 대화 전송을 Responses API 기본 텍스트 호출로 연결
+- output_text 또는 output content 기반 최소 응답 파싱 구현
+- API Key 누락, 인증 오류, rate limit, server error, timeout, parse error 분류
+- ConversationEngine OPENAI 분기에서 실제 adapter 결과 반영
+- OPENAI와 OPENAI_COMPATIBLE 실행 경로 분리 유지
+- OpenAI Web Search / streaming / tool execution은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- OpenAIResponsesProviderAdapter의 문자열 문법 오류 보정
+- output content text 결합 구분자를 "\n\n"으로 정상화
+- OpenAI Responses 기본 대화 호출 구현 내용 유지
+- ConversationEngine OPENAI 분기 유지
+- Web Search/streaming/tool execution 미구현 정책 유지
+
+[OpenAI Responses 기본 대화 테스트]
+- OPENAI Provider 대화 전송: 전송됨
+- 실제 /v1/responses 호출: 엔드포인트 확인
+- Assistant 응답 표시: 크레딧0, 레이트리미트 오류 블록 출력
+- 앱 crash 없음: 없음
+- errorType: 429
+- runInfo/trace: 확인됨
+
+[OpenAIResponsesProviderAdapter 테스트]
+- endpoint 보정: 유지
+- request body: 유지
+- output_text 파싱: 유지
+- output content 파싱: 문자열 문법 오류 보정
+- API Key 없음: 유지
+- 인증 실패: 유지
+- rate limit/server/timeout: 유지
+
+[분리 유지 테스트]
+- OPENAI Provider: Responses API 경로 유지
+- OPENAI_COMPATIBLE Provider: 기존 Adapter 경로 유지
+- OpenAiCompatibleProviderAdapter 미사용: OPENAI 분기에서 미사용 유지
+- Gemini adapter 영향 없음: 유지
+
+[직전 보정 테스트]
+- OpenAI 모델 목록 버튼: 유지
+- 모델 목록 Dialog: 유지
+- 성공 안내: 목록 Dialog 표시 흐름 유지
+- errorType 분류: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 유지
+- OpenAI-compatible 대화: 유지
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 유지
+- Model 관리: 변경 없음
+- 모델 목록 조회 3종: 유지
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 빌드 에러 발생: OpenAIResponsesProviderAdapter.kt:250:36 Syntax error: Expecting '"'
+- 원인: parts.joinToString 구분자 문자열이 실제 줄바꿈으로 깨져 Kotlin 문자열 리터럴이 닫히지 않음
+- 조치: return parts.joinToString("\n\n") 형태로 보정 완료
+
+[변경 파일]
+- OpenAIResponsesProviderAdapter.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+OpenAI Responses API 실제 기본 대화 호출 구현
+
+목표:
+- OpenAIResponsesProviderAdapter에 공식 OpenAI /v1/responses 실제 기본 대화 호출을 구현한다.
+- ProviderType.OPENAI Provider 선택 시 실제 OpenAI Responses API로 일반 텍스트 대화를 호출한다.
+- OPENAI와 OPENAI_COMPATIBLE 실행 경로를 계속 분리한다.
+- Web Search, streaming, tool/function execution은 아직 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ OpenAIResponsesProviderAdapter.kt 실제 HTTP 호출 구현
+✔ OpenAI /v1/responses endpoint 연결
+✔ ProviderType.OPENAI 대화 전송 시 실제 Responses API 호출
+✔ input text 기반 최소 요청 body 생성
+✔ output_text 또는 output content 기반 최소 응답 파싱
+✔ 성공 시 Assistant 본문에 모델 응답 표시
+✔ latencySec / errorType / errorMessage / rawMetadataSummary 반환
+✔ ConversationEngine의 OPENAI 분기에서 실제 adapter 결과 반영
+✔ 기존 NOT_IMPLEMENTED 응답은 실제 호출 실패가 아닌 미구현 상황에서만 사용하거나 제거
+✔ 직전 OpenAI 모델 목록 버튼 튕김 재확인
+✔ OpenAI 모델 목록 성공 메시지 없음 문제는 가능하면 보정
+
+이번 단계에서 금지:
+
+❌ OpenAI Web Search 구현
+❌ OpenAI citation/annotation parser 구현
+❌ OpenAI streaming 구현
+❌ OpenAI tool/function execution 구현
+❌ OpenAI Responses API 고급 옵션 대량 추가
+❌ OpenAI-compatible adapter를 OPENAI용으로 재사용
+❌ Gemini native Web Search 변경
+❌ RAG 구조 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. OpenAIResponsesProviderAdapter 구현 정책
+--------------------------------------------------
+
+대상 파일:
+
+- OpenAIResponsesProviderAdapter.kt
+- OpenAIResponsesModels.kt
+
+호출 방식:
+- POST {baseUrl}/responses
+- 기본 baseUrl:
+  - https://api.openai.com/v1
+- Authorization:
+  - Bearer {apiKey}
+- Content-Type:
+  - application/json
+
+endpoint 보정:
+- baseUrl이 비어 있으면 https://api.openai.com/v1 사용
+- baseUrl 끝의 / 제거
+- 이미 /responses로 끝나면 그대로 사용
+- 아니면 /responses 추가
+
+최소 request body:
+- model = request.modelName
+- input = request.prompt
+
+선택 가능:
+- temperature가 기존 모델에 있으면 반영 가능
+- max_output_tokens는 이번 단계에서 생략 가능
+
+주의:
+- API Key 원문 로그 출력 금지
+- request/response raw 전체를 UI에 과도하게 노출하지 말 것
+- Web Search tool은 request body에 넣지 말 것
+
+--------------------------------------------------
+3. 응답 파싱 정책
+--------------------------------------------------
+
+우선순위:
+1. output_text 필드가 있으면 사용
+2. output 배열 내부 content text를 추출
+3. 파싱 실패 시 PARSE_ERROR 반환
+
+성공 result:
+- success = true
+- rawText = 추출한 assistant text
+- errorType = null 또는 빈 값
+- errorMessage = null 또는 빈 값
+- webSearchUsed = false
+- rawMetadataSummary에는 response id/model/status 정도만 요약 가능
+
+실패 처리:
+- API Key 없음:
+  - errorType = "API_KEY_MISSING"
+- HTTP 401/403:
+  - errorType = "AUTH_ERROR"
+- HTTP 429:
+  - errorType = "RATE_LIMIT"
+- HTTP 5xx:
+  - errorType = "SERVER_ERROR"
+- timeout:
+  - errorType = "TIMEOUT"
+- parse 실패:
+  - errorType = "PARSE_ERROR"
+- safety/refusal 성격이 명확하면:
+  - errorType = "SAFETY_BLOCKED" 또는 기존 정책에 맞춤
+- 기타:
+  - errorType = "UNKNOWN_ERROR"
+
+--------------------------------------------------
+4. ConversationEngine 연결 정책
+--------------------------------------------------
+
+대상 파일:
+
+- ConversationEngine.kt
+
+정책:
+- ProviderType.OPENAI 분기에서 OpenAIResponsesProviderAdapter 실제 execute 호출
+- 성공 시 기존 provider success response 계열과 유사하게 Assistant message 생성
+- 실패 시 기존 provider failure response 계열과 유사하게 오류 block 생성
+- runInfo/trace에는 다음 정보 포함:
+  - providerType=OPENAI
+  - actualApiCall=true
+  - endpointType=responses
+  - webSearchUsed=false
+  - streaming=false
+  - toolCallsExecuted=false
+
+주의:
+- OPENAI_COMPATIBLE 분기와 합치지 말 것
+- OpenAiCompatibleProviderAdapter 호출 금지
+- Web Search toggle이 켜져 있어도 OPENAI Web Search는 이번 단계에서 미지원으로 처리
+- RAG context는 기존 prompt builder 흐름을 그대로 사용할 수 있다
+
+--------------------------------------------------
+5. 직전 보정 항목 포함
+--------------------------------------------------
+
+A. OpenAI 모델 목록 버튼 튕김 재확인
+- OPENAI Provider 모델 목록 버튼 클릭 시 앱 crash 없는지 확인한다.
+- 기존 실제 조회 흐름 유지.
+
+B. OpenAI 모델 목록 성공 메시지
+- 성공 Dialog 또는 목록 Dialog가 정상 표시되면 별도 성공 toast/dialog는 필수 아님.
+- 단, 사용자가 성공 여부를 알 수 없으면 최소 안내 문구를 보정한다.
+
+C. errorType 분류
+- OpenAIModelListFetcher와 OpenAIResponsesProviderAdapter의 errorType 분류가 충돌하지 않게 유지한다.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google/Gemini 일반 대화
+- Gemini native Web Search
+- Web Search fallback
+- OpenAI-compatible 대화 호출
+- LOCAL/CUSTOM 대화 호출
+- NVIDIA 대화 호출 기존 흐름
+- Google 모델 목록 조회
+- OpenAI-compatible 모델 목록 조회
+- OpenAI 공식 모델 목록 조회
+- Provider 검색 보정
+- Provider CRUD/API Key
+- Model 관리
+- RAG
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. OpenAI Responses 기본 대화
+- OPENAI Provider 대화 전송:
+- 실제 /v1/responses 호출:
+- Assistant 응답 표시:
+- 앱 crash 없음:
+- errorType 분류:
+- runInfo/trace:
+
+B. OpenAIResponsesProviderAdapter
+- endpoint 보정:
+- request body:
+- output_text 파싱:
+- output content 파싱:
+- API Key 없음:
+- 인증 실패:
+- rate limit/server/timeout 처리:
+
+C. 분리 유지
+- OPENAI Provider:
+- OPENAI_COMPATIBLE Provider:
+- OpenAiCompatibleProviderAdapter 미사용:
+- Gemini adapter 영향 없음:
+
+D. 직전 보정
+- OpenAI 모델 목록 버튼:
+- 모델 목록 Dialog:
+- 성공 안내:
+- errorType 분류:
+
+E. 기존 기능 영향
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- 모델 목록 조회 3종:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ OpenAI Web Search 구현 금지
+❌ Streaming 구현 금지
+❌ Tool/function execution 구현 금지
+❌ citation/annotation parser 구현 금지
+❌ OpenAI-compatible adapter 재사용 금지
+❌ Gemini Web Search 변경 금지
+❌ RAG schema 변경 금지
+❌ 저장 schema 대규모 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- OPENAI Provider 선택 상태에서 실제 OpenAI Responses API 기본 대화 성공
+- Assistant 본문에 OpenAI 응답 표시
+- OPENAI와 OPENAI_COMPATIBLE 실행 경로 분리 유지
+- Web Search/streaming/tool call 미구현 유지
+- 기존 Provider 호출 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI Responses API 응답 파서 보강 또는 OpenAI Web Search 설계
+
+==============================
 [2026-05-03 22:30] OPENAI Provider 기본 대화 호출 skeleton 연결 준비
 ==============================
 

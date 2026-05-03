@@ -64,20 +64,41 @@ class ConversationEngine(
                         modelName = modelName,
                         prompt = prompt,
                         enableWebSearch = request.webSearchEnabled,
+                        baseUrl = providerProfile.baseUrl,
                         createdAt = System.currentTimeMillis()
                     ),
                     apiKey = apiKey.orEmpty()
                 )
-
-                return createOpenAIResponsesNotImplementedResponse(
-                    request = request,
-                    providerName = providerName,
-                    modelName = modelName,
-                    startedAt = startedAt,
-                    promptLength = prompt.length,
+                val providerResponseSummary = buildOpenAIResponsesProviderResponseSummary(
                     result = openAIResult,
-                    toolSupportPolicy = toolSupportPolicy
+                    modelName = modelName,
+                    webSearchRequested = request.webSearchEnabled
                 )
+
+                return if (openAIResult.success) {
+                    createProviderSuccessResponse(
+                        request = request,
+                        rawText = openAIResult.rawText,
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = openAIResult.latencySec,
+                        promptLength = prompt.length,
+                        providerResponseSummary = providerResponseSummary,
+                        toolSupportPolicy = toolSupportPolicy
+                    )
+                } else {
+                    createProviderFailureResponse(
+                        request = request,
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = openAIResult.latencySec,
+                        promptLength = prompt.length,
+                        errorType = openAIResult.errorType ?: "UNKNOWN_ERROR",
+                        errorMessage = openAIResult.errorMessage ?: "OpenAI Responses API 호출에 실패했습니다.",
+                        responseSummary = providerResponseSummary,
+                        toolSupportPolicy = toolSupportPolicy
+                    )
+                }
             }
 
             if (request.webSearchEnabled && providerProfile.providerType != ProviderType.GOOGLE) {
@@ -2137,16 +2158,24 @@ class ConversationEngine(
         return buildString {
             appendLine("providerType=OPENAI")
             appendLine("adapter=OpenAIResponsesProviderAdapter")
-            appendLine("endpoint=/v1/responses")
+            appendLine("endpoint=${result.endpoint ?: "/v1/responses"}")
+            appendLine("endpointType=responses")
             appendLine("modelName=$modelName")
-            appendLine("implemented=false")
-            appendLine("actualApiCall=false")
+            appendLine("implemented=true")
+            appendLine("actualApiCall=${result.actualApiCall}")
             appendLine("webSearchRequested=$webSearchRequested")
+            appendLine("webSearchUsed=${result.webSearchUsed}")
             appendLine("webSearchImplemented=false")
+            appendLine("streaming=false")
+            appendLine("toolCallsExecuted=false")
             appendLine("success=${result.success}")
             appendLine("errorType=${result.errorType ?: "NONE"}")
             appendLine("latencySec=${result.latencySec}")
             appendLine("responseLength=${result.rawText.length}")
+            appendLine("outputTextParsed=${result.outputTextParsed}")
+            appendLine("outputContentParsed=${result.outputContentParsed}")
+            result.responseId?.let { appendLine("responseId=$it") }
+            result.responseStatus?.let { appendLine("responseStatus=$it") }
             if (!result.rawMetadataSummary.isNullOrBlank()) {
                 appendLine("rawMetadataSummary=${result.rawMetadataSummary}")
             }
@@ -2165,7 +2194,10 @@ class ConversationEngine(
             "INVALID_REQUEST" -> "요청 형식 또는 모델명이 올바르지 않습니다. 모델명과 Provider 설정을 확인하세요."
             "INVALID_RESPONSE" -> "응답에서 표시 가능한 텍스트를 찾지 못했습니다."
             "TOOL_CALL_NOT_SUPPORTED" -> "모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
-            "OPENAI_RESPONSES_NOT_IMPLEMENTED" -> "OpenAI Responses API 대화 호출은 아직 구현되지 않았습니다. 현재 OPENAI Provider는 모델 목록 조회와 설정 준비까지만 지원합니다."
+            "OPENAI_RESPONSES_NOT_IMPLEMENTED" -> "OpenAI Responses API 대화 호출은 아직 구현되지 않았습니다."
+            "OPENAI_WEB_SEARCH_NOT_IMPLEMENTED" -> "OpenAI Web Search 호출은 아직 구현되지 않았습니다. Web Search를 끄고 일반 OpenAI 대화로 다시 시도하세요."
+            "PARSE_ERROR" -> "Provider 응답에서 표시 가능한 텍스트를 찾지 못했습니다. 실행정보를 확인하세요."
+            "UNKNOWN_ERROR" -> "Provider 호출 중 알 수 없는 오류가 발생했습니다. 실행정보를 확인하세요."
             "WEB_SEARCH_NOT_SUPPORTED" -> "현재 선택한 Provider에서는 Web Search grounding을 지원하지 않습니다. Google Provider와 Web Search 지원 모델을 선택하세요."
             "MODEL_UNSUPPORTED_TOOL" -> "현재 선택한 모델의 Web Search capability가 활성화되어 있지 않습니다. Model 관리에서 webSearch capability를 USER_ENABLED 또는 SUPPORTED 상태로 설정하세요."
             "GROUNDING_FAILED" -> "Gemini native Web Search grounding 호출에 실패했습니다. 실행정보의 WEB_SEARCH_GROUNDING 섹션을 확인하세요."
