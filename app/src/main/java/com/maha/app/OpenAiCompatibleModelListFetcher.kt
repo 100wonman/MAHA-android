@@ -118,10 +118,14 @@ class OpenAiCompatibleModelListFetcher {
             val responseText = readResponseText(connection, statusCode)
 
             if (statusCode !in 200..299) {
+                val providerError = ProviderErrorFormatter.fromHttpError(
+                    httpStatusCode = statusCode,
+                    responseText = responseText,
+                    fallbackMessage = "모델 목록 조회에 실패했습니다."
+                )
                 OpenAiCompatibleModelListResult.failure(
-                    errorType = mapHttpStatusToErrorType(statusCode),
-                    errorMessage = parseErrorMessage(responseText)
-                        ?: "모델 목록 조회에 실패했습니다. HTTP $statusCode",
+                    errorType = providerError.errorType,
+                    errorMessage = providerError.toUserMessage("모델 목록 조회에 실패했습니다."),
                     endpoint = endpoint
                 )
             } else {
@@ -241,14 +245,7 @@ class OpenAiCompatibleModelListFetcher {
     }
 
     private fun mapHttpStatusToErrorType(statusCode: Int): String {
-        return when (statusCode) {
-            400 -> "INVALID_REQUEST"
-            401, 403 -> "API_KEY_MISSING"
-            408 -> "TIMEOUT"
-            429 -> "RATE_LIMIT"
-            in 500..599 -> "SERVER_ERROR"
-            else -> "UNKNOWN"
-        }
+        return ProviderErrorFormatter.mapHttpStatusToErrorType(statusCode)
     }
 
     private fun parseErrorMessage(responseText: String): String? {

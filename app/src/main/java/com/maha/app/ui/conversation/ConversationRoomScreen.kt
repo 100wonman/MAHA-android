@@ -345,14 +345,24 @@ private fun ConversationOutputBlockRenderer(
             TableContent(text = block.content)
         }
 
-        "ERROR_BLOCK", "TRACE_BLOCK", "MEMORY_BLOCK" -> StructuredOutputBlock(
+        "ERROR_BLOCK" -> StructuredOutputBlock(
+            title = block.title.ifBlank { blockTypeName.removeSuffix("_BLOCK") },
+            label = blockTypeName.removeSuffix("_BLOCK").lowercase(),
+            content = formatErrorBlockDisplayText(block.content),
+            initiallyCollapsed = true,
+            isWarning = true
+        ) {
+            WrappedPlainContent(text = formatErrorBlockDisplayText(block.content))
+        }
+
+        "TRACE_BLOCK", "MEMORY_BLOCK" -> StructuredOutputBlock(
             title = block.title.ifBlank { blockTypeName.removeSuffix("_BLOCK") },
             label = blockTypeName.removeSuffix("_BLOCK").lowercase(),
             content = block.content,
             initiallyCollapsed = true,
-            isWarning = blockTypeName == "ERROR_BLOCK"
+            isWarning = false
         ) {
-            CodeContent(text = block.content)
+            WrappedPlainContent(text = block.content)
         }
 
         else -> StructuredOutputBlock(
@@ -485,16 +495,27 @@ private fun ConversationRunSummaryPanelReadable(
     val providerResponseSummaryText = extractTraceSection(rawTraceText, "[PROVIDER_RESPONSE_SUMMARY]")
     val fallbackProviderResponseSummaryText = extractTraceSection(rawTraceText, "[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
     val executionTraceText = cleanExecutionTraceText(rawTraceText)
+    val answerOutcomeLabel = buildAnswerOutcomeLabel(run.status)
+    val hasError = hasRunError(run, rawTraceText)
+
+    val providerDetailWorkerIndex = findProviderDetailWorkerIndex(run)
+    val workerProviderDetails = run.workerResults.mapIndexed { index, worker ->
+        buildWorkerProviderDetailText(
+            worker = worker,
+            index = index,
+            providerDetailWorkerIndex = providerDetailWorkerIndex,
+            providerResponseSummaryText = providerResponseSummaryText,
+            fallbackProviderResponseSummaryText = fallbackProviderResponseSummaryText
+        )
+    }
 
     val summaryCopyText = buildRunSummaryCopyText(run)
     val ragCopyText = buildRagRunCopyText(ragInfo)
     val webSearchGroundingCopyText = buildWebSearchGroundingCopyText(webSearchGroundingInfo)
     val webSearchSourcesCopyText = buildWebSearchSourcesCopyText(webSearchSourcesInfo)
-    val providerResponseSummaryCopyText = buildProviderSummaryCopyText("Provider 응답", providerResponseSummaryText)
-    val fallbackProviderResponseSummaryCopyText = buildProviderSummaryCopyText("Fallback 응답", fallbackProviderResponseSummaryText)
     val traceCopyText = executionTraceText.ifBlank { "실행과정 없음" }
     val workerCopyTexts = run.workerResults.mapIndexed { index, worker ->
-        buildWorkerCopyText(index, worker)
+        buildWorkerCopyText(index, worker, workerProviderDetails.getOrNull(index).orEmpty())
     }
 
     val copyText = buildString {
@@ -513,16 +534,6 @@ private fun ConversationRunSummaryPanelReadable(
         if (webSearchSourcesInfo.shouldDisplay) {
             appendLine()
             appendLine(webSearchSourcesCopyText)
-        }
-
-        if (providerResponseSummaryText.isNotBlank()) {
-            appendLine()
-            appendLine(providerResponseSummaryCopyText)
-        }
-
-        if (fallbackProviderResponseSummaryText.isNotBlank()) {
-            appendLine()
-            appendLine(fallbackProviderResponseSummaryCopyText)
         }
 
         if (executionTraceText.isNotBlank()) {
@@ -569,7 +580,11 @@ private fun ConversationRunSummaryPanelReadable(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = "실행 정보",
                         style = MaterialTheme.typography.titleSmall,
@@ -577,11 +592,14 @@ private fun ConversationRunSummaryPanelReadable(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    Text(
-                        text = "${run.workerResults.size} worker · ${run.totalLatencySec}s · retry ${run.totalRetryCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
-                    )
+                    if (hasError) {
+                        Text(
+                            text = "오류발생",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
 
                 Row(
@@ -619,7 +637,9 @@ private fun ConversationRunSummaryPanelReadable(
             if (!isCollapsed) {
                 RunFlatSection(
                     title = "실행정보 요약",
-                    copyText = summaryCopyText
+                    headerStatusLabel = answerOutcomeLabel,
+                    copyText = summaryCopyText,
+                    initiallyCollapsed = false
                 ) {
                     RunSummarySection(run = run)
                 }
@@ -627,7 +647,8 @@ private fun ConversationRunSummaryPanelReadable(
                 if (ragInfo.present) {
                     RunFlatSection(
                         title = "RAG",
-                        copyText = ragCopyText
+                        copyText = ragCopyText,
+                        initiallyCollapsed = true
                     ) {
                         RunRagSection(ragInfo = ragInfo)
                     }
@@ -636,7 +657,8 @@ private fun ConversationRunSummaryPanelReadable(
                 if (webSearchGroundingInfo.present) {
                     RunFlatSection(
                         title = "Web Search Grounding",
-                        copyText = webSearchGroundingCopyText
+                        copyText = webSearchGroundingCopyText,
+                        initiallyCollapsed = true
                     ) {
                         RunWebSearchGroundingSection(info = webSearchGroundingInfo)
                     }
@@ -650,26 +672,12 @@ private fun ConversationRunSummaryPanelReadable(
                     )
                 }
 
-                if (providerResponseSummaryText.isNotBlank()) {
-                    RunCollapsibleFlatTextSection(
-                        title = "Provider 응답: GeminiNativeProviderAdapter",
-                        copyText = providerResponseSummaryCopyText,
-                        text = providerResponseSummaryText
-                    )
-                }
-
-                if (fallbackProviderResponseSummaryText.isNotBlank()) {
-                    RunCollapsibleFlatTextSection(
-                        title = "Fallback 응답: GoogleGeminiProviderAdapter",
-                        copyText = fallbackProviderResponseSummaryCopyText,
-                        text = fallbackProviderResponseSummaryText
-                    )
-                }
-
                 if (executionTraceText.isNotBlank()) {
                     RunFlatSection(
                         title = "실행과정",
-                        copyText = traceCopyText
+                        headerStatusLabel = answerOutcomeLabel,
+                        copyText = traceCopyText,
+                        initiallyCollapsed = true
                     ) {
                         RunTraceSection(traceText = executionTraceText)
                     }
@@ -679,11 +687,14 @@ private fun ConversationRunSummaryPanelReadable(
                     val workerTitle = worker.workerName.ifBlank { "워커 ${index + 1}" }
                     RunFlatSection(
                         title = workerTitle,
-                        copyText = workerCopyTexts[index]
+                        headerStatusLabel = buildWorkerOutcomeLabel(worker.status),
+                        copyText = workerCopyTexts[index],
+                        initiallyCollapsed = true
                     ) {
                         RunWorkerResultSection(
                             index = index,
-                            worker = worker
+                            worker = worker,
+                            providerDetailText = workerProviderDetails.getOrNull(index).orEmpty()
                         )
                     }
                 }
@@ -699,7 +710,6 @@ private fun ConversationRunSummaryPanelReadable(
         }
     }
 }
-
 
 
 private fun displayRunForConversation(
@@ -733,12 +743,20 @@ private fun buildRunSummaryCopyText(run: ConversationRun): String {
         appendLine("latencySec: ${run.totalLatencySec}")
         appendLine("workerCount: ${run.workerResults.size}")
         appendLine("retryCount: ${run.totalRetryCount}")
+        if (run.workerResults.isNotEmpty()) {
+            appendLine()
+            appendLine("[Worker 요약]")
+            run.workerResults.forEachIndexed { index, worker ->
+                appendLine("${index + 1}. ${worker.workerName.ifBlank { "워커 ${index + 1}" }} · ${buildWorkerRequiredSummary(worker)}")
+            }
+        }
     }.trim()
 }
 
 private fun buildWorkerCopyText(
     index: Int,
-    worker: ConversationWorkerResult
+    worker: ConversationWorkerResult,
+    providerDetailText: String = ""
 ): String {
     return buildString {
         appendLine("[워커 ${index + 1}]")
@@ -749,10 +767,166 @@ private fun buildWorkerCopyText(
         appendLine("latencySec: ${worker.latencySec}")
         appendLine("retryCount: ${worker.retryCount}")
         appendLine("tokensPerSecond: ${worker.tokensPerSecond ?: "-"}")
-        appendLine("errorType: ${worker.errorType}")
+        appendLine("errorType: ${formatWorkerErrorLabel(worker, providerDetailText)}")
         appendLine("summary: ${worker.outputSummary}")
         appendLine("rawOutput: ${worker.rawOutput}")
+        if (providerDetailText.isNotBlank()) {
+            appendLine()
+            appendLine("[Provider 응답 상세]")
+            appendLine(providerDetailText)
+        }
     }.trim()
+}
+
+private fun hasRunError(run: ConversationRun, traceText: String): Boolean {
+    val lines = traceText.lines().map { line -> line.trim() }
+    val traceErrorType = findTraceValue(lines, "errorType")
+    val finalAnswerSource = findTraceValue(lines, "finalAnswerSource")
+    return isFailedStatus(run.status) ||
+            run.workerResults.any { worker ->
+                isFailedStatus(worker.status) || worker.errorType.isNotBlank()
+            } ||
+            (traceErrorType.isNotBlank() && !traceErrorType.equals("NONE", ignoreCase = true)) ||
+            finalAnswerSource.equals("ERROR", ignoreCase = true)
+}
+
+private fun buildAnswerOutcomeLabel(status: Any?): String {
+    return "답변: ${statusToKorean(status)}"
+}
+
+private fun buildWorkerOutcomeLabel(status: Any?): String {
+    return "작업: ${statusToKorean(status)}"
+}
+
+private fun statusToKorean(status: Any?): String {
+    val statusText = status?.toString().orEmpty()
+    val normalized = statusText.trim().uppercase()
+    return when {
+        normalized.contains("SUCCESS") || normalized == "PASSED" || normalized == "COMPLETED" -> "성공"
+        normalized.contains("FAIL") || normalized.contains("ERROR") -> "실패"
+        normalized.contains("SKIP") -> "건너뜀"
+        normalized.contains("RUN") -> "실행중"
+        normalized.isBlank() -> "알 수 없음"
+        else -> statusText
+    }
+}
+
+private fun isFailedStatus(status: Any?): Boolean {
+    val normalized = status?.toString().orEmpty().trim().uppercase()
+    return normalized.contains("FAIL") || normalized.contains("ERROR")
+}
+
+private fun isSkippedStatus(status: Any?): Boolean {
+    return status?.toString().orEmpty().trim().uppercase().contains("SKIP")
+}
+
+private fun buildWorkerRequiredSummary(worker: ConversationWorkerResult): String {
+    return "상태: ${statusToKorean(worker.status)} · 지연시간: ${worker.latencySec}s · 재시도: ${worker.retryCount}"
+}
+
+private fun findProviderDetailWorkerIndex(run: ConversationRun): Int {
+    val failedIndex = run.workerResults.indexOfFirst { worker ->
+        !isSkippedStatus(worker.status) && (isFailedStatus(worker.status) || worker.errorType.isNotBlank())
+    }
+    if (failedIndex >= 0) return failedIndex
+
+    val activeIndex = run.workerResults.indexOfFirst { worker ->
+        !isSkippedStatus(worker.status) && worker.providerName.isNotBlank()
+    }
+    return activeIndex
+}
+
+private fun buildWorkerProviderDetailText(
+    worker: ConversationWorkerResult,
+    index: Int,
+    providerDetailWorkerIndex: Int,
+    providerResponseSummaryText: String,
+    fallbackProviderResponseSummaryText: String
+): String {
+    val ownProviderSummary = extractTraceSection(worker.rawOutput, "[PROVIDER_RESPONSE_SUMMARY]")
+    val ownFallbackSummary = extractTraceSection(worker.rawOutput, "[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+    if (ownProviderSummary.isNotBlank() || ownFallbackSummary.isNotBlank()) {
+        return buildString {
+            if (ownProviderSummary.isNotBlank()) {
+                appendLine(ownProviderSummary)
+            }
+            if (ownFallbackSummary.isNotBlank()) {
+                if (isNotBlank()) appendLine()
+                appendLine("[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+                appendLine(ownFallbackSummary)
+            }
+        }.trim()
+    }
+
+    if (index != providerDetailWorkerIndex) return ""
+
+    return buildString {
+        if (providerResponseSummaryText.isNotBlank()) {
+            appendLine(providerResponseSummaryText)
+        }
+        if (fallbackProviderResponseSummaryText.isNotBlank()) {
+            if (isNotBlank()) appendLine()
+            appendLine("[FALLBACK_PROVIDER_RESPONSE_SUMMARY]")
+            appendLine(fallbackProviderResponseSummaryText)
+        }
+    }.trim()
+}
+
+private fun formatWorkerErrorLabel(
+    worker: ConversationWorkerResult,
+    providerDetailText: String
+): String {
+    val errorType = worker.errorType.ifBlank {
+        findTraceValue(providerDetailText.lines().map { line -> line.trim() }, "errorType")
+    }
+    if (errorType.isBlank()) return "없음"
+    return formatErrorTypeWithHttp(errorType, providerDetailText)
+}
+
+private fun formatErrorTypeWithHttp(
+    errorType: String,
+    detailText: String
+): String {
+    val normalized = errorType.trim()
+    val explicitHttp = extractHttpStatus(detailText)
+    val httpStatus = explicitHttp ?: defaultHttpStatusForErrorType(normalized)
+    return if (httpStatus.isNullOrBlank()) {
+        normalized
+    } else {
+        "$normalized (HTTP $httpStatus)"
+    }
+}
+
+private fun extractHttpStatus(text: String): String? {
+    val directHttp = Regex("""(?i)HTTP\s*(\d{3})""").find(text)?.groupValues?.getOrNull(1)
+    if (!directHttp.isNullOrBlank()) return directHttp
+
+    val lines = text.lines().map { line -> line.trim() }
+    val keys = listOf("httpStatus", "httpStatusCode", "statusCode", "providerErrorCode", "errorCode")
+    keys.forEach { key ->
+        val value = findTraceValue(lines, key)
+        val numeric = Regex("""\d{3}""").find(value)?.value
+        if (!numeric.isNullOrBlank()) return numeric
+    }
+    return null
+}
+
+private fun defaultHttpStatusForErrorType(errorType: String): String? {
+    return when (errorType.trim().uppercase()) {
+        "RATE_LIMIT" -> "429"
+        "AUTH_ERROR", "AUTH_REQUIRED", "API_KEY_MISSING" -> "401"
+        "SERVER_ERROR" -> "500"
+        "TIMEOUT" -> "408"
+        else -> null
+    }
+}
+
+private fun formatErrorBlockDisplayText(text: String): String {
+    val cleaned = text.lines()
+        .filterNot { line -> line.trim().equals("오류 정보 없음", ignoreCase = true) }
+        .joinToString("\n")
+        .trim()
+    return cleaned.ifBlank { "오류 상세 정보가 비어 있습니다. 실행정보의 Worker 블록을 확인하세요." }
 }
 
 
@@ -855,10 +1029,18 @@ private fun findTraceValue(
     lines: List<String>,
     key: String
 ): String {
-    return lines.firstOrNull { line -> line.startsWith("$key:", ignoreCase = true) }
-        ?.substringAfter(":")
-        ?.trim()
-        .orEmpty()
+    val colonPrefix = "$key:"
+    val equalsPrefix = "$key="
+    val line = lines.firstOrNull { value ->
+        value.startsWith(colonPrefix, ignoreCase = true) ||
+                value.startsWith(equalsPrefix, ignoreCase = true)
+    } ?: return ""
+
+    return when {
+        line.startsWith(colonPrefix, ignoreCase = true) -> line.substringAfter(":").trim()
+        line.startsWith(equalsPrefix, ignoreCase = true) -> line.substringAfter("=").trim()
+        else -> ""
+    }
 }
 
 private fun parseWebSearchGroundingInfo(traceText: String): WebSearchGroundingDisplayInfo {
@@ -984,6 +1166,24 @@ private fun extractTraceSection(
     return text.substring(contentStart, endIndex).trim()
 }
 
+private fun removeTraceSection(
+    text: String,
+    marker: String
+): String {
+    var result = text
+    while (true) {
+        val startIndex = result.indexOf(marker)
+        if (startIndex == -1) return result.trim()
+        val contentStart = startIndex + marker.length
+        val nextSectionIndex = Regex("""(?m)^\[[A-Z_]+]""")
+            .find(result, contentStart)
+            ?.range
+            ?.first
+            ?: result.length
+        result = (result.substring(0, startIndex) + result.substring(nextSectionIndex)).trim()
+    }
+}
+
 private fun normalizeSourceField(
     value: String,
     fallback: String
@@ -1060,8 +1260,15 @@ private fun cleanExecutionTraceText(traceText: String): String {
         startMarker = "[RAG_CONTEXT_BEGIN]",
         endMarker = "[RAG_CONTEXT_END]"
     )
+    val withoutProviderSummary = removeTraceSection(
+        text = removeTraceSection(
+            text = withoutContext,
+            marker = "[PROVIDER_RESPONSE_SUMMARY]"
+        ),
+        marker = "[FALLBACK_PROVIDER_RESPONSE_SUMMARY]"
+    )
 
-    return withoutContext.lines()
+    return withoutProviderSummary.lines()
         .filterNot { line ->
             val trimmed = line.trim()
             trimmed.startsWith("RAG:", ignoreCase = true) ||
@@ -1311,17 +1518,17 @@ private fun RunCollapsibleFlatTextSection(
                     .fillMaxWidth()
                     .heightIn(max = 260.dp)
                     .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState())
             ) {
                 SelectionContainer {
                     Text(
                         text = text,
+                        modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace,
                             lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
                         ),
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f),
-                        softWrap = false
+                        softWrap = true
                     )
                 }
             }
@@ -1333,9 +1540,12 @@ private fun RunCollapsibleFlatTextSection(
 private fun RunFlatSection(
     title: String,
     copyText: String,
+    initiallyCollapsed: Boolean,
+    headerStatusLabel: String? = null,
     content: @Composable () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
+    var isCollapsed by rememberSaveable(title, copyText) { mutableStateOf(initiallyCollapsed) }
 
     Column(
         modifier = Modifier
@@ -1349,25 +1559,61 @@ private fun RunFlatSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = title,
+            Row(
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            IconButton(
-                onClick = {
-                    clipboardManager.setText(AnnotatedString(copyText))
-                },
-                modifier = Modifier.size(34.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "⧉",
-                    style = MaterialTheme.typography.titleSmall,
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+
+                if (!headerStatusLabel.isNullOrBlank()) {
+                    Text(
+                        text = headerStatusLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (headerStatusLabel.contains("실패") || headerStatusLabel.contains("오류")) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                        }
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(copyText))
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Text(
+                        text = "⧉",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        isCollapsed = !isCollapsed
+                    },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Text(
+                        text = if (isCollapsed) "⌄" else "⌃",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
 
@@ -1378,7 +1624,9 @@ private fun RunFlatSection(
                 .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         )
 
-        content()
+        if (!isCollapsed) {
+            content()
+        }
     }
 }
 
@@ -1389,7 +1637,7 @@ private fun RunSummarySection(run: ConversationRun) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            text = "상태: ${run.status}",
+            text = "상태: ${statusToKorean(run.status)}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -1399,6 +1647,27 @@ private fun RunSummarySection(run: ConversationRun) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
         )
+
+        if (run.workerResults.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            )
+
+            run.workerResults.forEachIndexed { index, worker ->
+                Text(
+                    text = "${worker.workerName.ifBlank { "워커 ${index + 1}" }} · ${buildWorkerRequiredSummary(worker)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isFailedStatus(worker.status) || worker.errorType.isNotBlank()) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -1408,31 +1677,19 @@ private fun RunTraceSection(traceText: String) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        SelectionContainer {
-            Text(
-                text = traceText,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
-                ),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                softWrap = false
-            )
-        }
+        WrappedPlainContent(text = traceText)
     }
 }
 
 @Composable
 private fun RunWorkerResultSection(
     index: Int,
-    worker: ConversationWorkerResult
+    worker: ConversationWorkerResult,
+    providerDetailText: String
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "워커 ${index + 1}",
@@ -1447,14 +1704,15 @@ private fun RunWorkerResultSection(
         )
 
         Text(
-            text = "상태: ${worker.status} · 시간: ${worker.latencySec}s · 재시도: ${worker.retryCount}",
+            text = buildWorkerRequiredSummary(worker),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
         )
 
-        if (worker.errorType.isNotBlank()) {
+        val errorLabel = formatWorkerErrorLabel(worker, providerDetailText)
+        if (errorLabel != "없음") {
             Text(
-                text = "오류 유형: ${worker.errorType}",
+                text = "오류 유형: $errorLabel",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -1471,8 +1729,17 @@ private fun RunWorkerResultSection(
                 )
             }
         }
+
+        if (providerDetailText.isNotBlank()) {
+            RunCollapsibleFlatTextSection(
+                title = "Provider 응답 상세",
+                copyText = providerDetailText,
+                text = providerDetailText
+            )
+        }
     }
 }
+
 
 @Composable
 private fun StructuredOutputBlock(
@@ -1576,6 +1843,29 @@ private fun StructuredOutputBlock(
                     body()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WrappedPlainContent(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 360.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+    ) {
+        SelectionContainer {
+            Text(
+                text = text,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25f
+                ),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                softWrap = true
+            )
         }
     }
 }

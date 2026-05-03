@@ -1,4 +1,347 @@
 ==============================
+[2026-05-03 23:50] 공통 모델 목록 Dialog 검색 UX 및 Provider 오류 요약 정책 보강
+==============================
+
+[작업]
+- Google / OpenAI-compatible / OpenAI 공식 모델 목록 Dialog에 검색 UX 추가
+- 추후 추가될 Provider 모델 목록 Dialog에도 동일 검색 UX 원칙 적용
+- 모델명, 표시명, 요약정보, metadata summary 기반 필터링 지원
+- 이미 추가된 모델의 추가 버튼 비활성화 정책 유지
+- Provider 오류 요약 정책 공통화
+- HTTP 429를 RATE_LIMIT로 정규화하고 UI에서는 RATE_LIMIT (HTTP 429) 형태로 병기
+- OpenAI error.message / error.type / error.code 요약 표시
+- OpenAI Responses output_text 및 output[].content[].text 파서 보강
+- Web Search / streaming / tool execution은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Google / OpenAI-compatible / OpenAI 공식 모델 목록 Dialog에 검색 입력창 추가
+- 모델명/표시명/설명/metadata summary 기반 필터링 추가
+- ProviderErrorSummary / ProviderErrorFormatter 신규 추가
+- HTTP 오류 요약을 RATE_LIMIT (HTTP 429) 형식으로 공통화
+- OpenAI Responses output content 파서 보강
+
+[모델 목록 Dialog 검색 UX 테스트]
+- Google 모델 목록 검색: 정상 작동
+- OpenAI-compatible 모델 목록 검색: 정상 작동
+- OpenAI 공식 모델 목록 검색: 정상 작동
+- 모델명 검색: 정상 작동
+- 요약정보 검색: 검색 안됨
+- 빈 검색어 전체 표시: 정상 작동
+- 이미 추가된 모델 버튼 비활성화: 유지
+- 모델 선택 추가: 유지
+
+[Provider 오류 요약 테스트]
+- HTTP 429 표시: RATE_LIMIT, (HTTP 429) 따로 표시 됨
+- RATE_LIMIT 정규화: 적용
+- AUTH_ERROR 표시: 적용
+- SERVER_ERROR 표시: 적용
+- error.message: 요약 표시
+- error.type: 요약 표시
+- error.code: 요약 표시
+- API Key 원문 미노출: 유지
+
+[OpenAI Responses 파서 테스트]
+- output_text 파싱: 유지
+- output[].content[].text 파싱: 보강
+- 복수 content 결합: "\n\n" 유지
+- 빈 text 제외: 적용
+- PARSE_ERROR 처리: 유지
+
+[기존 기능 영향]
+- Google 모델 목록 조회: 유지
+- OpenAI-compatible 모델 목록 조회: 유지
+- OpenAI 공식 모델 목록 조회: 유지
+- Provider CRUD/API Key: 유지
+- Model 관리: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 파서/오류 요약만 보강
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 직전 누적 문제였던 OpenAIResponsesProviderAdapter.kt 문자열 syntax error는 보정본 유지
+- 직전 누적 문제였던 OpenAI 모델 목록 버튼 튕김은 기존 보정 유지
+- 이번 작업에서 신규 확인된 문제 없음
+
+[변경 파일]
+- ProviderManagementScreen.kt
+- OpenAIResponsesProviderAdapter.kt
+- OpenAIModelListFetcher.kt
+- OpenAiCompatibleModelListFetcher.kt
+- ProviderErrorSummary.kt
+- OpenAIResponsesModels.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+공통 모델 목록 Dialog 검색 UX 및 Provider 오류 요약 정책 보강
+
+목표:
+- Provider 모델 목록 Dialog에 공통 검색 UX를 추가한다.
+- 현재 Google / OpenAI-compatible / OpenAI 공식 모델 목록 Dialog뿐 아니라 추후 추가될 Provider 목록 Dialog에도 같은 UX 원칙을 적용할 수 있게 정리한다.
+- OpenAI Responses 응답 파서와 오류 표시를 보강한다.
+- Provider 오류 요약은 특정 Provider 전용이 아니라 전역 공통 정책으로 정리한다.
+- Web Search, streaming, tool/function execution은 계속 제외한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ Google 모델 목록 Dialog 검색 입력창 추가
+✔ OpenAI-compatible 모델 목록 Dialog 검색 입력창 추가
+✔ OpenAI 공식 모델 목록 Dialog 검색 입력창 추가
+✔ 추후 Provider 모델 목록 Dialog에도 재사용 가능한 검색 UX 패턴 정리
+✔ 모델명 / 표시명 / 요약정보 / metadata summary 기준 검색
+✔ 기존 모델명 / 요약정보 / 추가 버튼 구조 유지
+✔ 이미 추가된 모델의 추가 버튼 비활성화 정책 유지
+✔ OpenAI Responses output_text 파서 유지/보강
+✔ OpenAI Responses output[].content[].text 파서 보강
+✔ HTTP 429를 내부 errorType = RATE_LIMIT로 정규화
+✔ UI 표시에서는 RATE_LIMIT (HTTP 429)처럼 중복 없이 병기
+✔ Provider 오류 body 요약 정책 공통화
+✔ OpenAI error.message / error.type / error.code 요약 표시
+
+이번 단계에서 금지:
+
+❌ Web Search 구현
+❌ Streaming 구현
+❌ Tool/function execution 구현
+❌ OpenAI citation/annotation parser 구현
+❌ Provider 모델 자동 대량 추가
+❌ 이미 추가된 모델 재추가 허용
+❌ OpenAI-compatible adapter와 OPENAI adapter 통합
+❌ Gemini native Web Search 변경
+❌ RAG 구조 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 공통 모델 목록 Dialog 검색 UX 정책
+--------------------------------------------------
+
+대상:
+- Google 모델 목록 Dialog
+- OpenAI-compatible 모델 목록 Dialog
+- OpenAI 공식 모델 목록 Dialog
+- 이후 추가될 모든 Provider 모델 목록 Dialog
+
+검색 입력창:
+- Dialog 상단 또는 목록 상단에 배치
+- 입력 즉시 목록 필터링
+- 대소문자 무시
+- 공백 trim
+- 빈 검색어이면 전체 목록 표시
+
+검색 대상:
+- rawModelName 또는 id
+- displayName
+- description 또는 summary
+- supportedGenerationMethods
+- metadataRawSummary
+- provider metadata 요약
+
+유지:
+- 모델명 표시
+- 요약정보 표시
+- 추가 버튼 표시
+- 이미 추가된 모델의 추가 버튼 비활성화
+- Dialog 높이 제한/스크롤
+
+주의:
+- 모델을 자동 추가하지 않는다.
+- 사용자가 선택한 모델만 추가한다.
+- 이미 추가된 모델은 중복 추가하지 않는다.
+- 비활성화 버튼에는 가능하면 “이미 추가됨” 의미가 보이게 한다.
+
+--------------------------------------------------
+3. Provider 오류 요약 공통화 정책
+--------------------------------------------------
+
+목표:
+- OpenAI만이 아니라 Provider 전역에서 재사용 가능한 오류 요약 기준을 만든다.
+- 각 Provider adapter/fetcher의 error body를 가능한 한 일관되게 요약한다.
+
+권장 구조:
+- 공통 helper 함수 또는 파일 추가 가능
+  - ProviderErrorSummary.kt
+  - ProviderErrorFormatter.kt
+  - 또는 기존 적절한 파일 내 private helper
+
+요약 대상:
+- httpStatusCode
+- errorType
+- errorMessage
+- providerErrorType
+- providerErrorCode
+- providerRawMessage 요약
+
+표시 원칙:
+- 내부 errorType은 표준화된 값 사용
+  - API_KEY_MISSING
+  - AUTH_ERROR
+  - RATE_LIMIT
+  - SERVER_ERROR
+  - TIMEOUT
+  - PARSE_ERROR
+  - SAFETY_BLOCKED
+  - UNKNOWN_ERROR
+- HTTP 429는 내부 errorType = RATE_LIMIT
+- UI 표시 예:
+  - RATE_LIMIT (HTTP 429)
+- “RATE_LIMIT”와 “429”가 따로 중복 표시되지 않도록 정리
+
+주의:
+- API Key 원문 출력 금지
+- raw error body 전체 노출 금지
+- 사용자에게 필요한 요약만 표시
+
+--------------------------------------------------
+4. OpenAI Responses 파서 보강
+--------------------------------------------------
+
+대상 파일:
+- OpenAIResponsesProviderAdapter.kt
+- OpenAIResponsesModels.kt
+- ConversationEngine.kt 필요 시
+
+응답 파싱 우선순위:
+1. output_text
+2. output[].content[].text
+3. output[].content[] 내부 type/text 구조
+4. 실패 시 PARSE_ERROR
+
+보강:
+- content 배열의 여러 text를 안정적으로 결합
+- 빈 text는 제외
+- 결합 구분자는 "\n\n" 유지
+- output_text와 output content가 동시에 있으면 output_text 우선
+
+오류 파싱:
+- OpenAI error body에서 가능한 경우 추출
+  - error.message
+  - error.type
+  - error.code
+- HTTP 429:
+  - errorType = RATE_LIMIT
+  - 표시 요약 = RATE_LIMIT (HTTP 429)
+- HTTP 401/403:
+  - errorType = AUTH_ERROR
+- HTTP 5xx:
+  - errorType = SERVER_ERROR
+
+--------------------------------------------------
+5. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Google 모델 목록 조회
+- OpenAI-compatible 모델 목록 조회
+- OpenAI 공식 모델 목록 조회
+- 모델 선택 후 ModelProfile 추가
+- 이미 추가한 모델의 추가 버튼 비활성화
+- Provider 검색 보정
+- Provider CRUD/API Key
+- Model 관리
+- Google/Gemini 일반 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 기본 대화
+- Gemini native Web Search
+- RAG
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+6. 테스트 기준
+--------------------------------------------------
+
+A. 모델 목록 Dialog 검색 UX
+- Google 모델 목록 검색:
+- OpenAI-compatible 모델 목록 검색:
+- OpenAI 공식 모델 목록 검색:
+- 모델명 검색:
+- 요약정보 검색:
+- 빈 검색어 전체 표시:
+- 이미 추가된 모델 버튼 비활성화:
+- 모델 선택 추가:
+
+B. Provider 오류 요약
+- HTTP 429 표시:
+- RATE_LIMIT 정규화:
+- AUTH_ERROR 표시:
+- SERVER_ERROR 표시:
+- error.message 표시:
+- error.type 표시:
+- error.code 표시:
+- API Key 원문 미노출:
+
+C. OpenAI Responses 파서
+- output_text 파싱:
+- output[].content[].text 파싱:
+- 복수 content 결합:
+- 빈 text 제외:
+- PARSE_ERROR 처리:
+
+D. 기존 기능 영향
+- Google 모델 목록 조회:
+- OpenAI-compatible 모델 목록 조회:
+- OpenAI 공식 모델 목록 조회:
+- Provider CRUD/API Key:
+- Model 관리:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+7. 금지 사항
+--------------------------------------------------
+
+❌ Web Search 구현 금지
+❌ Streaming 구현 금지
+❌ Tool/function execution 구현 금지
+❌ citation/annotation parser 구현 금지
+❌ 모델 자동 대량 추가 금지
+❌ 중복 모델 재추가 허용 금지
+❌ OpenAI-compatible / OPENAI adapter 통합 금지
+❌ Gemini Web Search 변경 금지
+❌ RAG schema 변경 금지
+❌ 저장 schema 대규모 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- 모든 Provider 모델 목록 Dialog에 검색 입력창 적용
+- 검색으로 모델명/요약정보 기반 필터링 가능
+- 이미 추가된 모델은 계속 재추가 불가
+- Provider 오류 요약 정책 공통화
+- HTTP 429가 RATE_LIMIT로 정규화되어 중복 없이 표시
+- OpenAI Responses 응답 파서 보강
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+OpenAI Responses 성공 응답 실사용 검증 또는 OpenAI Web Search 설계
+
+==============================
 [2026-05-03 23:10] OpenAI Responses API 실제 기본 대화 호출 구현
 ==============================
 

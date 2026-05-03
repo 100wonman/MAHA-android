@@ -114,10 +114,14 @@ class OpenAIModelListFetcher {
                 val latencySec = elapsedSec(startedAt)
 
                 if (statusCode !in 200..299) {
+                    val providerError = ProviderErrorFormatter.fromHttpError(
+                        httpStatusCode = statusCode,
+                        responseText = responseText,
+                        fallbackMessage = "OpenAI 모델 목록 조회에 실패했습니다."
+                    )
                     OpenAIModelListFetchResult.failure(
-                        errorType = mapHttpStatusToErrorType(statusCode),
-                        errorMessage = parseErrorMessage(responseText)
-                            ?: "OpenAI 모델 목록 조회에 실패했습니다. HTTP $statusCode",
+                        errorType = providerError.errorType,
+                        errorMessage = providerError.toUserMessage("OpenAI 모델 목록 조회에 실패했습니다."),
                         latencySec = latencySec,
                         endpoint = endpoint
                     )
@@ -217,14 +221,7 @@ class OpenAIModelListFetcher {
     }
 
     private fun mapHttpStatusToErrorType(statusCode: Int): String {
-        return when (statusCode) {
-            401, 403 -> "AUTH_ERROR"
-            408 -> "TIMEOUT"
-            429 -> "RATE_LIMIT"
-            in 500..599 -> "SERVER_ERROR"
-            in 400..499 -> "UNKNOWN_ERROR"
-            else -> "UNKNOWN_ERROR"
-        }
+        return ProviderErrorFormatter.mapHttpStatusToErrorType(statusCode)
     }
 
     private fun mapThrowableToErrorType(throwable: Throwable): String {

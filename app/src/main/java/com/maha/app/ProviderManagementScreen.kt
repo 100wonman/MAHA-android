@@ -918,6 +918,12 @@ private fun GoogleModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (GoogleModelListItem) -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    val normalizedSearchQuery = searchQuery.trim().lowercase()
+    val visibleModels = models.filter { item ->
+        googleModelMatchesSearch(item, normalizedSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "Google 모델 목록") },
@@ -933,6 +939,19 @@ private fun GoogleModelListDialog(
                     text = provider.displayName,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
+                )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, 요약정보") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "전체 ${models.size}개 · 표시 ${visibleModels.size}개",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA)
                 )
 
                 if (isLoading) {
@@ -968,8 +987,11 @@ private fun GoogleModelListDialog(
                 if (!isLoading && errorMessage == null && models.isEmpty()) {
                     Text(text = "표시할 모델이 없습니다.")
                 }
+                if (!isLoading && errorMessage == null && models.isNotEmpty() && visibleModels.isEmpty()) {
+                    Text(text = "검색 조건에 맞는 모델이 없습니다.")
+                }
 
-                models.forEach { item ->
+                visibleModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
@@ -1035,7 +1057,6 @@ private fun GoogleModelListDialog(
     )
 }
 
-
 @Composable
 private fun OpenAIModelListDialog(
     provider: ProviderProfile,
@@ -1048,6 +1069,12 @@ private fun OpenAIModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (OpenAIModelListItem) -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    val normalizedSearchQuery = searchQuery.trim().lowercase()
+    val visibleModels = models.filter { item ->
+        openAIModelMatchesSearch(item, normalizedSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI 공식 모델 목록") },
@@ -1070,6 +1097,19 @@ private fun OpenAIModelListDialog(
                     color = Color(0xFFD0D3DA),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, metadata summary") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "전체 ${models.size}개 · 표시 ${visibleModels.size}개",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA)
                 )
 
                 if (isLoading) {
@@ -1105,8 +1145,11 @@ private fun OpenAIModelListDialog(
                 if (!isLoading && errorMessage == null && models.isEmpty()) {
                     Text(text = "표시할 모델이 없습니다.")
                 }
+                if (!isLoading && errorMessage == null && models.isNotEmpty() && visibleModels.isEmpty()) {
+                    Text(text = "검색 조건에 맞는 모델이 없습니다.")
+                }
 
-                models.forEach { item ->
+                visibleModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
@@ -1165,7 +1208,6 @@ private fun OpenAIModelListDialog(
     )
 }
 
-
 @Composable
 private fun OpenAiCompatibleModelListDialog(
     provider: ProviderProfile,
@@ -1178,6 +1220,12 @@ private fun OpenAiCompatibleModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (OpenAiModelListCandidate) -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+    val normalizedSearchQuery = searchQuery.trim().lowercase()
+    val visibleModels = models.filter { item ->
+        openAiCompatibleModelMatchesSearch(item, normalizedSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI-compatible 모델 목록") },
@@ -1200,6 +1248,19 @@ private fun OpenAiCompatibleModelListDialog(
                     color = Color(0xFFD0D3DA),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, 설명, metadata summary") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "전체 ${models.size}개 · 표시 ${visibleModels.size}개",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFD0D3DA)
                 )
 
                 if (isLoading) {
@@ -1235,8 +1296,11 @@ private fun OpenAiCompatibleModelListDialog(
                 if (!isLoading && errorMessage == null && models.isEmpty()) {
                     Text(text = "표시할 모델이 없습니다.")
                 }
+                if (!isLoading && errorMessage == null && models.isNotEmpty() && visibleModels.isEmpty()) {
+                    Text(text = "검색 조건에 맞는 모델이 없습니다.")
+                }
 
-                models.forEach { item ->
+                visibleModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
@@ -1305,6 +1369,52 @@ private fun OpenAiCompatibleModelListDialog(
             }
         }
     )
+}
+
+
+private fun googleModelMatchesSearch(
+    item: GoogleModelListItem,
+    normalizedSearchQuery: String
+): Boolean {
+    if (normalizedSearchQuery.isBlank()) return true
+    return listOf(
+        item.rawModelName,
+        item.displayName,
+        item.description,
+        item.supportedGenerationMethods.joinToString(),
+        buildGoogleMetadataSummary(item)
+    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+}
+
+private fun openAIModelMatchesSearch(
+    item: OpenAIModelListItem,
+    normalizedSearchQuery: String
+): Boolean {
+    if (normalizedSearchQuery.isBlank()) return true
+    return listOfNotNull(
+        item.id,
+        item.rawModelName,
+        item.displayName,
+        item.createdAt?.toString(),
+        item.metadataRawSummary
+    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+}
+
+private fun openAiCompatibleModelMatchesSearch(
+    item: OpenAiModelListCandidate,
+    normalizedSearchQuery: String
+): Boolean {
+    if (normalizedSearchQuery.isBlank()) return true
+    return listOfNotNull(
+        item.rawModelName,
+        item.displayName,
+        item.description,
+        item.contextWindow?.toString(),
+        item.ownedBy,
+        item.inputModalities.joinToString(),
+        item.outputModalities.joinToString(),
+        item.metadataRawSummary
+    ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
 }
 
 @Composable

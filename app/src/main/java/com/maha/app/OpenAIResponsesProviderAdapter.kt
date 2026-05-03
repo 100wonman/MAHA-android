@@ -94,13 +94,17 @@ class OpenAIResponsesProviderAdapter(
                 val latencySec = elapsedSec(startedAt)
 
                 if (statusCode !in 200..299) {
+                    val providerError = ProviderErrorFormatter.fromHttpError(
+                        httpStatusCode = statusCode,
+                        responseText = responseText,
+                        fallbackMessage = "OpenAI Responses API 호출에 실패했습니다."
+                    )
                     return@withContext OpenAIResponsesResult.failure(
-                        errorType = mapHttpStatusToErrorType(statusCode),
-                        errorMessage = parseErrorMessage(responseText)
-                            ?: "OpenAI Responses API 호출에 실패했습니다. HTTP $statusCode",
+                        errorType = providerError.errorType,
+                        errorMessage = providerError.toUserMessage("OpenAI Responses API 호출에 실패했습니다."),
                         latencySec = latencySec,
                         endpoint = endpoint,
-                        rawMetadataSummary = "httpStatus=$statusCode",
+                        rawMetadataSummary = providerError.toMetadataSummary(),
                         actualApiCall = true
                     )
                 }
@@ -239,15 +243,22 @@ class OpenAIResponsesProviderAdapter(
             for (contentIndex in 0 until content.length()) {
                 val contentItem = content.optJSONObject(contentIndex) ?: continue
                 val type = contentItem.optString("type")
-                val text = contentItem.optNullableString("text")
-                    ?: contentItem.optJSONObject("text")?.optNullableString("value")
-                if (!text.isNullOrBlank() && isAssistantTextContent(type)) {
-                    parts.add(text.trim())
+                val textCandidates = listOfNotNull(
+                    contentItem.optNullableString("text"),
+                    contentItem.optJSONObject("text")?.optNullableString("value"),
+                    contentItem.optJSONObject("text")?.optNullableString("text"),
+                    contentItem.optNullableString("content")
+                )
+                if (isAssistantTextContent(type)) {
+                    textCandidates
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() }
+                        .forEach { parts.add(it) }
                 }
             }
         }
 
-        return parts.joinToString("\n\n")
+        return parts.distinct().joinToString("\n\n")
     }
 
     private fun isAssistantTextContent(type: String): Boolean {
@@ -282,14 +293,7 @@ class OpenAIResponsesProviderAdapter(
     }
 
     private fun mapHttpStatusToErrorType(statusCode: Int): String {
-        return when (statusCode) {
-            400 -> "INVALID_REQUEST"
-            401, 403 -> "AUTH_ERROR"
-            408 -> "TIMEOUT"
-            429 -> "RATE_LIMIT"
-            in 500..599 -> "SERVER_ERROR"
-            else -> "UNKNOWN_ERROR"
-        }
+        return ProviderErrorFormatter.mapHttpStatusToErrorType(statusCode)
     }
 
     private fun elapsedSec(startedAt: Long): Double {
