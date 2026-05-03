@@ -27,12 +27,12 @@ data class OpenAiModelListCandidate(
 )
 
 /**
- * OpenAiModelListFetchResult
+ * OpenAiCompatibleModelListResult
  *
  * 쉬운 설명:
  * 모델 목록 조회 성공/실패 결과를 한 번에 담는 객체다.
  */
-data class OpenAiModelListFetchResult(
+data class OpenAiCompatibleModelListResult(
     val success: Boolean,
     val models: List<OpenAiModelListCandidate> = emptyList(),
     val errorType: String? = null,
@@ -43,8 +43,8 @@ data class OpenAiModelListFetchResult(
         fun success(
             models: List<OpenAiModelListCandidate>,
             endpoint: String
-        ): OpenAiModelListFetchResult {
-            return OpenAiModelListFetchResult(
+        ): OpenAiCompatibleModelListResult {
+            return OpenAiCompatibleModelListResult(
                 success = true,
                 models = models,
                 endpoint = endpoint
@@ -55,8 +55,8 @@ data class OpenAiModelListFetchResult(
             errorType: String,
             errorMessage: String,
             endpoint: String? = null
-        ): OpenAiModelListFetchResult {
-            return OpenAiModelListFetchResult(
+        ): OpenAiCompatibleModelListResult {
+            return OpenAiCompatibleModelListResult(
                 success = false,
                 errorType = errorType,
                 errorMessage = errorMessage,
@@ -78,17 +78,17 @@ class OpenAiCompatibleModelListFetcher {
     suspend fun fetchModels(
         provider: ProviderProfile,
         apiKey: String?
-    ): OpenAiModelListFetchResult = withContext(Dispatchers.IO) {
+    ): OpenAiCompatibleModelListResult = withContext(Dispatchers.IO) {
         val endpoint = buildModelsEndpoint(provider)
         if (endpoint == null) {
-            return@withContext OpenAiModelListFetchResult.failure(
+            return@withContext OpenAiCompatibleModelListResult.failure(
                 errorType = "BASE_URL_MISSING",
                 errorMessage = "Model List Endpoint 또는 Base URL이 설정되지 않았습니다."
             )
         }
 
         if (!isSupportedProviderType(provider.providerType)) {
-            return@withContext OpenAiModelListFetchResult.failure(
+            return@withContext OpenAiCompatibleModelListResult.failure(
                 errorType = "PROVIDER_NOT_SUPPORTED",
                 errorMessage = "이 Provider Type은 OpenAI-compatible 모델 목록 조회 대상이 아닙니다.",
                 endpoint = endpoint
@@ -96,7 +96,7 @@ class OpenAiCompatibleModelListFetcher {
         }
 
         if (provider.providerType == ProviderType.OPENAI_COMPATIBLE && apiKey.isNullOrBlank()) {
-            return@withContext OpenAiModelListFetchResult.failure(
+            return@withContext OpenAiCompatibleModelListResult.failure(
                 errorType = "API_KEY_MISSING",
                 errorMessage = "OPENAI_COMPATIBLE Provider는 모델 목록 조회에 API Key가 필요합니다.",
                 endpoint = endpoint
@@ -118,7 +118,7 @@ class OpenAiCompatibleModelListFetcher {
             val responseText = readResponseText(connection, statusCode)
 
             if (statusCode !in 200..299) {
-                OpenAiModelListFetchResult.failure(
+                OpenAiCompatibleModelListResult.failure(
                     errorType = mapHttpStatusToErrorType(statusCode),
                     errorMessage = parseErrorMessage(responseText)
                         ?: "모델 목록 조회에 실패했습니다. HTTP $statusCode",
@@ -127,13 +127,13 @@ class OpenAiCompatibleModelListFetcher {
             } else {
                 val models = parseModelsResponse(responseText)
                 if (models.isEmpty()) {
-                    OpenAiModelListFetchResult.failure(
+                    OpenAiCompatibleModelListResult.failure(
                         errorType = "INVALID_RESPONSE",
                         errorMessage = "조회된 모델이 없거나 응답에서 data[].id를 찾을 수 없습니다.",
                         endpoint = endpoint
                     )
                 } else {
-                    OpenAiModelListFetchResult.success(
+                    OpenAiCompatibleModelListResult.success(
                         models = models,
                         endpoint = endpoint
                     )
@@ -145,7 +145,7 @@ class OpenAiCompatibleModelListFetcher {
                 is JSONException -> "INVALID_RESPONSE"
                 else -> "NETWORK_ERROR"
             }
-            OpenAiModelListFetchResult.failure(
+            OpenAiCompatibleModelListResult.failure(
                 errorType = errorType,
                 errorMessage = throwable.message?.take(240) ?: "모델 목록 조회 중 오류가 발생했습니다.",
                 endpoint = endpoint
@@ -167,8 +167,8 @@ class OpenAiCompatibleModelListFetcher {
 
     private fun isSupportedProviderType(providerType: ProviderType): Boolean {
         return providerType == ProviderType.OPENAI_COMPATIBLE ||
-                providerType == ProviderType.LOCAL ||
-                providerType == ProviderType.CUSTOM
+            providerType == ProviderType.LOCAL ||
+            providerType == ProviderType.CUSTOM
     }
 
     private fun readResponseText(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +75,12 @@ fun ProviderManagementScreen(
     var openAiModelListMessage by remember { mutableStateOf<String?>(null) }
     var isOpenAiModelListLoading by remember { mutableStateOf(false) }
     var openAiModelListEndpoint by remember { mutableStateOf<String?>(null) }
+
+    var openAIOfficialModelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
+    var openAIOfficialModelListErrorType by remember { mutableStateOf<String?>(null) }
+    var openAIOfficialModelListErrorMessage by remember { mutableStateOf<String?>(null) }
+    var openAIOfficialModelListEndpoint by remember { mutableStateOf<String?>(null) }
+    var isOpenAIOfficialModelListLoading by remember { mutableStateOf(false) }
 
     fun reloadProviders() {
         providers = store.loadProviderProfiles().sortedBy { it.displayName.lowercase() }
@@ -171,7 +178,7 @@ fun ProviderManagementScreen(
 
         coroutineScope.launch {
             val apiKey = store.loadProviderApiKey(provider.providerId)
-            val result = openAiCompatibleModelListFetcher.fetchModels(
+            val result: OpenAiCompatibleModelListResult = openAiCompatibleModelListFetcher.fetchModels(
                 provider = provider,
                 apiKey = apiKey
             )
@@ -184,6 +191,26 @@ fun ProviderManagementScreen(
                 openAiModelListError = result.errorMessage ?: result.errorType ?: "모델 목록 조회에 실패했습니다."
             }
         }
+    }
+
+    fun openOpenAIOfficialModelList(provider: ProviderProfile) {
+        // OPENAI 공식 모델 목록 조회는 현재 skeleton 단계다.
+        // 실제 OpenAI API 호출, Fetcher 실행, 네트워크 요청을 하지 않고 준비중 Dialog만 연다.
+        // 이렇게 해야 OPENAI Provider 클릭 시 런타임 예외가 Provider 목록 화면을 종료시키지 않는다.
+        val endpoint = provider.modelListEndpoint
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: provider.baseUrl
+                .trim()
+                .trimEnd('/')
+                .ifBlank { "https://api.openai.com/v1" }
+                .let { "$it/models" }
+
+        openAIOfficialModelListProvider = provider
+        openAIOfficialModelListErrorType = "OPENAI_MODEL_LIST_NOT_IMPLEMENTED"
+        openAIOfficialModelListErrorMessage = "OpenAI 공식 모델 목록 조회는 아직 구현되지 않았습니다."
+        openAIOfficialModelListEndpoint = endpoint
+        isOpenAIOfficialModelListLoading = false
     }
 
     fun addOpenAiCompatibleModelProfile(provider: ProviderProfile, candidate: OpenAiModelListCandidate) {
@@ -243,13 +270,10 @@ fun ProviderManagementScreen(
     val normalizedSearchQuery = providerSearchQuery.trim().lowercase()
     val filteredProviders = providers
         .filter { provider ->
-            val matchesSearch = normalizedSearchQuery.isBlank() || listOf(
-                provider.displayName,
-                provider.providerType.name,
-                provider.baseUrl,
-                provider.modelListEndpoint.orEmpty(),
-                provider.providerId
-            ).any { value -> value.lowercase().contains(normalizedSearchQuery) }
+            val matchesSearch = providerMatchesSearch(
+                provider = provider,
+                normalizedSearchQuery = normalizedSearchQuery
+            )
 
             val matchesProviderType = selectedProviderTypeFilter == null ||
                 provider.providerType == selectedProviderTypeFilter
@@ -299,7 +323,7 @@ fun ProviderManagementScreen(
                     color = Color.White
                 )
                 Text(
-                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. Google 및 OpenAI-compatible 계열 모델 목록 조회를 지원합니다.",
+                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. Google 및 OpenAI-compatible 계열 모델 목록 조회를 지원합니다. OpenAI 공식 모델 목록 조회는 후속 지원 예정입니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFD0D3DA)
                 )
@@ -365,6 +389,7 @@ fun ProviderManagementScreen(
                     onEditClick = { editingProvider = provider },
                     onDeleteClick = { providerToDelete = provider },
                     onLoadGoogleModels = { openGoogleModelList(provider) },
+                    onLoadOpenAIOfficialModels = { openOpenAIOfficialModelList(provider) },
                     onLoadOpenAiCompatibleModels = { openOpenAiCompatibleModelList(provider) },
                     onEnabledChange = { enabled ->
                         val now = System.currentTimeMillis()
@@ -490,6 +515,23 @@ fun ProviderManagementScreen(
             onAddModel = { item -> addOpenAiCompatibleModelProfile(provider, item) }
         )
     }
+
+    openAIOfficialModelListProvider?.let { provider ->
+        OpenAIModelListSkeletonDialog(
+            provider = provider,
+            isLoading = isOpenAIOfficialModelListLoading,
+            errorType = openAIOfficialModelListErrorType,
+            errorMessage = openAIOfficialModelListErrorMessage,
+            endpoint = openAIOfficialModelListEndpoint,
+            onDismiss = {
+                openAIOfficialModelListProvider = null
+                openAIOfficialModelListErrorType = null
+                openAIOfficialModelListErrorMessage = null
+                openAIOfficialModelListEndpoint = null
+                isOpenAIOfficialModelListLoading = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -543,12 +585,12 @@ private fun ProviderListControlPanel(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
                 label = { Text(text = "Provider 검색") },
-                placeholder = { Text(text = "이름, ProviderType, Base URL, Endpoint, Provider ID") },
+                placeholder = { Text(text = "이름, ProviderType, Provider ID") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
-                text = "API Key 원문은 검색하거나 표시하지 않습니다.",
+                text = "API Key 원문은 검색하거나 표시하지 않습니다. Base URL/Endpoint는 과검색 방지를 위해 기본 검색에서 제외합니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFB8BCC6)
             )
@@ -676,6 +718,7 @@ private fun ProviderProfileCard(
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onLoadGoogleModels: () -> Unit,
+    onLoadOpenAIOfficialModels: () -> Unit,
     onLoadOpenAiCompatibleModels: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
@@ -772,6 +815,13 @@ private fun ProviderProfileCard(
                         Text(text = "모델 목록 불러오기")
                     }
                 }
+                if (provider.providerType == ProviderType.OPENAI) {
+                    TextButton(
+                        onClick = onLoadOpenAIOfficialModels
+                    ) {
+                        Text(text = "모델 목록 불러오기")
+                    }
+                }
                 if (isOpenAiCompatibleModelListProvider(provider.providerType)) {
                     TextButton(
                         onClick = onLoadOpenAiCompatibleModels,
@@ -815,6 +865,7 @@ private fun GoogleModelListDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -926,6 +977,81 @@ private fun GoogleModelListDialog(
 
 
 @Composable
+private fun OpenAIModelListSkeletonDialog(
+    provider: ProviderProfile,
+    isLoading: Boolean,
+    errorType: String?,
+    errorMessage: String?,
+    endpoint: String?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "OpenAI 공식 모델 목록") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = provider.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "OpenAI 공식 /v1/models 조회는 후속 단계에서 지원 예정입니다.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                if (isLoading) {
+                    Text(text = "모델 목록 조회 준비 상태를 확인하는 중입니다...")
+                }
+
+                if (errorType != null || errorMessage != null || endpoint != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B3222)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = errorType ?: "OPENAI_MODEL_LIST_NOT_IMPLEMENTED",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFD08A)
+                            )
+                            Text(
+                                text = errorMessage ?: "OpenAI 공식 모델 목록 조회는 아직 구현되지 않았습니다.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA)
+                            )
+                            Text(
+                                text = "endpoint: ${endpoint ?: "https://api.openai.com/v1/models"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFD0D3DA),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
+}
+
+
+@Composable
 private fun OpenAiCompatibleModelListDialog(
     provider: ProviderProfile,
     isLoading: Boolean,
@@ -944,6 +1070,7 @@ private fun OpenAiCompatibleModelListDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -1084,6 +1211,35 @@ private fun ProviderInfoRow(
             overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+private fun providerMatchesSearch(
+    provider: ProviderProfile,
+    normalizedSearchQuery: String
+): Boolean {
+    if (normalizedSearchQuery.isBlank()) return true
+
+    val query = normalizedSearchQuery.trim()
+    val normalizedTypeName = provider.providerType.name.lowercase()
+    val readableTypeName = normalizedTypeName.replace("_", " ")
+    val displayName = provider.displayName.lowercase()
+    val providerId = provider.providerId.lowercase()
+
+    // "openai" 단독 검색은 공식 OPENAI Provider만 우선 찾는다.
+    // OPENAI_COMPATIBLE, baseUrl, modelListEndpoint 때문에 Groq/OpenRouter/LOCAL/CUSTOM이 과검색되지 않게 한다.
+    if (query == "openai") {
+        return provider.providerType == ProviderType.OPENAI ||
+            displayName == "openai" ||
+            displayName.startsWith("openai ") ||
+            providerId == "openai" ||
+            providerId.startsWith("provider_openai")
+    }
+
+    return displayName.contains(query) ||
+        providerId.contains(query) ||
+        normalizedTypeName == query ||
+        readableTypeName == query ||
+        readableTypeName.contains(query)
 }
 
 private fun isDefaultSeedProvider(provider: ProviderProfile): Boolean {
