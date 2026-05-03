@@ -379,7 +379,7 @@ fun ProviderManagementScreen(
                     color = Color.White
                 )
                 Text(
-                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. Google 및 OpenAI-compatible 계열 모델 목록 조회를 지원합니다. OpenAI 공식 모델 목록 조회는 후속 지원 예정입니다.",
+                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. Google, OpenAI 공식 API, OpenAI-compatible 계열 모델 목록 조회를 지원합니다.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFD0D3DA)
                 )

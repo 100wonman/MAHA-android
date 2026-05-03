@@ -6,7 +6,8 @@ class ConversationEngine(
     private val providerProfileProvider: (providerId: String) -> ProviderProfile? = { null },
     private val googleGeminiProviderAdapter: GoogleGeminiProviderAdapter = GoogleGeminiProviderAdapter(),
     private val openAiCompatibleProviderAdapter: OpenAiCompatibleProviderAdapter = OpenAiCompatibleProviderAdapter(),
-    private val geminiNativeProviderAdapter: GeminiNativeProviderAdapter = GeminiNativeProviderAdapter()
+    private val geminiNativeProviderAdapter: GeminiNativeProviderAdapter = GeminiNativeProviderAdapter(),
+    private val openAIResponsesProviderAdapter: OpenAIResponsesProviderAdapter = OpenAIResponsesProviderAdapter()
 ) {
     suspend fun execute(request: ConversationRequest): ConversationResponse {
         val startedAt = System.currentTimeMillis()
@@ -51,6 +52,30 @@ class ConversationEngine(
                     startedAt = startedAt,
                     promptLength = prompt.length,
                     errorType = "PROVIDER_MISSING",
+                    toolSupportPolicy = toolSupportPolicy
+                )
+            }
+
+            if (providerProfile.providerType == ProviderType.OPENAI) {
+                val apiKey = apiKeyProvider(providerProfile.providerId)
+                val openAIResult = openAIResponsesProviderAdapter.execute(
+                    request = OpenAIResponsesRequest(
+                        requestId = request.requestId,
+                        modelName = modelName,
+                        prompt = prompt,
+                        enableWebSearch = request.webSearchEnabled,
+                        createdAt = System.currentTimeMillis()
+                    ),
+                    apiKey = apiKey.orEmpty()
+                )
+
+                return createOpenAIResponsesNotImplementedResponse(
+                    request = request,
+                    providerName = providerName,
+                    modelName = modelName,
+                    startedAt = startedAt,
+                    promptLength = prompt.length,
+                    result = openAIResult,
                     toolSupportPolicy = toolSupportPolicy
                 )
             }
@@ -773,6 +798,135 @@ class ConversationEngine(
             providerName = providerName,
             modelName = modelName,
             latencySec = nativeResult.latencySec,
+            errorType = errorType,
+            runInfo = runInfo,
+            createdAt = now
+        )
+    }
+
+    private fun createOpenAIResponsesNotImplementedResponse(
+        request: ConversationRequest,
+        providerName: String,
+        modelName: String,
+        startedAt: Long,
+        promptLength: Int,
+        result: OpenAIResponsesResult,
+        toolSupportPolicy: ToolSupportPolicy? = null
+    ): ConversationResponse {
+        val now = System.currentTimeMillis()
+        val latencySec = if (result.latencySec > 0.0) {
+            result.latencySec
+        } else {
+            ((now - startedAt).coerceAtLeast(1) / 1000.0)
+        }
+        val errorType = result.errorType ?: "OPENAI_RESPONSES_NOT_IMPLEMENTED"
+        val safeErrorMessage = buildUserFacingErrorMessage(
+            errorType = errorType,
+            fallbackMessage = result.errorMessage ?: "OpenAI Responses API 대화 호출은 아직 구현되지 않았습니다."
+        )
+        val providerResponseSummary = buildOpenAIResponsesProviderResponseSummary(
+            result = result,
+            modelName = modelName,
+            webSearchRequested = request.webSearchEnabled
+        )
+        val traceText = buildTraceText(
+            ragContext = request.ragContext,
+            providerName = providerName,
+            modelName = modelName,
+            promptLength = promptLength,
+            responseLength = 0,
+            actualApiCall = false,
+            errorType = errorType,
+            providerResponseSummary = providerResponseSummary,
+            status = "FAILED",
+            latencySec = latencySec,
+            toolSupportPolicy = toolSupportPolicy,
+            request = request
+        )
+        val baseRun = createDummyConversationRun(request.sessionId)
+
+        val runInfo = baseRun.copy(
+            runId = request.requestId,
+            userInput = request.userInput,
+            status = ConversationRunStatus.FAILED,
+            totalLatencySec = latencySec,
+            totalRetryCount = 0,
+            workerResults = baseRun.workerResults.mapIndexed { index, worker ->
+                when (index) {
+                    0 -> worker.copy(
+                        status = "FAILED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = latencySec,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "OpenAI Responses API 대화 호출 미구현: $errorType",
+                        rawOutput = buildString {
+                            appendLine(safeErrorMessage.take(800))
+                            appendLine()
+                            appendLine("[PROVIDER_CALL]")
+                            appendLine("providerName: $providerName")
+                            appendLine("providerId: $providerName")
+                            appendLine("providerType: OPENAI")
+                            appendLine("modelName: $modelName")
+                            appendLine("promptLength: $promptLength")
+                            appendLine("responseLength: 0")
+                            appendLine("latencySec: $latencySec")
+                            appendLine("actualApiCall: false")
+                            appendLine("implemented: false")
+                            appendLine("errorType: $errorType")
+                            if (toolSupportPolicy != null) {
+                                appendLine()
+                                appendLine(toolSupportPolicy.toTraceSummary())
+                            }
+                            appendLine()
+                            appendLine("[PROVIDER_RESPONSE_SUMMARY]")
+                            appendLine(providerResponseSummary)
+                            appendLine()
+                            appendWebSearchGroundingTrace(request, toolSupportPolicy?.providerType)
+                            appendLine()
+                            appendLine("[RAG]")
+                            append(buildRagTraceText(request.ragContext))
+                        }.trim()
+                    )
+                    else -> worker.copy(
+                        status = "SKIPPED",
+                        providerName = providerName,
+                        modelName = modelName,
+                        latencySec = 0.0,
+                        retryCount = 0,
+                        errorType = errorType,
+                        outputSummary = "OpenAI Provider 미구현으로 실행 건너뜀",
+                        rawOutput = "SKIPPED"
+                    )
+                }
+            }
+        )
+
+        return ConversationResponse(
+            responseId = "conversation_response_$now",
+            requestId = request.requestId,
+            status = "FAILED",
+            blocks = listOf(
+                ConversationOutputBlock(
+                    blockId = "block_error_$now",
+                    type = ConversationOutputBlockType.ERROR_BLOCK,
+                    title = "OpenAI 대화 호출 미구현",
+                    content = safeErrorMessage,
+                    collapsed = false
+                ),
+                ConversationOutputBlock(
+                    blockId = "block_trace_$now",
+                    type = ConversationOutputBlockType.TRACE_BLOCK,
+                    title = "실행 과정",
+                    content = traceText,
+                    collapsed = true
+                )
+            ),
+            rawText = safeErrorMessage,
+            providerName = providerName,
+            modelName = modelName,
+            latencySec = latencySec,
             errorType = errorType,
             runInfo = runInfo,
             createdAt = now
@@ -1975,6 +2129,30 @@ class ConversationEngine(
         }.trim()
     }
 
+    private fun buildOpenAIResponsesProviderResponseSummary(
+        result: OpenAIResponsesResult,
+        modelName: String,
+        webSearchRequested: Boolean
+    ): String {
+        return buildString {
+            appendLine("providerType=OPENAI")
+            appendLine("adapter=OpenAIResponsesProviderAdapter")
+            appendLine("endpoint=/v1/responses")
+            appendLine("modelName=$modelName")
+            appendLine("implemented=false")
+            appendLine("actualApiCall=false")
+            appendLine("webSearchRequested=$webSearchRequested")
+            appendLine("webSearchImplemented=false")
+            appendLine("success=${result.success}")
+            appendLine("errorType=${result.errorType ?: "NONE"}")
+            appendLine("latencySec=${result.latencySec}")
+            appendLine("responseLength=${result.rawText.length}")
+            if (!result.rawMetadataSummary.isNullOrBlank()) {
+                appendLine("rawMetadataSummary=${result.rawMetadataSummary}")
+            }
+        }.trim()
+    }
+
     private fun buildUserFacingErrorMessage(
         errorType: String,
         fallbackMessage: String
@@ -1987,6 +2165,7 @@ class ConversationEngine(
             "INVALID_REQUEST" -> "요청 형식 또는 모델명이 올바르지 않습니다. 모델명과 Provider 설정을 확인하세요."
             "INVALID_RESPONSE" -> "응답에서 표시 가능한 텍스트를 찾지 못했습니다."
             "TOOL_CALL_NOT_SUPPORTED" -> "모델이 도구 호출을 요청했지만, 현재 대화모드에서는 도구 실행을 아직 지원하지 않습니다."
+            "OPENAI_RESPONSES_NOT_IMPLEMENTED" -> "OpenAI Responses API 대화 호출은 아직 구현되지 않았습니다. 현재 OPENAI Provider는 모델 목록 조회와 설정 준비까지만 지원합니다."
             "WEB_SEARCH_NOT_SUPPORTED" -> "현재 선택한 Provider에서는 Web Search grounding을 지원하지 않습니다. Google Provider와 Web Search 지원 모델을 선택하세요."
             "MODEL_UNSUPPORTED_TOOL" -> "현재 선택한 모델의 Web Search capability가 활성화되어 있지 않습니다. Model 관리에서 webSearch capability를 USER_ENABLED 또는 SUPPORTED 상태로 설정하세요."
             "GROUNDING_FAILED" -> "Gemini native Web Search grounding 호출에 실패했습니다. 실행정보의 WEB_SEARCH_GROUNDING 섹션을 확인하세요."
