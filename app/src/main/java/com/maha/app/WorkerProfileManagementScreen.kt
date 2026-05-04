@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -67,6 +68,8 @@ fun WorkerProfileManagementScreen(
     var selectedTab by remember { mutableStateOf(WorkerProfileManagementTab.WORKERS) }
     var editingWorker by remember { mutableStateOf<ConversationWorkerProfile?>(null) }
     var editingScenario by remember { mutableStateOf<ConversationScenarioProfile?>(null) }
+    var deleteTargetScenario by remember { mutableStateOf<ConversationScenarioProfile?>(null) }
+    var scenarioActionMessage by remember { mutableStateOf<String?>(null) }
 
     val currentEditingWorker = editingWorker
     if (currentEditingWorker != null) {
@@ -95,6 +98,26 @@ fun WorkerProfileManagementScreen(
             modifier = modifier
         )
         return
+    }
+
+    val scenarioPendingDelete = deleteTargetScenario
+    if (scenarioPendingDelete != null) {
+        ScenarioDeleteConfirmDialog(
+            scenario = scenarioPendingDelete,
+            onDismiss = { deleteTargetScenario = null },
+            onConfirmDelete = {
+                val deleted = runCatching {
+                    WorkerProfileStore.deleteScenario(scenarioPendingDelete.scenarioId)
+                }
+                scenarioActionMessage = if (deleted.isSuccess) {
+                    reloadWorkerProfileStore()
+                    "Scenario를 삭제했습니다. WorkerProfile은 삭제하지 않았습니다."
+                } else {
+                    "Scenario 삭제 실패: ${deleted.exceptionOrNull()?.message ?: "알 수 없는 오류"}"
+                }
+                deleteTargetScenario = null
+            }
+        )
     }
 
     Column(
@@ -149,6 +172,22 @@ fun WorkerProfileManagementScreen(
                     title = "Scenario 목록",
                     subtitle = "Scenario는 WorkerProfile ID 목록을 참조하는 Worker Set 후보입니다."
                 )
+                ScenarioCreateActionCard(
+                    message = scenarioActionMessage,
+                    onCreateScenario = {
+                        val scenario = createNewUserScenario()
+                        val saved = runCatching {
+                            WorkerProfileStore.upsertScenario(scenario)
+                        }
+                        scenarioActionMessage = if (saved.isSuccess) {
+                            reloadWorkerProfileStore()
+                            editingScenario = scenario
+                            "새 Scenario를 생성했습니다."
+                        } else {
+                            "새 Scenario 생성 실패: ${saved.exceptionOrNull()?.message ?: "알 수 없는 오류"}"
+                        }
+                    }
+                )
                 if (scenarios.isEmpty()) {
                     WorkerProfileEmptyCard(text = "표시할 Conversation Scenario가 없습니다.")
                 } else {
@@ -157,7 +196,37 @@ fun WorkerProfileManagementScreen(
                         ConversationScenarioPreviewCard(
                             scenario = scenario,
                             workersById = workersById,
-                            onEdit = { editingScenario = scenario }
+                            onEdit = { editingScenario = scenario },
+                            onDuplicate = {
+                                val duplicated = createScenarioDuplicate(scenario)
+                                val saved = runCatching {
+                                    WorkerProfileStore.upsertScenario(duplicated)
+                                }
+                                scenarioActionMessage = if (saved.isSuccess) {
+                                    reloadWorkerProfileStore()
+                                    editingScenario = duplicated
+                                    "Scenario 복사본을 생성했습니다."
+                                } else {
+                                    "Scenario 복제 실패: ${saved.exceptionOrNull()?.message ?: "알 수 없는 오류"}"
+                                }
+                            },
+                            onToggleEnabled = {
+                                val next = scenario.copy(
+                                    enabled = !scenario.enabled,
+                                    userModified = true,
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                                val saved = runCatching {
+                                    WorkerProfileStore.upsertScenario(next)
+                                }
+                                scenarioActionMessage = if (saved.isSuccess) {
+                                    reloadWorkerProfileStore()
+                                    if (next.enabled) "Scenario를 활성화했습니다." else "Scenario를 비활성화했습니다."
+                                } else {
+                                    "Scenario 상태 변경 실패: ${saved.exceptionOrNull()?.message ?: "알 수 없는 오류"}"
+                                }
+                            },
+                            onRequestDelete = { deleteTargetScenario = scenario }
                         )
                     }
                 }
@@ -406,6 +475,9 @@ private fun ConversationScenarioPreviewCard(
     scenario: ConversationScenarioProfile,
     workersById: Map<String, ConversationWorkerProfile>,
     onEdit: () -> Unit,
+    onDuplicate: () -> Unit,
+    onToggleEnabled: () -> Unit,
+    onRequestDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -460,8 +532,16 @@ private fun ConversationScenarioPreviewCard(
                 )
             )
 
+            ScenarioCardActionRow(
+                enabled = scenario.enabled,
+                isDefaultTemplate = scenario.isDefaultTemplate,
+                onDuplicate = onDuplicate,
+                onToggleEnabled = onToggleEnabled,
+                onRequestDelete = onRequestDelete
+            )
+
             if (expanded) {
-                WorkerProfileReadOnlyPlaceholder(text = "Scenario 상세 placeholder입니다. 실제 WorkerSet 편집/저장은 후속 구현 예정입니다.")
+                WorkerProfileReadOnlyPlaceholder(text = "Scenario 상세입니다. Scenario 추가/복제/활성화/삭제와 기본 정보/WorkerSet 저장은 연결되어 있습니다. Scenario 실행은 아직 연결되지 않았습니다.")
 
                 WorkerProfileDetailTitle(title = "Scenario 기본 정보")
                 WorkerProfileKeyValue("설명", scenario.description.ifBlank { "설명 없음" })
@@ -482,6 +562,136 @@ private fun ConversationScenarioPreviewCard(
                 WorkerProfileCollapseButton(onClick = { expanded = false })
             }
         }
+    }
+}
+
+
+@Composable
+private fun ScenarioCreateActionCard(
+    message: String?,
+    onCreateScenario: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF3B4556), MaterialTheme.shapes.medium)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Scenario 관리",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = "새 Scenario 추가, 복제, 비활성화/활성화, 사용자 생성 Scenario 삭제를 지원합니다. WorkerProfile은 삭제하거나 복제하지 않습니다.",
+                color = Color(0xFFD0D3DA)
+            )
+            TextButton(onClick = onCreateScenario) {
+                Text(text = "새 Scenario 추가", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
+            }
+            if (!message.isNullOrBlank()) {
+                Text(
+                    text = message,
+                    color = Color(0xFFE6D0B8),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScenarioCardActionRow(
+    enabled: Boolean,
+    isDefaultTemplate: Boolean,
+    onDuplicate: () -> Unit,
+    onToggleEnabled: () -> Unit,
+    onRequestDelete: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            TextButton(onClick = onDuplicate, modifier = Modifier.weight(1f)) {
+                Text(text = "복제", color = Color(0xFFBFD7FF))
+            }
+            TextButton(onClick = onToggleEnabled, modifier = Modifier.weight(1f)) {
+                Text(text = if (enabled) "비활성화" else "활성화", color = Color(0xFFBFD7FF))
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            TextButton(onClick = onRequestDelete, modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (isDefaultTemplate) "삭제 제한" else "삭제",
+                    color = if (isDefaultTemplate) Color(0xFFE6D0B8) else Color(0xFFFFB4AB)
+                )
+            }
+            Text(
+                text = if (isDefaultTemplate) "기본 Scenario는 삭제 대신 비활성화 또는 복제를 권장합니다." else "삭제 시 Scenario만 제거됩니다.",
+                color = Color(0xFFB8BCC6),
+                modifier = Modifier
+                    .weight(2f)
+                    .padding(vertical = 12.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScenarioDeleteConfirmDialog(
+    scenario: ConversationScenarioProfile,
+    onDismiss: () -> Unit,
+    onConfirmDelete: () -> Unit,
+) {
+    if (scenario.isDefaultTemplate) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = "기본 Scenario 삭제 제한") },
+            text = {
+                Text(
+                    text = "기본 Scenario는 삭제하지 않습니다. 필요하면 비활성화하거나 복제본을 수정하세요. WorkerProfile은 변경되지 않습니다."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text(text = "확인")
+                }
+            }
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = "Scenario 삭제") },
+            text = {
+                Text(
+                    text = "'${scenario.name.ifBlank { scenario.scenarioId }}' Scenario만 삭제됩니다. 포함된 WorkerProfile은 삭제되지 않습니다."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmDelete) {
+                    Text(text = "삭제", color = Color(0xFFFFB4AB))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text(text = "취소")
+                }
+            }
+        )
     }
 }
 
@@ -627,6 +837,44 @@ private fun WorkerProfileEmptyCard(text: String) {
     }
 }
 
+
+
+private fun createNewUserScenario(): ConversationScenarioProfile {
+    val timestamp = System.currentTimeMillis()
+    return ConversationScenarioProfile(
+        scenarioId = generateScenarioId("user_scenario"),
+        name = "새 Scenario",
+        description = "",
+        workerProfileIds = emptyList(),
+        defaultExecutionMode = ExecutionMode.SINGLE,
+        orchestratorProfileId = null,
+        synthesisProfileId = null,
+        userEditable = true,
+        isDefaultTemplate = false,
+        userModified = true,
+        enabled = true,
+        createdAt = timestamp,
+        updatedAt = timestamp,
+    )
+}
+
+private fun createScenarioDuplicate(source: ConversationScenarioProfile): ConversationScenarioProfile {
+    val timestamp = System.currentTimeMillis()
+    return source.copy(
+        scenarioId = generateScenarioId("scenario_copy"),
+        name = source.name.ifBlank { "이름 없는 Scenario" } + " 복사본",
+        userEditable = true,
+        isDefaultTemplate = false,
+        userModified = true,
+        enabled = true,
+        createdAt = timestamp,
+        updatedAt = timestamp,
+    )
+}
+
+private fun generateScenarioId(prefix: String): String {
+    return "${prefix}_${System.currentTimeMillis()}"
+}
 
 private fun String?.toScenarioWorkerSummary(
     workersById: Map<String, ConversationWorkerProfile>,

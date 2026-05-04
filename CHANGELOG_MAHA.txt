@@ -1,4 +1,467 @@
 ==============================
+[2026-05-04 23:45] Scenario 추가/복제/비활성화/삭제 UI 구현
+==============================
+
+[작업]
+- Scenario 탭에서 새 Scenario 추가 기능 구현
+- Scenario 복제 기능 구현
+- Scenario 비활성화/활성화 기능 구현
+- 사용자 생성 Scenario 삭제 기능 구현
+- 기본 Scenario 삭제 제한 또는 강한 확인 적용
+- Scenario 추가/복제/삭제 시 WorkerProfile은 변경하지 않음
+- 저장 후 Worker Profile 관리 화면의 Scenario 목록에 변경 내용 반영
+- Scenario 실행, Worker 실행, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Scenario 탭에 “새 Scenario 추가” UI 추가
+- Scenario 복제 / 비활성화 / 활성화 UI 추가
+- 사용자 생성 Scenario 삭제 및 삭제 확인 Dialog 추가
+- 기본 Scenario 삭제 제한 Dialog 추가
+- Scenario 변경 후 목록 reload 및 conversation_scenarios.json 반영 흐름 연결
+
+[Scenario 추가 테스트]
+- 새 Scenario 추가 UI: 확인
+- 기본값 생성:
+- scenarioId 신규 생성:
+- conversation_scenarios.json 반영: 확인
+- 목록 reload: 구현
+- WorkerProfile 변경 없음: 유지
+
+[Scenario 복제 테스트]
+- 복제 UI: 확인 필요
+- 새 scenarioId 생성: 구현
+- name 복사본 처리: 구현
+- workerProfileIds 참조 복사: 구현
+- defaultExecutionMode 복사: 구현
+- orchestrator/synthesis 참조 복사: 구현
+- isDefaultTemplate=false: 구현
+- userModified=true: 구현
+
+[비활성화/활성화 테스트]
+- 비활성화 UI: 확인 필요
+- enabled=false 저장: 구현
+- 비활성 배지 표시: 유지
+- 활성화 UI: 확인 필요
+- enabled=true 저장: 구현
+- updatedAt 갱신: 구현
+
+[삭제 테스트]
+- 삭제 UI: 확인 필요
+- 삭제 확인 Dialog: 구현
+- 사용자 생성 Scenario 삭제: 구현
+- 기본 Scenario 삭제 제한: 구현
+- WorkerProfile 삭제 없음: 유지
+- 목록 reload: 구현
+- conversation_scenarios.json 반영: 확인
+
+[기존 저장 유지 테스트]
+- Scenario 편집 유지: 유지
+- WorkerSet 편집 유지: 유지
+- Orchestrator/Synthesis 선택 유지: 유지
+- defaultExecutionMode 저장 유지: 유지
+- Worker 편집 UI 유지: 유지
+
+[연결 금지 확인]
+- Scenario 실행 미구현: 유지
+- Worker 실행 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- 병렬 실행 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+- WorkerProfile 삭제 없음: 유지
+- WorkerProfile 복제 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: Scenario 추가/복제/활성화/삭제만 추가
+- Worker 편집 UI: 변경 없음
+- Scenario 편집 UI: 동봉, 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileManagementScreen.kt
+- ScenarioEditScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Scenario 추가/복제/비활성화/삭제 UI 구현
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Scenario는 고정 프리셋이 아니라 사용자가 추가/삭제/수정 가능한 WorkerSet이다.
+- Scenario는 WorkerProfile 목록을 workerProfileIds로 참조하며 WorkerProfile 자체를 중복 저장하지 않는다.
+- 이번 단계는 Scenario 관리 UI에서 추가/복제/비활성화/삭제 기능만 구현한다.
+- Scenario 실행 / Worker 실행 / ConversationEngine 연결은 하지 않는다.
+
+목표:
+- Worker Profile 관리 화면의 Scenario 탭에서 새 Scenario를 추가할 수 있게 한다.
+- 기존 Scenario를 복제할 수 있게 한다.
+- Scenario를 비활성화/활성화할 수 있게 한다.
+- 사용자 생성 Scenario를 삭제할 수 있게 한다.
+- 기본 Scenario 삭제는 제한하거나 강한 확인을 요구한다.
+- WorkerProfile은 절대 삭제하지 않는다.
+- Scenario 실행 흐름에는 연결하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 새 Scenario 추가 UI 구현
+✔ 새 Scenario 기본값 생성
+✔ Scenario 복제 UI 구현
+✔ Scenario 복제 시 새 scenarioId 생성
+✔ Scenario 비활성화/활성화 UI 구현
+✔ enabled 저장 연결
+✔ Scenario 삭제 UI 구현
+✔ 삭제 확인 Dialog 구현
+✔ 기본 Scenario 삭제 제한 또는 강한 확인 구현
+✔ 사용자 생성 Scenario 삭제 저장 연결
+✔ 삭제 시 WorkerProfile은 삭제하지 않음
+✔ Scenario 목록 reload
+✔ conversation_scenarios.json 반영
+✔ 기존 Scenario 편집 저장 흐름 유지
+✔ 기존 WorkerSet 편집 저장 흐름 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ WorkerProfile 삭제 구현
+❌ WorkerProfile 복제 구현
+❌ Scenario 실행 구현
+❌ Worker 실행 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- WorkerProfileManagementScreen.kt
+- ScenarioEditScreen.kt 필요 시
+- WorkerProfileStore.kt 필요 시 최소 보정
+
+주의:
+- WorkerProfileStore의 upsertScenario / deleteScenario 기존 함수를 우선 사용한다.
+- conversation_scenarios.json 저장은 기존 Store 구현 흐름을 따른다.
+- worker_profiles.json은 이번 단계에서 변경하지 않는다.
+- Scenario 추가/복제/삭제는 Scenario 데이터만 변경한다.
+- WorkerProfile 자체를 생성/삭제/복제하지 않는다.
+
+--------------------------------------------------
+3. 새 Scenario 추가 정책
+--------------------------------------------------
+
+새 Scenario 기본값:
+
+- scenarioId: 새 ID 생성
+- name: “새 Scenario”
+- description: 빈 문자열
+- workerProfileIds: emptyList
+- defaultExecutionMode: SINGLE
+- orchestratorProfileId: null
+- synthesisProfileId: null
+- userEditable: true
+- isDefaultTemplate: false
+- userModified: true
+- enabled: true
+- createdAt: 현재 시각
+- updatedAt: 현재 시각
+
+정책:
+- 새 Scenario는 기본 템플릿이 아니다.
+- Worker가 없어도 저장 가능하다.
+- Worker가 없는 Scenario는 후속 실행 단계에서 제한 상태로 표시한다.
+- 추가 후 바로 ScenarioEditScreen으로 진입하거나 목록에 추가 후 사용자가 편집할 수 있게 한다.
+
+권장:
+- “새 Scenario 추가” 클릭 → 기본값 생성 저장 → 편집 화면 진입
+
+--------------------------------------------------
+4. Scenario 복제 정책
+--------------------------------------------------
+
+복제 대상:
+- 기본 Scenario
+- 사용자 수정 Scenario
+
+복제 시 정책:
+- 새 scenarioId 생성
+- name = 기존 이름 + “ 복사본”
+- description 복사
+- workerProfileIds 참조 복사
+- defaultExecutionMode 복사
+- orchestratorProfileId / synthesisProfileId 복사
+- userEditable=true
+- isDefaultTemplate=false
+- userModified=true
+- enabled=true
+- createdAt/updatedAt 새로 갱신
+
+주의:
+- WorkerProfile 자체는 복제하지 않는다.
+- 복제본은 기존 WorkerProfile을 참조한다.
+- 복제 후 목록 reload
+- 필요 시 복제 후 편집 화면으로 진입 가능
+
+--------------------------------------------------
+5. 비활성화 / 활성화 정책
+--------------------------------------------------
+
+비활성화:
+- enabled=false
+- Scenario는 보존
+- 목록에서 비활성 배지 표시
+- 실행 후보에서는 후속 단계에서 제외 가능
+
+활성화:
+- enabled=true
+- 기존 Scenario 설정 유지
+
+정책:
+- 비활성화/활성화는 delete보다 안전한 관리 수단이다.
+- 기본 Scenario도 비활성화는 허용 가능하다.
+- 저장 시 userModified=true, updatedAt 갱신
+
+--------------------------------------------------
+6. 삭제 정책
+--------------------------------------------------
+
+삭제:
+- 사용자 확인 Dialog 필수
+- 삭제 대상은 conversation_scenarios.json의 scenarios 목록에서 제거
+- WorkerProfile은 삭제하지 않는다.
+- Scenario가 참조하던 WorkerProfile도 유지한다.
+
+기본 Scenario 삭제:
+- isDefaultTemplate=true인 Scenario는 삭제 제한 권장
+- 또는 강한 확인 Dialog 필요
+- 초기 구현에서는 기본 Scenario 삭제 금지 또는 “복제 후 비활성화 권장” 안내가 안전하다.
+
+사용자 생성 Scenario 삭제:
+- isDefaultTemplate=false인 Scenario는 확인 후 삭제 허용
+
+문구 후보:
+- “이 Scenario만 삭제됩니다. 포함된 WorkerProfile은 삭제되지 않습니다.”
+- “기본 Scenario는 삭제하지 않는 것이 권장됩니다. 필요하면 비활성화하거나 복제본을 수정하세요.”
+
+--------------------------------------------------
+7. 목록 UI 보정 정책
+--------------------------------------------------
+
+Scenario 카드 액션 후보:
+
+- 편집
+- 복제
+- 비활성화 / 활성화
+- 삭제
+
+표시 후보:
+- 기본 템플릿
+- 사용자 수정본
+- 비활성
+- 포함 Worker 수
+- defaultExecutionMode
+- Orchestrator/Synthesis 요약
+
+주의:
+- 모바일 가시성을 해치지 않도록 액션은 compact row 또는 접힘 영역에 둔다.
+- 삭제는 눈에 띄되 실수 방지 확인 Dialog를 둔다.
+
+--------------------------------------------------
+8. 저장 후 반영 정책
+--------------------------------------------------
+
+필수:
+- 새 Scenario 추가 후 목록 반영
+- 복제 후 목록 반영
+- 비활성화/활성화 후 목록 반영
+- 삭제 후 목록 반영
+- conversation_scenarios.json 변경 확인
+- 앱 재진입 또는 화면 재진입 후 유지
+
+권장:
+- 각 액션 후 WorkerProfileStore reload
+- 현재 Scenario 탭 유지
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 편집 UI
+- Worker 기본 정보 저장
+- System Instruction 저장
+- Provider/Model 선택 저장
+- capability override 저장
+- InputPolicy/OutputPolicy 저장
+- Scenario name/description/enabled 저장
+- Scenario defaultExecutionMode 저장
+- Scenario Orchestrator/Synthesis 저장
+- Scenario WorkerSet 편집 저장
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+10. 테스트 기준
+--------------------------------------------------
+
+A. Scenario 추가
+- 새 Scenario 추가 UI:
+- 기본값 생성:
+- scenarioId 신규 생성:
+- conversation_scenarios.json 반영:
+- 목록 reload:
+- WorkerProfile 변경 없음:
+
+B. Scenario 복제
+- 복제 UI:
+- 새 scenarioId 생성:
+- name 복사본 처리:
+- workerProfileIds 참조 복사:
+- defaultExecutionMode 복사:
+- orchestrator/synthesis 참조 복사:
+- isDefaultTemplate=false:
+- userModified=true:
+
+C. 비활성화/활성화
+- 비활성화 UI:
+- enabled=false 저장:
+- 비활성 배지 표시:
+- 활성화 UI:
+- enabled=true 저장:
+- updatedAt 갱신:
+
+D. 삭제
+- 삭제 UI:
+- 삭제 확인 Dialog:
+- 사용자 생성 Scenario 삭제:
+- 기본 Scenario 삭제 제한:
+- WorkerProfile 삭제 없음:
+- 목록 reload:
+- conversation_scenarios.json 반영:
+
+E. 기존 저장 유지
+- Scenario 편집 유지:
+- WorkerSet 편집 유지:
+- Orchestrator/Synthesis 선택 유지:
+- defaultExecutionMode 저장 유지:
+- Worker 편집 UI 유지:
+
+F. 연결 금지 확인
+- Scenario 실행 미구현:
+- Worker 실행 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- 병렬 실행 미구현:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+- WorkerProfile 삭제 없음:
+- WorkerProfile 복제 없음:
+
+G. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Worker 편집 UI:
+- Scenario 편집 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ WorkerProfile 삭제 구현 금지
+❌ WorkerProfile 복제 구현 금지
+❌ Scenario 실행 구현 금지
+❌ Worker 실행 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- Scenario 추가 가능
+- Scenario 복제 가능
+- Scenario 비활성화/활성화 가능
+- 사용자 생성 Scenario 삭제 가능
+- 기본 Scenario 삭제 제한 또는 강한 확인 적용
+- WorkerProfile은 삭제/복제하지 않음
+- 저장 후 Scenario 목록과 재진입 시 변경 내용 유지
+- Scenario 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker 실행계획 preview 연결 설계 또는 Scenario 선택을 Capability Resolver 진단에 반영
+
+==============================
 [2026-05-04 23:30] Scenario WorkerSet 편집 UI 구현
 ==============================
 
