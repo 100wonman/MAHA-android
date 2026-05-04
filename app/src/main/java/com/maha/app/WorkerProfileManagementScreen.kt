@@ -88,6 +88,10 @@ fun WorkerProfileManagementScreen(
             scenario = currentEditingScenario,
             workers = workers,
             onCancel = { editingScenario = null },
+            onSaved = {
+                reloadWorkerProfileStore()
+                editingScenario = null
+            },
             modifier = modifier
         )
         return
@@ -212,7 +216,7 @@ private fun WorkerProfileReadOnlyNoticeCard() {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "Worker 기본 정보, System Instruction, Provider/Model 참조 저장은 연결되어 있습니다. Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
+            text = "Worker 기본 정보, System Instruction, Provider/Model 참조, Capability/Policy, Scenario 기본 정보 저장은 연결되어 있습니다. Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
             color = Color(0xFFE6D0B8),
             modifier = Modifier.padding(12.dp)
         )

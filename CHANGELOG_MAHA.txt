@@ -1,4 +1,403 @@
 ==============================
+[2026-05-04 22:57] Scenario 기본 정보 저장 연결
+==============================
+
+[작업]
+- ScenarioEditScreen 저장 버튼을 WorkerProfileStore.upsertScenario에 연결
+- name / description / enabled 저장
+- 저장 시 userModified=true 및 updatedAt 갱신
+- 저장 후 Worker Profile 관리 화면의 Scenario 목록에 변경 내용 반영
+- workerProfileIds / defaultExecutionMode / orchestratorProfileId / synthesisProfileId 등 기존 필드는 보존
+- WorkerSet 저장, 실행 방식 저장, 핵심 Worker 지정 저장, Scenario 실행, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ScenarioEditScreen 저장 버튼을 WorkerProfileStore.upsertScenario에 연결
+- name / description / enabled 저장 구현
+- 저장 시 userModified=true 및 updatedAt 갱신
+- 저장 후 Worker Profile 관리 화면으로 복귀하고 Scenario 목록 reload
+- workerProfileIds/defaultExecutionMode/orchestratorProfileId/synthesisProfileId 등 기존 필드 보존
+
+[저장 연결 테스트]
+- 저장 버튼 upsertScenario 연결: 확인
+- name 저장: 확인
+- description 저장: 확인
+- enabled 저장: 확인
+- userModified=true: 확인
+- updatedAt 갱신: 확인
+
+[저장 후 반영 테스트]
+- Scenario 목록 반영: 확인
+- Scenario 상세 반영: 확인
+- 재진입 후 유지: 확인
+- conversation_scenarios.json 변경 확인: 확인
+- 취소 시 미저장: 확인
+
+[보존 필드 테스트]
+- workerProfileIds 유지: 유지
+- defaultExecutionMode 유지: 유지
+- orchestratorProfileId 유지: 유지
+- synthesisProfileId 유지: 유지
+- userEditable 유지: 유지
+- isDefaultTemplate 유지: 유지
+- createdAt 유지: 유지
+
+[placeholder 확인]
+- Worker 추가 placeholder: 유지
+- Worker 제거 placeholder: 유지
+- Worker 순서 변경 placeholder: 유지
+
+[오류 처리 테스트]
+- 저장 실패 crash 없음: runCatching 처리
+- 빈 name 처리: 저장 차단
+- 긴 description 저장: 확인 필요
+- 줄바꿈 보존: 확인 필요
+- dirty 상태: name/description/enabled 기준 유지
+
+[연결 금지 확인]
+- WorkerSet 저장 미구현: 유지
+- defaultExecutionMode 저장 미구현: 유지
+- Orchestrator/Synthesis 지정 저장 미구현: 유지
+- Scenario 추가/복제/삭제 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Scenario 실행 미구현: 유지
+- Worker 실행 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: Scenario 기본 정보 저장 후 reload만 추가
+- Worker 편집 UI: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ScenarioEditScreen.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Scenario 기본 정보 저장 연결
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Scenario는 고정 프리셋이 아니라 사용자가 추가/삭제/수정 가능한 WorkerSet이다.
+- Scenario는 WorkerProfile 목록을 참조하며 WorkerProfile 자체를 중복 저장하지 않는다.
+- 이번 단계는 Scenario 기본 정보 저장 연결까지만 수행한다.
+- ConversationEngine 연결과 Scenario 실행은 하지 않는다.
+
+목표:
+- ScenarioEditScreen의 저장 버튼을 WorkerProfileStore.upsertScenario에 연결한다.
+- name / description / enabled 값을 실제 저장한다.
+- 저장 시 userModified=true 및 updatedAt 갱신을 수행한다.
+- 저장 후 Worker Profile 관리 화면의 Scenario 목록에 변경 내용이 반영되도록 한다.
+- defaultExecutionMode / WorkerSet / Orchestrator/Synthesis 지정 저장은 이번 단계에서 제외하거나 기존 값 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ScenarioEditScreen 저장 버튼 실제 연결
+✔ name 저장
+✔ description 저장
+✔ enabled 저장
+✔ 저장 시 userModified=true 설정
+✔ 저장 시 updatedAt 갱신
+✔ 기존 workerProfileIds 유지
+✔ 기존 defaultExecutionMode 유지
+✔ 기존 orchestratorProfileId 유지
+✔ 기존 synthesisProfileId 유지
+✔ 기존 userEditable 유지
+✔ 기존 isDefaultTemplate 유지
+✔ 기존 createdAt 유지
+✔ 저장 성공 후 관리 화면 복귀 또는 저장 완료 상태 표시
+✔ 저장 후 Scenario 목록/상세에 변경 내용 반영
+✔ 취소 시 저장하지 않고 복귀
+✔ dirty 상태 유지
+✔ Worker 추가 placeholder 확인
+✔ Worker 제거 placeholder 확인
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ WorkerSet 저장 구현
+❌ Worker 추가/제거 저장 구현
+❌ Worker 순서 변경 저장 구현
+❌ defaultExecutionMode 저장 구현
+❌ orchestratorProfileId 저장 구현
+❌ synthesisProfileId 저장 구현
+❌ Scenario 추가/복제/삭제 실제 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Scenario 실행 구현
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- ScenarioEditScreen.kt
+- WorkerProfileManagementScreen.kt 필요 시
+- WorkerProfileStore.kt 필요 시 최소 보정
+
+주의:
+- WorkerProfileStore의 기존 upsertScenario 함수를 우선 사용한다.
+- conversation_scenarios.json 저장은 기존 WorkerProfileStore 구현 흐름을 따른다.
+- worker_profiles.json은 이번 단계에서 변경하지 않는다.
+- WorkerSet 관련 필드는 기존 값을 보존한다.
+
+--------------------------------------------------
+3. 저장 필드 정책
+--------------------------------------------------
+
+저장 대상:
+
+- name
+- description
+- enabled
+- userModified=true
+- updatedAt=현재 시각
+
+보존 대상:
+
+- scenarioId
+- workerProfileIds
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- userEditable
+- isDefaultTemplate
+- createdAt
+
+주의:
+- 기본 Scenario라도 사용자가 저장하면 userModified=true
+- isDefaultTemplate은 유지한다.
+- WorkerSet / 실행 방식 / 핵심 Worker 지정은 이번 단계에서 저장하지 않는다.
+
+--------------------------------------------------
+4. 저장 / 취소 UX 정책
+--------------------------------------------------
+
+저장:
+- 저장 버튼 클릭 시 WorkerProfileStore.upsertScenario 호출
+- 성공 시 저장 완료 안내 표시 또는 관리 화면으로 복귀
+- 저장 후 Scenario 목록에서 변경 내용 확인 가능해야 함
+- 저장 실패 시 crash 없이 오류 문구 표시
+
+취소:
+- 변경사항이 없으면 바로 복귀
+- 변경사항이 있으면 폐기 확인 Dialog 가능
+- 구현 부담이 있으면 최소한 저장 없이 복귀 유지
+
+dirty 상태:
+- 원본 scenario snapshot과 현재 입력값 비교
+- 변경사항이 있으면 dirty 표시
+- 저장 후 dirty=false
+
+주의:
+- 자동 저장 금지
+- 명시적 저장 유지
+
+--------------------------------------------------
+5. 검증 보류 항목 포함
+--------------------------------------------------
+
+직전 확인 보류 항목을 이번 단계에서 확인한다.
+
+확인:
+- Worker 추가 placeholder 표시
+- Worker 제거 placeholder 표시
+
+주의:
+- 실제 Worker 추가/제거 저장 구현 금지
+- placeholder 확인만 수행
+
+--------------------------------------------------
+6. 저장 후 화면 반영 정책
+--------------------------------------------------
+
+필수:
+- 저장 후 Worker Profile 관리 화면의 Scenario 카드에 변경된 name/description/enabled 반영
+- Scenario 상세 접힘 영역에도 변경 내용 반영
+- 앱 재진입 또는 화면 재진입 시 conversation_scenarios.json에서 변경 내용 로드 가능
+
+허용:
+- 저장 후 관리 화면으로 복귀
+- 또는 현재 편집 화면에 저장 완료 메시지 표시 후 사용자가 뒤로가기
+
+권장:
+- 저장 후 관리 화면으로 복귀하고 목록 reload
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 편집 UI
+- Worker 기본 정보 저장
+- System Instruction 저장
+- Provider/Model 선택 저장
+- capability override 저장
+- InputPolicy/OutputPolicy 저장
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+8. 테스트 기준
+--------------------------------------------------
+
+A. 저장 연결
+- 저장 버튼 upsertScenario 연결:
+- name 저장:
+- description 저장:
+- enabled 저장:
+- userModified=true:
+- updatedAt 갱신:
+
+B. 저장 후 반영
+- Scenario 목록 반영:
+- Scenario 상세 반영:
+- 재진입 후 유지:
+- conversation_scenarios.json 변경 확인:
+- 취소 시 미저장:
+
+C. 보존 필드
+- workerProfileIds 유지:
+- defaultExecutionMode 유지:
+- orchestratorProfileId 유지:
+- synthesisProfileId 유지:
+- userEditable 유지:
+- isDefaultTemplate 유지:
+- createdAt 유지:
+
+D. placeholder 확인
+- Worker 추가 placeholder:
+- Worker 제거 placeholder:
+- Worker 순서 변경 placeholder:
+
+E. 오류 처리
+- 저장 실패 crash 없음:
+- 빈 name 처리:
+- 긴 description 저장:
+- 줄바꿈 보존:
+- dirty 상태:
+
+F. 연결 금지 확인
+- WorkerSet 저장 미구현:
+- defaultExecutionMode 저장 미구현:
+- Orchestrator/Synthesis 지정 저장 미구현:
+- Scenario 추가/복제/삭제 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Scenario 실행 미구현:
+- Worker 실행 미구현:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+G. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Worker 편집 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ WorkerSet 저장 구현 금지
+❌ Worker 추가/제거 실제 구현 금지
+❌ Worker 순서 변경 실제 구현 금지
+❌ defaultExecutionMode 저장 구현 금지
+❌ orchestratorProfileId 저장 구현 금지
+❌ synthesisProfileId 저장 구현 금지
+❌ Scenario 추가/복제/삭제 실제 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Scenario 실행 구현 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- ScenarioEditScreen 저장 버튼이 WorkerProfileStore.upsertScenario에 연결됨
+- name / description / enabled가 실제 저장됨
+- 저장 후 Scenario 목록과 재진입 시 변경 내용 유지
+- 기존 WorkerSet / 실행 방식 / 핵심 Worker 지정 필드는 보존
+- Scenario 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+defaultExecutionMode 저장 연결 또는 Scenario WorkerSet 편집 UI 구현
+
+==============================
 [2026-05-04 08:20] Scenario 편집 UI skeleton 추가
 ==============================
 

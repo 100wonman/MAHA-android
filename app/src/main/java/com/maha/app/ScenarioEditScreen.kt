@@ -30,6 +30,7 @@ fun ScenarioEditScreen(
     scenario: ConversationScenarioProfile,
     workers: List<ConversationWorkerProfile>,
     onCancel: () -> Unit,
+    onSaved: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val workersById = remember(workers) { workers.associateBy { it.workerProfileId } }
@@ -43,10 +44,7 @@ fun ScenarioEditScreen(
 
     val dirty = name != scenario.name ||
             description != scenario.description ||
-            enabledPreview != scenario.enabled ||
-            executionModePreview != scenario.defaultExecutionMode ||
-            orchestratorPreviewId != scenario.orchestratorProfileId ||
-            synthesisPreviewId != scenario.synthesisProfileId
+            enabledPreview != scenario.enabled
 
     Column(
         modifier = modifier,
@@ -103,7 +101,7 @@ fun ScenarioEditScreen(
         }
 
         ScenarioEditSection(title = "실행 방식", initiallyExpanded = false) {
-            ScenarioEditNotice("이 값은 Scenario의 기본 실행 방식 후보입니다. 실제 실행 시 Orchestrator가 요청 내용과 Worker 의존성을 함께 판단합니다. 현재 변경은 저장되지 않습니다.")
+            ScenarioEditNotice("이 값은 Scenario의 기본 실행 방식 후보입니다. 이번 단계에서는 name / description / enabled만 저장하며, 실행 방식 변경은 저장하지 않습니다.")
             ScenarioExecutionModeSelector(
                 value = executionModePreview,
                 onValueChange = { executionModePreview = it }
@@ -113,7 +111,7 @@ fun ScenarioEditScreen(
         }
 
         ScenarioEditSection(title = "핵심 Worker 지정", initiallyExpanded = false) {
-            ScenarioEditNotice("Orchestrator / Synthesis는 고정 개체가 아니라 Scenario에서 지정 가능한 WorkerProfile 참조입니다. 현재 선택 변경은 저장되지 않습니다.")
+            ScenarioEditNotice("Orchestrator / Synthesis는 고정 개체가 아니라 Scenario에서 지정 가능한 WorkerProfile 참조입니다. 이번 단계에서는 핵심 Worker 선택 변경은 저장하지 않습니다.")
             ScenarioEditKeyValue(
                 "orchestratorProfileId",
                 orchestratorPreviewId ?: "Orchestrator 미지정"
@@ -161,7 +159,29 @@ fun ScenarioEditScreen(
             saveMessage = saveMessage,
             dirty = dirty,
             onSave = {
-                saveMessage = "저장 연결은 후속 구현 예정입니다. conversation_scenarios.json / worker_profiles.json은 변경하지 않습니다."
+                val normalizedName = name.trim()
+                if (normalizedName.isBlank()) {
+                    saveMessage = "name은 비워둘 수 없습니다."
+                } else {
+                    val updatedScenario = scenario.copy(
+                        name = normalizedName,
+                        description = description,
+                        enabled = enabledPreview,
+                        userModified = true,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+
+                    val saved = runCatching {
+                        WorkerProfileStore.upsertScenario(updatedScenario)
+                    }
+
+                    if (saved.isSuccess) {
+                        saveMessage = "저장 완료"
+                        onSaved()
+                    } else {
+                        saveMessage = "저장 실패: ${saved.exceptionOrNull()?.message ?: "알 수 없는 오류"}"
+                    }
+                }
             },
             onCancel = onCancel
         )
@@ -195,7 +215,7 @@ private fun ScenarioEditHeaderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (dirty) "변경사항 있음 · 저장 미연결" else "변경사항 없음",
+                        text = if (dirty) "변경사항 있음" else "변경사항 없음",
                         color = if (dirty) Color(0xFFFFD18A) else Color(0xFFB8E6C8)
                     )
                 }
@@ -204,7 +224,7 @@ private fun ScenarioEditHeaderCard(
                 }
             }
             Text(
-                text = "기본 정보 / WorkerSet / 실행 방식 / 핵심 Worker 지정 UI skeleton입니다. 실제 저장과 실행 연결은 아직 없습니다.",
+                text = "이번 단계는 name / description / enabled 저장만 연결합니다. WorkerSet / 실행 방식 / 핵심 Worker 지정 / 실행 연결은 아직 없습니다.",
                 color = Color(0xFFD0D3DA)
             )
         }
@@ -493,7 +513,7 @@ private fun ScenarioEditActionBar(
                         .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
                 ) {
                     Text(
-                        text = if (dirty) "저장 placeholder" else "변경 없음",
+                        text = if (dirty) "저장" else "변경 없음",
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
