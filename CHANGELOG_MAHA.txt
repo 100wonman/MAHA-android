@@ -1,4 +1,374 @@
 ==============================
+[2026-05-04 21:00] Worker Profile 편집 UI skeleton 추가
+==============================
+
+[작업]
+- Worker Profile 관리 화면에서 Worker 편집 UI skeleton 진입 추가
+- WorkerProfileEditScreen 후보 화면 추가
+- 기본 정보 / System Instruction / Provider-Model / capability override / InputPolicy / OutputPolicy / 실행 계획 섹션 추가
+- System Instruction multiline 입력 UI skeleton 추가
+- 저장/취소 버튼 UI 추가
+- 실제 저장 연결, ConversationEngine 연결, Worker 실행 연결은 제외
+- 기존 Provider 호출 / RAG / Web Search / SAF / 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Worker 카드에 “편집” 진입 버튼 추가
+- WorkerProfileEditScreen.kt 신규 추가
+- 기본 정보 / System Instruction / Provider-Model / capability / policy / 실행 계획 편집 UI skeleton 추가
+- 저장 / 취소 버튼과 변경사항 감지 skeleton 추가
+- 저장 기능 후속 구현 예정 안내 유지
+
+[편집 UI 진입 테스트]
+- Worker 카드 편집 진입: 확인
+- WorkerProfileEditScreen 표시: 확인
+- 관리 화면 복귀: 확인
+- 기존 Worker/Scenario 탭 유지: 유지
+
+[기본 정보 UI 테스트]
+- displayName: 확인
+- roleLabel: 확인
+- roleDescription: 확인
+- enabled placeholder: 확인
+
+[System Instruction UI 테스트]
+- multiline 입력: 확인
+- 글자 수 표시: 확인
+- 민감정보 안내: 확인
+- 기본값 복원 placeholder: 확인
+
+[Provider/Model UI 테스트]
+- providerId/modelId 표시: 확인
+- Provider 선택 placeholder: 확인
+- Model 선택 placeholder: 확인
+- 저장 미연결 안내: 확인
+
+[capability / policy UI 테스트]
+- capability override 접힘: 확인
+- InputPolicy 접힘: 확인
+- OutputPolicy 접힘: 확인
+- 실행 계획 placeholder: 확인
+
+[연결 금지 확인]
+- 실제 저장 없음: 유지
+- worker_profiles.json 변경 없음: 유지
+- conversation_scenarios.json 변경 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: 편집 skeleton 진입만 추가
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 편집 UI skeleton 추가
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계는 편집 UI skeleton 추가 단계다.
+- ConversationEngine 연결과 Worker 실행은 하지 않는다.
+
+목표:
+- Worker Profile 관리 화면에서 Worker 편집 화면 skeleton으로 진입할 수 있게 한다.
+- Worker 상세 편집 UI 구조를 만든다.
+- System Instruction multiline 편집 UI skeleton을 추가한다.
+- Provider/Model 선택 UI placeholder를 추가한다.
+- capability override / InputPolicy / OutputPolicy 접힘 placeholder를 추가한다.
+- 저장/취소 버튼 UI를 추가한다.
+- 실제 저장 연결은 이번 단계에서 하지 않거나, 명시적으로 placeholder로 유지한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ Worker 카드에서 “편집” 또는 “상세/편집” 진입 추가
+✔ WorkerProfileEditScreen.kt 신규 추가 가능
+✔ Worker 상세 편집 화면 skeleton 추가
+✔ 기본 정보 편집 UI skeleton 추가
+✔ System Instruction multiline 입력 UI skeleton 추가
+✔ Provider/Model 선택 placeholder 추가
+✔ capability override 접힘 placeholder 추가
+✔ InputPolicy / OutputPolicy 접힘 placeholder 추가
+✔ 실행 계획 섹션 placeholder 추가
+✔ 저장 / 취소 버튼 UI 추가
+✔ 변경사항 감지 skeleton 가능
+✔ “저장 기능은 후속 구현 예정” 안내 유지
+✔ 기존 Worker Profile 관리 화면으로 돌아가기 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+❌ 실제 대화 실행에 WorkerProfile 적용
+❌ Provider/Model 선택 실제 반영
+❌ Scenario 편집 구현
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일 후보:
+
+- AppRoot.kt
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt 신규 가능
+
+주의:
+- AppRoot.kt 변경은 최소화한다.
+- 기존 Worker / Scenario 탭 구조를 유지한다.
+- 기존 read-only preview를 제거하지 않는다.
+- 저장 연결을 구현하더라도 이번 단계에서 범위가 커지면 하지 말고 placeholder로 둔다.
+
+--------------------------------------------------
+3. Worker 편집 화면 구성
+--------------------------------------------------
+
+화면 제목:
+- Worker Profile 편집
+
+상단 안내:
+“현재 화면은 Worker Profile 편집 UI skeleton입니다. 실제 저장 연결과 대화 실행 연결은 후속 단계에서 지원됩니다.”
+
+섹션 A. 기본 정보
+- displayName 입력칸
+- roleLabel 입력칸
+- roleDescription 입력칸
+- enabled 스위치 placeholder
+
+섹션 B. System Instruction
+- multiline text field
+- 글자 수 표시
+- 민감정보 입력 금지 안내
+- 기본값 복원 버튼 placeholder
+
+섹션 C. Provider / Model
+- Provider 선택 placeholder
+- Model 선택 placeholder
+- providerId/modelId 현재 값 표시
+- “Provider/Model 선택 저장은 후속 구현 예정” 안내
+
+섹션 D. Capability Override
+- 접힘 영역
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+- ragSearch
+- memoryRecall
+- fileRead/fileWrite
+- codeCheck
+- parallelExecution
+- 현재 값 read-only 또는 placeholder 선택 UI
+
+섹션 E. InputPolicy / OutputPolicy
+- 접힘 영역
+- 현재 값 요약 표시
+- 편집 UI placeholder
+
+섹션 F. 실행 계획
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- 편집 UI placeholder
+
+하단 액션:
+- 저장
+- 취소
+- 후속 구현 예정 안내
+
+--------------------------------------------------
+4. 저장/취소 정책
+--------------------------------------------------
+
+이번 단계 기본 정책:
+- 저장 버튼은 UI만 제공한다.
+- 실제 WorkerProfileStore.upsertWorkerProfile 연결은 하지 않는다.
+- 저장 클릭 시 Toast/Snackbar/텍스트 상태로 “저장 연결은 후속 구현 예정” 표시 가능.
+- 취소는 Worker Profile 관리 화면으로 돌아간다.
+
+허용:
+- 화면 내부 local state로 입력값 변경 가능
+- dirty 상태 표시 skeleton 가능
+- 저장 미연결 안내 가능
+
+금지:
+- 실제 파일 저장
+- worker_profiles.json 변경
+- provider/model 선택 저장
+- System Instruction 저장
+
+--------------------------------------------------
+5. 모바일 가시성 정책
+--------------------------------------------------
+
+- 전체 화면 편집을 우선한다.
+- 긴 섹션은 접힘 구조로 둔다.
+- System Instruction은 충분한 높이의 multiline field로 둔다.
+- capability / policy 영역은 기본 접힘 상태가 적절하다.
+- 저장/취소 버튼은 하단에서 찾기 쉽게 배치한다.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 상세 placeholder
+- 상세 하단 접기 버튼
+- WorkerProfileStore 실제 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 편집 UI 진입
+- Worker 카드 편집 진입:
+- WorkerProfileEditScreen 표시:
+- 관리 화면 복귀:
+- 기존 Worker/Scenario 탭 유지:
+
+B. 기본 정보 UI
+- displayName:
+- roleLabel:
+- roleDescription:
+- enabled placeholder:
+
+C. System Instruction UI
+- multiline 입력:
+- 글자 수 표시:
+- 민감정보 안내:
+- 기본값 복원 placeholder:
+
+D. Provider/Model UI
+- providerId/modelId 표시:
+- Provider 선택 placeholder:
+- Model 선택 placeholder:
+- 저장 미연결 안내:
+
+E. capability / policy UI
+- capability override 접힘:
+- InputPolicy 접힘:
+- OutputPolicy 접힘:
+- 실행 계획 placeholder:
+
+F. 연결 금지 확인
+- 실제 저장 없음:
+- worker_profiles.json 변경 없음:
+- conversation_scenarios.json 변경 없음:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+G. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 저장 연결 금지
+❌ worker_profiles.json 수정 금지
+❌ conversation_scenarios.json 수정 금지
+❌ Scenario 편집 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- Worker Profile 편집 UI skeleton 추가
+- Worker 카드에서 편집 화면 진입 가능
+- 기본 정보 / System Instruction / Provider-Model / capability / policy / 실행 계획 섹션 표시
+- 저장/취소 버튼 UI 표시
+- 실제 저장 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 편집 저장 연결 또는 Scenario 편집 UI 설계
+
+==============================
 [2026-05-04 20:40] Worker Profile 편집 UI 설계
 ==============================
 

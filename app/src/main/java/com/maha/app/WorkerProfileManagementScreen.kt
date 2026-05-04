@@ -21,8 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +46,17 @@ fun WorkerProfileManagementScreen(
     )
     val scenarios = scenarioEnvelope.scenarios.sortedBy { it.name.lowercase() }
     var selectedTab by remember { mutableStateOf(WorkerProfileManagementTab.WORKERS) }
+    var editingWorker by remember { mutableStateOf<ConversationWorkerProfile?>(null) }
+
+    val currentEditingWorker = editingWorker
+    if (currentEditingWorker != null) {
+        WorkerProfileEditScreen(
+            worker = currentEditingWorker,
+            onCancel = { editingWorker = null },
+            modifier = modifier
+        )
+        return
+    }
 
     Column(
         modifier = modifier,
@@ -76,7 +87,10 @@ fun WorkerProfileManagementScreen(
                     WorkerProfileEmptyCard(text = "표시할 Worker Profile이 없습니다.")
                 } else {
                     workers.forEach { worker ->
-                        WorkerProfilePreviewCard(worker = worker)
+                        WorkerProfilePreviewCard(
+                            worker = worker,
+                            onEdit = { editingWorker = worker }
+                        )
                     }
                 }
             }
@@ -124,7 +138,7 @@ private fun WorkerProfileInfoCard(
                 color = Color.White
             )
             Text(
-                text = "대화모드 Worker Profile / Scenario read-only skeleton preview입니다.",
+                text = "대화모드 Worker Profile / Scenario skeleton preview입니다.",
                 color = Color(0xFFD0D3DA),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -148,7 +162,7 @@ private fun WorkerProfileReadOnlyNoticeCard() {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "읽기 전용 skeleton입니다. 저장/편집/Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
+            text = "현재 저장소는 로드/기본 생성만 연결되어 있습니다. 편집 화면은 skeleton이며 저장/Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
             color = Color(0xFFE6D0B8),
             modifier = Modifier.padding(12.dp)
         )
@@ -231,7 +245,10 @@ private fun WorkerProfileCompactSectionTitle(
 }
 
 @Composable
-private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
+private fun WorkerProfilePreviewCard(
+    worker: ConversationWorkerProfile,
+    onEdit: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
 
     Card(
@@ -264,8 +281,13 @@ private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                    }
+                    TextButton(onClick = onEdit) {
+                        Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -287,7 +309,7 @@ private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
 
             if (expanded) {
                 Spacer(modifier = Modifier.height(2.dp))
-                WorkerProfileReadOnlyPlaceholder(text = "Worker 상세 placeholder입니다. 실제 편집/저장은 후속 구현 예정입니다.")
+                WorkerProfileReadOnlyPlaceholder(text = "Worker 상세 placeholder입니다. 실제 편집 저장은 후속 구현 예정입니다. 편집 버튼은 UI skeleton 화면만 엽니다.")
 
                 WorkerProfileDetailTitle(title = "기본 정보")
                 WorkerProfileKeyValue("역할 설명", worker.roleDescription.ifBlank { "역할 설명 없음" })
@@ -297,7 +319,7 @@ private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
 
                 WorkerProfileDetailTitle(title = "System Instruction")
                 WorkerProfileKeyValue("전체 보기 placeholder", worker.systemInstruction.previewText(1200))
-                WorkerProfileReadOnlyPlaceholder(text = "System Instruction 편집 기능은 아직 연결되지 않았습니다.")
+                WorkerProfileReadOnlyPlaceholder(text = "System Instruction 편집 저장 기능은 아직 연결되지 않았습니다.")
 
                 WorkerProfileDetailTitle(title = "Provider / Model 참조")
                 WorkerProfileKeyValue("providerId", worker.providerId ?: "Provider 미지정")
@@ -314,12 +336,7 @@ private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
                 WorkerProfileKeyValue("outputPolicy", worker.outputPolicy.toReadableSummary())
                 WorkerProfileKeyValue("expectedOutputType", worker.outputPolicy.expectedOutputType.name)
 
-                WorkerProfileTagRow(
-                    values = listOf(
-                        "read-only",
-                        "편집 기능 후속 구현 예정"
-                    )
-                )
+                WorkerProfileTagRow(values = listOf("read-only", "편집 저장 후속 구현 예정"))
                 WorkerProfileCollapseButton(onClick = { expanded = false })
             }
         }
@@ -397,7 +414,6 @@ private fun ConversationScenarioPreviewCard(scenario: ConversationScenarioProfil
         }
     }
 }
-
 
 @Composable
 private fun WorkerProfileDetailTitle(title: String) {
@@ -547,7 +563,7 @@ private fun String.previewText(maxLength: Int): String {
     return if (normalized.length <= maxLength) normalized else normalized.take(maxLength).trimEnd() + "…"
 }
 
-private fun WorkerInputPolicy.toReadableSummary(): String {
+internal fun WorkerInputPolicy.toReadableSummary(): String {
     return listOf(
         "userInputOnly=$userInputOnly",
         "previousWorkerOutput=$previousWorkerOutput",
@@ -559,7 +575,7 @@ private fun WorkerInputPolicy.toReadableSummary(): String {
     ).joinToString(" · ")
 }
 
-private fun WorkerOutputPolicy.toReadableSummary(): String {
+internal fun WorkerOutputPolicy.toReadableSummary(): String {
     return listOf(
         "expectedOutputType=${expectedOutputType.name}",
         "requireJson=$requireJson",
@@ -572,12 +588,13 @@ private fun WorkerOutputPolicy.toReadableSummary(): String {
     ).joinToString(" · ")
 }
 
-private fun WorkerCapabilityOverrides.toReadableSummary(): String {
+internal fun WorkerCapabilityOverrides.toReadableSummary(): String {
     return listOf(
         "functionCalling=${functionCalling.name}",
         "webSearch=${webSearch.name}",
         "codeExecution=${codeExecution.name}",
         "structuredOutput=${structuredOutput.name}",
+        "thinkingSummary=${thinkingSummary.name}",
         "ragSearch=${ragSearch.name}",
         "memoryRecall=${memoryRecall.name}",
         "fileRead=${fileRead.name}",
