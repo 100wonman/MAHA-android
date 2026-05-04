@@ -1,4 +1,350 @@
 ==============================
+[2026-05-04 20:20] WorkerProfileStore 실제 저장/로드 구현 설계
+==============================
+
+[작업]
+- WorkerProfileStore 실제 JSON 저장/로드 구현 방식 설계
+- worker_profiles.json / conversation_scenarios.json 생성·로드·저장 정책 정의
+- in-memory cache와 file persistence 관계 설계
+- 기본 Worker / Scenario 템플릿 최초 생성 정책 정의
+- 사용자 수정본 보존 및 앱 업데이트 덮어쓰기 방지 정책 정의
+- schemaVersion / migration / 오류 처리 정책 정의
+- Provider/Model/Worker orphan 참조 처리 정책 정의
+- SAF 백업/복원 연결 정책 정의
+- 실제 Kotlin 구현, UI 저장 연결, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileStore 실제 JSON 저장/로드 구현 방식 설계
+- worker_profiles.json / conversation_scenarios.json 생성·로드·저장 정책 정의
+- in-memory cache와 file persistence 관계 정의
+- schemaVersion / migration / parse 실패 처리 정책 정의
+- orphan Provider/Model 참조 처리 및 SAF 백업/복원 연결 정책 정의
+
+[설계 산출물]
+- 문서명: MAHA_WORKER_PROFILE_STORE_IMPLEMENTATION_DESIGN_v1.md
+- 작성 위치: /mnt/data/MAHA_WORKER_PROFILE_STORE_IMPLEMENTATION_DESIGN_v1.md
+- 주요 섹션: 목적, 설계 전제, 저장 파일 경로/역할, 실제 저장/로드 흐름, in-memory cache, worker_profiles.json 정책, conversation_scenarios.json 정책, 기본 템플릿 최초 생성, 사용자 수정본 보존, schemaVersion/migration, 오류 처리, orphan 참조 처리, SAF 백업/복원, 후속 구현 단계
+
+[저장/로드 설계]
+- worker_profiles.json: WorkerProfileStoreEnvelope 저장, 파일 없음 시 기본 Worker envelope 생성
+- conversation_scenarios.json: ConversationScenarioStoreEnvelope 저장, 파일 없음 시 기본 Scenario envelope 생성
+- in-memory cache: Store 최초 접근 시 로드 후 cache 유지, forceReload/clearCache 후보 정의
+- atomic write: 임시 파일 기록 후 교체 후보, 저장 실패 시 기존 파일 보존
+- 저장 실패 처리: 앱 crash 금지, 기존 파일 보존, 오류 상태 반환 후보
+
+[기본 템플릿 설계]
+- 기본 Worker: Orchestrator, Main, Synthesis, Research, Reviewer, RAG, Memory, Web Search, Tool, Code Check, Comparison
+- 기본 Scenario: 기본 단일 대화, 조사/요약, 코드 검토, 글쓰기/리뷰, RAG 중심, 비교/병렬 분석
+- 사용자 수정본 보존: userModified=true 항목 자동 덮어쓰기 금지
+- 앱 업데이트 덮어쓰기 방지: 새 템플릿 추가는 가능하나 기존 사용자 수정본 보존
+
+[schemaVersion / migration 설계]
+- schemaVersion: worker_profiles.json=1, conversation_scenarios.json=1
+- 누락/불일치: 누락 시 v1 간주 후보, 불일치 시 migration 함수 후보 실행
+- 필수 필드 누락: 기본값 보정 가능하면 보정, 복구 불가 항목은 제한/skip 후보
+- migration 함수 후보: migrateWorkerProfilesEnvelope, migrateConversationScenariosEnvelope, repairWorkerProfileDefaults, repairScenarioDefaults
+
+[오류/orphan 처리 설계]
+- parse 실패: 원본 파일 보존, 사용자 복구 가능 상태 표시, 임시 기본 envelope 후보
+- 중복 ID: 자동 삭제 금지, 충돌 표시 후 보존 우선
+- orphan Provider: WorkerProfile 보존, 실행 후보에서 제한 상태 표시
+- orphan Model: WorkerProfile 보존, 실행 후보에서 제한 상태 표시
+- orphan Worker: Scenario 보존, 누락 Worker 참조 경고와 재지정 안내
+
+[백업/복원 설계]
+- SAF 포함 대상: worker_profiles.json, conversation_scenarios.json
+- 복원 후 검증: schemaVersion, parse 가능 여부, 중복 ID, orphan Provider/Model/Worker 참조 검증
+- fallback: 복원 실패 시 기존 파일 보존, 일부 복원 성공 시 제한 상태 표시
+- 후속 구현 시점: 설정 백업/복원 구현에서 Provider/Model 설정과 함께 포함
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- 빌드 영향: 없음
+- Provider 호출: 변경 없음
+- RAG: 변경 없음
+- Web Search: 변경 없음
+- Worker Profile UI: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_WORKER_PROFILE_STORE_IMPLEMENTATION_DESIGN_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+WorkerProfileStore 실제 저장/로드 구현 설계
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계에서는 실제 저장/로드 구현을 하지 않고 설계만 한다.
+
+목표:
+- WorkerProfileStore의 실제 JSON 저장/로드 구현 방식을 설계한다.
+- worker_profiles.json / conversation_scenarios.json 파일 생성·로드·저장 정책을 구체화한다.
+- 기본 Worker / Scenario 템플릿 최초 생성 정책을 설계한다.
+- 사용자 수정본 보존, schemaVersion, migration, parse 실패, orphan 참조 처리 정책을 정리한다.
+- SAF 백업/복원 연결 시점을 설계한다.
+- UI 저장 연결과 ConversationEngine 연결은 후속 단계로 분리한다.
+
+--------------------------------------------------
+1. 설계 범위
+--------------------------------------------------
+
+이번 단계에서 설계:
+
+✔ WorkerProfileStore 실제 저장/로드 구현 방식 설계
+✔ worker_profiles.json 생성 정책 설계
+✔ conversation_scenarios.json 생성 정책 설계
+✔ 파일 없음 / 빈 파일 / parse 실패 처리 정책 설계
+✔ schemaVersion 처리 및 migration 정책 설계
+✔ 기본 Worker 템플릿 최초 생성 정책 설계
+✔ 기본 Scenario 최초 생성 정책 설계
+✔ 사용자 수정본 보존 정책 구체화
+✔ in-memory cache와 file persistence 관계 설계
+✔ CRUD 저장 반영 시점 설계
+✔ Provider/Model orphan 참조 처리 정책 구체화
+✔ SAF 백업/복원 포함 시점 설계
+✔ 후속 구현 단계 분리
+
+이번 단계에서 금지:
+
+❌ 실제 Kotlin 코드 구현
+❌ WorkerProfileStore.kt 실제 파일 IO 구현
+❌ JsonStore 변경
+❌ SAF 백업/복원 코드 변경
+❌ Worker 관리 UI 저장 연결
+❌ System Instruction 편집 저장 연결
+❌ ConversationEngine 연결
+❌ ConversationViewModel 연결
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 산출물
+--------------------------------------------------
+
+신규 문서 후보:
+
+- MAHA_WORKER_PROFILE_STORE_IMPLEMENTATION_DESIGN_v1.md
+
+문서에 반드시 포함:
+
+1. 목적
+2. 설계 전제
+3. 저장 파일 경로/역할
+4. WorkerProfileStore 실제 저장/로드 흐름
+5. in-memory cache 정책
+6. worker_profiles.json 생성/로드/저장 정책
+7. conversation_scenarios.json 생성/로드/저장 정책
+8. 기본 템플릿 최초 생성 정책
+9. 사용자 수정본 보존 정책
+10. schemaVersion / migration 정책
+11. 오류 처리 정책
+12. orphan Provider/Model 참조 처리
+13. SAF 백업/복원 연결 정책
+14. 후속 구현 단계
+
+--------------------------------------------------
+3. 저장/로드 정책
+--------------------------------------------------
+
+대상 파일:
+
+- worker_profiles.json
+- conversation_scenarios.json
+
+로드 정책:
+- 앱 시작 또는 Store 최초 접근 시 load
+- 파일이 없으면 기본 envelope 생성
+- 기본 Worker / Scenario 템플릿 초기화
+- parse 실패 시 기존 파일 보존 우선
+- parse 실패 상태를 사용자에게 표시할 수 있도록 error result 구조 후보 정의
+
+저장 정책:
+- upsert/delete 이후 envelope updatedAt 갱신
+- 파일 저장은 atomic write 후보 검토
+- 저장 실패 시 기존 파일 보존 우선
+- 저장 실패는 앱 crash가 아니라 오류 상태로 반환
+
+주의:
+- API Key, baseUrl, rawModelName 복사 금지
+- providerId/modelId 참조만 저장
+
+--------------------------------------------------
+4. 기본 템플릿 정책
+--------------------------------------------------
+
+기본 Worker 템플릿:
+- Orchestrator
+- Main Worker
+- Synthesis Worker
+- Research Worker
+- Reviewer Worker
+- RAG Worker
+- Memory Worker
+- Web Search Worker
+- Tool Worker
+- Code Check Worker
+- Comparison Worker
+
+기본 Scenario:
+- 기본 단일 대화
+- 조사/요약
+- 코드 검토
+- 글쓰기/리뷰
+- RAG 중심
+- 비교/병렬 분석
+
+정책:
+- 최초 파일 생성 시 기본 템플릿 포함
+- userModified=true 항목은 절대 덮어쓰기 금지
+- 앱 업데이트로 새 기본 템플릿 추가 가능
+- 기존 사용자 수정본은 보존
+- 기본값 복원은 후속 UI에서 명시적 동작으로만 수행
+
+--------------------------------------------------
+5. schemaVersion / migration 정책
+--------------------------------------------------
+
+schemaVersion:
+- worker_profiles.json = 1
+- conversation_scenarios.json = 1
+
+정책:
+- schemaVersion 누락 시 안전 fallback
+- 알 수 없는 필드는 가능하면 무시
+- 필수 필드 누락 시 기본값 보정 후보 정의
+- schemaVersion 불일치 시 migration 함수 후보 정의
+- migration 실패 시 원본 파일 보존
+
+함수 후보:
+- migrateWorkerProfilesEnvelope(...)
+- migrateConversationScenariosEnvelope(...)
+- repairWorkerProfileDefaults(...)
+- repairScenarioDefaults(...)
+
+--------------------------------------------------
+6. 오류 처리 정책
+--------------------------------------------------
+
+오류 후보:
+- 파일 없음
+- 빈 파일
+- JSON parse 실패
+- schemaVersion 불일치
+- 필수 필드 누락
+- 중복 ID
+- 저장 실패
+- orphan Provider/Model 참조
+
+정책:
+- 파일 없음: 기본 생성
+- 빈 파일: 기본 생성 또는 안전 실패
+- parse 실패: 원본 보존 + 사용자 복구 가능 상태
+- 중복 ID: 자동 삭제 금지, 충돌 표시
+- 저장 실패: 기존 파일 보존
+- orphan 참조: 삭제 금지, 제한 상태 표시
+
+--------------------------------------------------
+7. orphan 참조 처리 정책
+--------------------------------------------------
+
+대상:
+- providerId 없음
+- modelId 없음
+- Scenario 내 workerProfileIds 일부 없음
+- orchestratorProfileId 없음
+- synthesisProfileId 없음
+
+정책:
+- 자동 삭제 금지
+- WorkerProfile / Scenario 보존
+- 실행 후보에서는 LIMITED 또는 BLOCKED 후보
+- UI에서는 재지정 안내
+- Store에서는 검증 결과만 반환
+
+함수 후보:
+- validateWorkerProfileReferences(...)
+- validateScenarioReferences(...)
+- findOrphanProviderReferences(...)
+- findOrphanModelReferences(...)
+- findOrphanWorkerReferences(...)
+
+--------------------------------------------------
+8. SAF 백업/복원 연결 정책
+--------------------------------------------------
+
+포함 대상:
+- worker_profiles.json
+- conversation_scenarios.json
+
+정책:
+- Provider/Model 설정과 함께 백업/복원 대상에 포함
+- 복원 후 orphan 검증 실행 필요
+- schemaVersion 검증 필요
+- 복원 실패 시 전체 앱 기능이 깨지지 않도록 fallback
+- 실제 SAF 코드 변경은 후속 구현으로 분리
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+이번 단계는 설계문서 작성만 한다.
+
+반드시 유지:
+- Worker Profile 관리 UI skeleton
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+완료 기준:
+- MAHA_WORKER_PROFILE_STORE_IMPLEMENTATION_DESIGN_v1.md 작성
+- 실제 저장/로드 구현 방식 설계 완료
+- 기본 템플릿 최초 생성 정책 정의
+- 사용자 수정본 보존 정책 정의
+- schemaVersion / migration / 오류 처리 정책 정의
+- orphan 참조 처리 정책 정의
+- SAF 백업/복원 연결 정책 정의
+- 실제 코드 변경 없음
+- 빌드 영향 없음 또는 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+WorkerProfileStore 실제 저장/로드 구현 또는 Worker Profile 편집 UI 설계
+
+==============================
 [2026-05-04 20:15] Worker Profile 상세/편집 placeholder 보강
 ==============================
 
