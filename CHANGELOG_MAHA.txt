@@ -1,4 +1,389 @@
 ==============================
+[2026-05-04 12:25] Capability Layer 최소 모델/DTO 설계
+==============================
+
+[작업]
+- Capability Layer 후속 구현을 위한 최소 모델/DTO 구조 설계
+- CapabilityType / CapabilityStatus / ExecutionMode / UserGoalStatus 후보 정의
+- LimitationReason / CapabilityRequirement / CapabilityResolution 후보 정의
+- OrchestratorPlan / WorkerPlan / WorkerRole 구조 설계
+- Provider-native / MAHA-native capability source 구분 필드 설계
+- 실행정보 기본 요약과 상세 접힘 표시 계약 정의
+- 실제 Kotlin 구현 및 기존 schema 변경은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Capability Layer 최소 모델/DTO 설계 문서 작성
+- CapabilityType / CapabilityStatus / ExecutionMode / UserGoalStatus 후보 정의
+- LimitationReason / CapabilityRequirement / CapabilityResolution 구조 정의
+- OrchestratorPlan / WorkerPlan / WorkerRole 구조 정의
+- 실행정보 표시 계약과 저장 schema 변경 없음 원칙 정리
+
+[설계 산출물]
+- 문서명: MAHA_CAPABILITY_LAYER_MODELS_v1.md
+- 작성 위치: /mnt/data/MAHA_CAPABILITY_LAYER_MODELS_v1.md
+- 주요 섹션: 목적, 설계 전제, CapabilityType, CapabilityStatus, CapabilitySource, ExecutionMode, UserGoalStatus, WorkerRole, LimitationReason, CapabilityRequirement, CapabilityResolution, WorkerPlan, OrchestratorPlan, 실행정보 표시 계약, 저장 schema 변경 여부, 후속 구현 단계
+
+[Capability 모델 설계]
+- CapabilityType: TEXT_GENERATION, JSON_OUTPUT, RAG_SEARCH, WEB_SEARCH_PROVIDER_NATIVE, WEB_SEARCH_MAHA_NATIVE, TOOL_EXECUTION, PARALLEL_EXECUTION 등 요구 능력 후보 정의
+- CapabilityStatus: AVAILABLE, LIMITED, NOT_AVAILABLE, NOT_IMPLEMENTED, NEED_USER_PERMISSION, NEED_API_KEY, USER_ENABLED, UNKNOWN 등 상태 후보 정의
+- CapabilityRequirement: capabilityType, required, priority, reason, acceptableFallbacks, userVisibleLabel 후보 정의
+- CapabilityResolution: requirement, status, source, providerNativeAvailable, mahaNativeAvailable, selectedProviderId, selectedModelId, executionAvailable, limitationReason 후보 정의
+
+[실행 모델 설계]
+- ExecutionMode: SINGLE, SEQUENTIAL, PARALLEL, MIXED
+- UserGoalStatus: SUCCESS, LIMITED, FAILED, BLOCKED, NOT_IMPLEMENTED, NEED_PERMISSION, NEED_API_KEY
+- LimitationReason: capabilityType, status, reasonCode, userMessage, technicalMessage, source, providerId, modelId, recoverable, suggestedAction
+- OrchestratorPlan: requestedCapabilities, resolvedCapabilities, executionMode, userGoalStatus, limitationReasons, workerPlans, providerNativeUsed, mahaNativeUsed
+- WorkerPlan: workerRole, inputSource, requiredCapabilities, assignedProviderId, assignedModelId, executionOrder, canRunInParallel, dependsOnWorkerIds, expectedOutputType, plannedStatus
+
+[Worker 설계]
+- WorkerRole: ORCHESTRATOR, MAIN, RAG, MEMORY, WEB_SEARCH, TOOL, CODE_CHECK, COMPARISON, SYNTHESIS, REVIEWER
+- 의존성 필드: dependsOnWorkerIds
+- 병렬 가능 필드: canRunInParallel
+- 예상 출력 필드: expectedOutputType
+
+[실행정보 표시 설계]
+- 기본 요약: 사용자 목표 상태, 실행 방식, 요구/충족/제한 capability, 제한 사유, Worker 계획 요약
+- 상세 접힘: OrchestratorPlan, WorkerPlan 목록, CapabilityResolution 목록, Provider-native/MAHA-native 구분, 미구현 capability
+- 사용자 목표 수행 상태: Provider 호출 성공과 별도로 SUCCESS/LIMITED/FAILED/BLOCKED 등 표시
+- 제한 사유 표시: 검색 미지원, 도구 미구현, API Key 필요, 권한 필요 등을 사용자 문구로 표시
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- 빌드 영향: 없음
+- Provider 호출: 변경 없음
+- RAG: 변경 없음
+- Web Search: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_CAPABILITY_LAYER_MODELS_v1.md
+
+[빌드]
+해당 없음
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Capability Layer 최소 모델/DTO 설계
+
+목표:
+- Orchestrator Capability Layer를 후속 구현할 때 사용할 최소 모델/DTO 구조를 설계한다.
+- CapabilityType, CapabilityStatus, ExecutionMode, UserGoalStatus, LimitationReason, OrchestratorPlan, WorkerPlan의 역할과 필드를 정의한다.
+- Provider-native capability와 MAHA-native capability를 구분할 수 있는 모델 구조를 설계한다.
+- 이번 단계에서는 실제 Kotlin 코드 구현이나 기존 schema 변경을 하지 않는다.
+
+--------------------------------------------------
+1. 설계 범위
+--------------------------------------------------
+
+이번 단계에서 설계:
+
+✔ CapabilityType 후보 정의
+✔ CapabilityStatus 후보 정의
+✔ ExecutionMode 후보 정의
+✔ UserGoalStatus 후보 정의
+✔ LimitationReason 모델 후보 정의
+✔ CapabilityRequirement 모델 후보 정의
+✔ CapabilityResolution 모델 후보 정의
+✔ OrchestratorPlan 모델 후보 정의
+✔ WorkerPlan 모델 후보 정의
+✔ WorkerRole 후보 정의
+✔ Provider-native / MAHA-native source 구분 필드 설계
+✔ 실행정보 표시용 요약 필드 설계
+✔ 후속 구현 단계 분리
+
+이번 단계에서 금지:
+
+❌ 실제 Kotlin 코드 구현
+❌ ConversationEngine 구조 변경
+❌ ConversationRequestResponse schema 변경
+❌ ConversationModels 저장 schema 변경
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 로직 변경
+❌ 병렬 실행 실제 구현
+❌ Tool 실행 구현
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 산출물
+--------------------------------------------------
+
+신규 문서 후보:
+
+- MAHA_CAPABILITY_LAYER_MODELS_v1.md
+
+문서에 반드시 포함:
+
+1. 목적
+2. 설계 전제
+3. CapabilityType
+4. CapabilityStatus
+5. ExecutionMode
+6. UserGoalStatus
+7. WorkerRole
+8. LimitationReason
+9. CapabilityRequirement
+10. CapabilityResolution
+11. WorkerPlan
+12. OrchestratorPlan
+13. 실행정보 표시 계약
+14. 저장 schema 변경 여부
+15. 후속 구현 단계
+
+주의:
+- 이 문서는 실제 구현 코드가 아니라 후속 구현 기준 문서다.
+- 모델명은 Kotlin data class 후보처럼 작성해도 되지만 실제 파일 생성은 하지 않는다.
+- 기존 앱 동작에 영향이 없어야 한다.
+
+--------------------------------------------------
+3. CapabilityType 설계 기준
+--------------------------------------------------
+
+CapabilityType은 사용자 요청이 요구하는 능력을 표현한다.
+
+후보:
+
+- TEXT_GENERATION
+- STRUCTURED_OUTPUT
+- CODE_BLOCK_OUTPUT
+- JSON_OUTPUT
+- TABLE_OUTPUT
+- RAG_SEARCH
+- MEMORY_RECALL
+- CONVERSATION_HISTORY_SEARCH
+- WEB_SEARCH_PROVIDER_NATIVE
+- WEB_SEARCH_MAHA_NATIVE
+- LOCAL_FILE_READ
+- LOCAL_FILE_WRITE
+- CODE_CHECK
+- CODE_EXECUTION
+- TOOL_CALL_DETECTION
+- TOOL_EXECUTION
+- TOOL_RESULT_REINJECTION
+- TOOL_LOOP
+- SYNTHESIS
+- REVIEW
+- SINGLE_EXECUTION
+- SEQUENTIAL_EXECUTION
+- PARALLEL_EXECUTION
+- MIXED_EXECUTION
+
+주의:
+- CapabilityType은 “요구 능력”을 뜻한다.
+- 실제 실행 가능 여부는 CapabilityStatus와 CapabilityResolution에서 판단한다.
+
+--------------------------------------------------
+4. CapabilityStatus 설계 기준
+--------------------------------------------------
+
+CapabilityStatus는 특정 capability가 현재 환경에서 어떤 상태인지 표현한다.
+
+후보:
+
+- AVAILABLE
+- LIMITED
+- NOT_AVAILABLE
+- NOT_IMPLEMENTED
+- NEED_USER_PERMISSION
+- NEED_API_KEY
+- PROVIDER_NATIVE_ONLY
+- MAHA_NATIVE_AVAILABLE
+- USER_ENABLED
+- UNKNOWN
+
+주의:
+- UNKNOWN은 실패가 아니다.
+- USER_ENABLED는 사용자가 켰다는 뜻이지 실제 실행 가능을 의미하지 않는다.
+- NOT_IMPLEMENTED는 설계상 필요하지만 앱에 아직 구현되지 않은 상태다.
+
+--------------------------------------------------
+5. ExecutionMode 설계 기준
+--------------------------------------------------
+
+ExecutionMode는 Orchestrator가 선택한 실행 방식을 표현한다.
+
+후보:
+
+- SINGLE
+- SEQUENTIAL
+- PARALLEL
+- MIXED
+
+판단 기준:
+
+SINGLE:
+- 단일 Worker / 단일 Provider 호출로 충분한 경우
+
+SEQUENTIAL:
+- 이전 Worker 결과가 다음 Worker 입력으로 필요한 경우
+
+PARALLEL:
+- 하위 작업들이 서로 독립적인 경우
+
+MIXED:
+- 일부는 병렬, 일부는 순차, 마지막에 Synthesis가 필요한 경우
+
+주의:
+- 이번 단계에서는 병렬 실행 실제 구현 금지
+- 실행 방식 판단 모델만 설계
+
+--------------------------------------------------
+6. UserGoalStatus 설계 기준
+--------------------------------------------------
+
+UserGoalStatus는 Provider 호출 성공과 별도로 사용자 목표 수행 상태를 표현한다.
+
+후보:
+
+- SUCCESS
+- LIMITED
+- FAILED
+- BLOCKED
+- NOT_IMPLEMENTED
+- NEED_PERMISSION
+- NEED_API_KEY
+
+예시:
+
+Provider 호출: SUCCESS
+Worker 실행: SUCCESS
+UserGoalStatus: LIMITED
+제한 사유: 현재 Provider/Model에서 Web Search 미지원
+
+주의:
+- Provider 호출 성공과 사용자 목표 수행 성공을 혼동하지 않는다.
+- 실행정보 UI에서 이 값을 핵심 요약으로 사용할 수 있어야 한다.
+
+--------------------------------------------------
+7. OrchestratorPlan / WorkerPlan 설계 기준
+--------------------------------------------------
+
+OrchestratorPlan 후보 필드:
+
+- planId
+- requestId
+- userInputPreview
+- requestedCapabilities
+- resolvedCapabilities
+- executionMode
+- userGoalStatus
+- limitationReasons
+- workerPlans
+- providerNativeUsed
+- mahaNativeUsed
+- createdAt
+
+WorkerPlan 후보 필드:
+
+- workerId
+- workerRole
+- displayName
+- inputSource
+- requiredCapabilities
+- assignedProviderId
+- assignedModelId
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- expectedOutputType
+- status
+- limitationReason
+
+WorkerRole 후보:
+
+- ORCHESTRATOR
+- MAIN
+- RAG
+- MEMORY
+- WEB_SEARCH
+- TOOL
+- CODE_CHECK
+- COMPARISON
+- SYNTHESIS
+- REVIEWER
+
+주의:
+- WorkerPlan은 실제 실행 기록이 아니라 “계획”이다.
+- 실제 Worker 실행 결과와 분리해야 한다.
+
+--------------------------------------------------
+8. 실행정보 표시 계약
+--------------------------------------------------
+
+실행정보 기본 화면에 표시할 후보:
+
+- 사용자 목표 수행 상태
+- 실행 방식
+- 요구 capability
+- 충족 capability
+- 제한 capability
+- 제한 사유
+- Worker 계획 요약
+
+상세 접힘 영역에 표시할 후보:
+
+- OrchestratorPlan 전체 요약
+- WorkerPlan 목록
+- CapabilityResolution 목록
+- Provider-native / MAHA-native 구분
+- 미구현 capability
+- 권한/API Key 필요 항목
+
+주의:
+- 기본 화면은 요약 중심
+- raw debug log처럼 과도하게 펼치지 않는다.
+- 상세 trace는 접힘/복사 영역에 둔다.
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+이번 단계는 설계문서 작성만 한다.
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Gemini native Web Search
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- RAG
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+10. 완료 기준
+--------------------------------------------------
+
+- MAHA_CAPABILITY_LAYER_MODELS_v1.md 작성
+- 최소 enum/model 후보 정의 완료
+- OrchestratorPlan / WorkerPlan 구조 정의 완료
+- Provider-native / MAHA-native source 구분 필드 정의 완료
+- 실행정보 표시 계약 정의 완료
+- 실제 코드 변경 없음
+- 기존 schema 변경 없음
+- 빌드 영향 없음 또는 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Capability Layer 최소 Kotlin 모델 skeleton 추가 또는 Orchestrator 판단 skeleton 설계
+
+==============================
 [2026-05-04 12:10] Orchestrator Capability Layer 설계
 ==============================
 
