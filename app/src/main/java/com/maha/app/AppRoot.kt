@@ -1926,6 +1926,15 @@ private fun ConversationGlobalSettingsScreen(
                         onClick = { onPageSelected("capabilityResolverDebug") }
                     )
                 }
+
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "Worker Profile 관리",
+                        subtitle = "가변 Worker Profile과 Scenario 구성을 미리 확인합니다. 실제 저장/편집은 후속 구현입니다.",
+                        onClick = { onPageSelected("workerProfileManagement") }
+                    )
+                }
             } else {
                 item {
                     Text(
@@ -1936,6 +1945,7 @@ private fun ConversationGlobalSettingsScreen(
                             "rag" -> "메모리 / RAG"
                             "modelApi" -> "모델 / API 설정"
                             "capabilityResolverDebug" -> "Capability Resolver 진단"
+                            "workerProfileManagement" -> "Worker Profile 관리"
                             "providerManagement" -> "Provider 관리"
                             "modelManagement" -> "Model 관리"
                             else -> "대화 설정"
@@ -1951,6 +1961,7 @@ private fun ConversationGlobalSettingsScreen(
                         text = when (selectedPage) {
                             "modelApi" -> "현재 Provider / Model / Web Search 상태"
                             "capabilityResolverDebug" -> "대화 실행과 분리된 capability 분석 진단 도구"
+                            "workerProfileManagement" -> "대화 실행과 분리된 Worker Profile / Scenario preview"
                             else -> "상세 설정 placeholder"
                         },
                         style = MaterialTheme.typography.titleMedium,
@@ -1958,7 +1969,7 @@ private fun ConversationGlobalSettingsScreen(
                     )
                 }
 
-                if (selectedPage != "modelApi" && selectedPage != "capabilityResolverDebug") {
+                if (selectedPage != "modelApi" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
                     item {
                         Card(
                             colors = CardDefaults.cardColors(
@@ -1997,6 +2008,14 @@ private fun ConversationGlobalSettingsScreen(
                 if (selectedPage == "capabilityResolverDebug") {
                     item {
                         CapabilityResolverDebugCard(
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                if (selectedPage == "workerProfileManagement") {
+                    item {
+                        WorkerProfileManagementScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

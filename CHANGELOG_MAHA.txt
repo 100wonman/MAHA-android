@@ -1,4 +1,392 @@
 ==============================
+[2026-05-04 20:00] Worker Profile 관리 UI skeleton 추가
+==============================
+
+[작업]
+- 대화모드 설정 메인에 Worker Profile 관리 진입 카드 추가
+- Worker Profile 관리 skeleton 화면 추가
+- WorkerProfileStore in-memory skeleton 데이터 기반 Worker 목록 표시
+- ConversationScenario skeleton 데이터 기반 Scenario 목록 표시
+- Worker별 System Instruction / Provider / Model / 실행 순서 / 병렬 가능 여부 preview 표시
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 제외
+- 기존 Provider 호출 / RAG / Web Search / SAF / 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 대화모드 설정 메인에 Worker Profile 관리 진입 카드 추가
+- WorkerProfileManagementScreen.kt 신규 추가
+- WorkerProfileStore in-memory skeleton 기반 Worker 목록 표시
+- Scenario 목록 표시 추가
+- read-only / 후속 구현 예정 placeholder 정책 유지
+
+[진입 UI 테스트]
+- 대화모드 설정 메인 카드: 확인
+- Worker Profile 관리 화면 진입: 확인
+- 기존 설정 카드 영향 없음: 확인
+- Capability Resolver 진단 카드 유지: 확인
+
+[Worker 목록 표시 테스트]
+- Worker 목록 표시: 확인
+- displayName/roleLabel: 확인
+- providerId/modelId: 확인
+- systemInstruction preview: 확인
+- enabled/isDefaultTemplate/userModified: 확인
+- canRunInParallel/executionOrder: 확인
+
+[Scenario 목록 표시 테스트]
+- Scenario 목록 표시: 확인
+- name/description: 확인
+- worker count: 확인
+- defaultExecutionMode: 확인
+- orchestrator/synthesis profile: 확인
+- enabled/isDefaultTemplate/userModified: 확인
+
+[연결 금지 확인]
+- 실제 저장/로드 없음: 유지
+- worker_profiles.json 생성 없음: 유지
+- conversation_scenarios.json 생성 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Capability Resolver 진단 UI: 유지
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- AppRoot.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 관리 UI skeleton 추가
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계는 UI skeleton 추가만 수행한다.
+
+목표:
+- 대화모드 설정 메인에 Worker Profile 관리 진입점을 추가한다.
+- Worker Profile 관리 skeleton 화면을 추가한다.
+- WorkerProfileStore in-memory skeleton 데이터를 화면에 표시한다.
+- Worker 목록과 Scenario 목록을 확인할 수 있게 한다.
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ 대화모드 설정 메인에 “Worker Profile 관리” 진입 카드 추가
+✔ Worker Profile 관리 skeleton 화면 추가
+✔ Worker 목록 섹션 추가
+✔ Scenario 목록 섹션 추가
+✔ WorkerProfileStore의 in-memory skeleton 데이터 표시
+✔ Worker 이름 / roleLabel / enabled / providerId / modelId / 병렬 가능 여부 표시
+✔ Scenario 이름 / 설명 / Worker 수 / defaultExecutionMode 표시
+✔ System Instruction 미리보기 표시 가능
+✔ “상세/편집은 후속 구현 예정” placeholder 표시
+✔ 실제 저장/로드와 미연결 유지
+✔ ConversationEngine과 미연결 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ 실제 WorkerProfile 저장/로드 구현
+❌ worker_profiles.json 실제 생성
+❌ conversation_scenarios.json 실제 생성
+❌ Worker 편집 저장 구현
+❌ System Instruction 편집 저장 구현
+❌ Provider/Model 선택 저장 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. UI 배치 정책
+--------------------------------------------------
+
+대상 파일 후보:
+
+- AppRoot.kt
+- WorkerProfileManagementScreen.kt 신규 가능
+
+배치:
+- 대화모드 설정 메인에 “Worker Profile 관리” 카드 추가
+- 카드 클릭 시 Worker Profile 관리 skeleton 화면으로 이동
+- Capability Resolver 진단 카드와 같은 설정/진단 계열 위치에 배치 가능
+
+주의:
+- AppRoot 대규모 구조 변경 금지
+- 기존 Provider 관리 / Model 관리 / Capability Resolver 진단 진입 영향 금지
+- 기존 저장소 관리 화면에 넣지 않는다
+
+--------------------------------------------------
+3. Worker Profile 관리 화면 skeleton
+--------------------------------------------------
+
+화면 제목:
+- Worker Profile 관리
+
+설명 문구:
+“Worker Profile은 대화모드에서 사용할 AI 작업자 설정입니다. 각 Worker는 역할, System Instruction, Provider, Model, capability override를 가질 수 있습니다. 현재 화면은 skeleton preview이며 실제 저장/편집은 후속 단계에서 지원됩니다.”
+
+섹션 후보:
+
+A. Worker 목록
+- displayName
+- roleLabel
+- roleDescription
+- enabled
+- providerId
+- modelId
+- canRunInParallel
+- executionOrder
+- systemInstruction preview
+- isDefaultTemplate
+- userModified
+
+B. Scenario 목록
+- name
+- description
+- worker count
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- enabled
+- isDefaultTemplate
+- userModified
+
+C. 안내 영역
+- 실제 대화 실행에 아직 연결되지 않음
+- 실제 저장/로드는 아직 미구현
+- System Instruction 편집은 후속 구현 예정
+
+주의:
+- 너무 긴 systemInstruction은 preview로 제한
+- 긴 값은 자동 줄바꿈
+- raw dump만 표시하지 말고 카드/라벨형으로 표시
+
+--------------------------------------------------
+4. Worker 목록 표시 정책
+--------------------------------------------------
+
+표시 항목:
+
+- 이름
+- 역할
+- 설명
+- 활성 상태
+- Provider / Model 참조
+- 병렬 가능 여부
+- 실행 순서
+- 기본 템플릿 여부
+- 사용자 수정 여부
+- System Instruction 미리보기
+
+문구 후보:
+- Provider 미지정: “Provider 미지정”
+- Model 미지정: “Model 미지정”
+- 기본 템플릿: “기본 템플릿”
+- 사용자 수정: “사용자 수정본”
+- 병렬 가능: “병렬 가능”
+- 비활성: “비활성”
+
+주의:
+- Provider/Model orphan 검증은 이번 단계에서 실제 수행하지 않아도 된다.
+- providerId/modelId가 null이면 미지정으로 표시한다.
+- 삭제/편집 버튼은 비활성 또는 placeholder로 둔다.
+
+--------------------------------------------------
+5. Scenario 목록 표시 정책
+--------------------------------------------------
+
+표시 항목:
+
+- Scenario 이름
+- 설명
+- 포함 Worker 수
+- 기본 실행 방식
+- Orchestrator profile
+- Synthesis profile
+- 활성 상태
+- 기본 템플릿 여부
+- 사용자 수정 여부
+
+문구 후보:
+- 기본 실행 방식: SINGLE / SEQUENTIAL / PARALLEL / MIXED
+- 포함 Worker 수: N개
+- Orchestrator 미지정
+- Synthesis 미지정
+
+주의:
+- Scenario 편집은 이번 단계에서 구현하지 않는다.
+- Worker 순서 변경 구현 금지.
+- 실제 실행 연결 금지.
+
+--------------------------------------------------
+6. read-only / placeholder 정책
+--------------------------------------------------
+
+이번 UI는 read-only skeleton이다.
+
+허용:
+- 목록 표시
+- 카드 접힘/펼침
+- 안내 문구
+- placeholder 버튼
+- preview
+
+금지:
+- 실제 저장
+- 실제 삭제
+- 실제 수정
+- Provider/Model 선택 반영
+- System Instruction 편집 반영
+- Scenario 편집 반영
+
+버튼을 둔다면 문구:
+- “후속 구현 예정”
+- “편집 기능은 아직 연결되지 않았습니다.”
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- Capability Resolver 진단 UI
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+8. 테스트 기준
+--------------------------------------------------
+
+A. 진입 UI
+- 대화모드 설정 메인 카드:
+- Worker Profile 관리 화면 진입:
+- 기존 설정 카드 영향 없음:
+- Capability Resolver 진단 카드 유지:
+
+B. Worker 목록 표시
+- Worker 목록 표시:
+- displayName/roleLabel:
+- providerId/modelId:
+- systemInstruction preview:
+- enabled/isDefaultTemplate/userModified:
+- canRunInParallel/executionOrder:
+
+C. Scenario 목록 표시
+- Scenario 목록 표시:
+- name/description:
+- worker count:
+- defaultExecutionMode:
+- orchestrator/synthesis profile:
+- enabled/isDefaultTemplate/userModified:
+
+D. 연결 금지 확인
+- 실제 저장/로드 없음:
+- worker_profiles.json 생성 없음:
+- conversation_scenarios.json 생성 없음:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+E. 기존 기능 영향
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Capability Resolver 진단 UI:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ 실제 저장/로드 구현 금지
+❌ JSON 파일 생성 금지
+❌ JsonStore 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ Worker 편집 저장 구현 금지
+❌ System Instruction 편집 저장 구현 금지
+❌ Provider/Model 선택 저장 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- 대화모드 설정 메인에 Worker Profile 관리 진입 카드 추가
+- Worker Profile 관리 skeleton 화면 추가
+- WorkerProfileStore skeleton 데이터 기반 Worker/Scenario preview 표시
+- read-only / placeholder 정책 유지
+- 실제 저장/로드 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 관리 UI 상세/편집 placeholder 보강 또는 WorkerProfileStore 실제 저장/로드 구현 설계
+
+==============================
 [2026-05-04 19:30] Worker Profile 관리 UI 설계
 ==============================
 
