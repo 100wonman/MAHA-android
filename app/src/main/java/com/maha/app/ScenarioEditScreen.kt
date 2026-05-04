@@ -45,7 +45,9 @@ fun ScenarioEditScreen(
     val dirty = name != scenario.name ||
             description != scenario.description ||
             enabledPreview != scenario.enabled ||
-            executionModePreview != scenario.defaultExecutionMode
+            executionModePreview != scenario.defaultExecutionMode ||
+            orchestratorPreviewId != scenario.orchestratorProfileId ||
+            synthesisPreviewId != scenario.synthesisProfileId
 
     Column(
         modifier = modifier,
@@ -112,25 +114,29 @@ fun ScenarioEditScreen(
         }
 
         ScenarioEditSection(title = "핵심 Worker 지정", initiallyExpanded = false) {
-            ScenarioEditNotice("Orchestrator / Synthesis는 고정 개체가 아니라 Scenario에서 지정 가능한 WorkerProfile 참조입니다. 이번 단계에서는 핵심 Worker 선택 변경은 저장하지 않습니다.")
+            ScenarioEditNotice("Orchestrator / Synthesis는 고정 개체가 아니라 Scenario에서 지정 가능한 WorkerProfile 참조입니다. 이번 단계에서는 Scenario에 포함된 Worker 중에서 선택하고, 선택값만 저장합니다. 실제 실행 연결은 아직 없습니다.")
             ScenarioEditKeyValue(
                 "orchestratorProfileId",
                 orchestratorPreviewId ?: "Orchestrator 미지정"
             )
-            ScenarioWorkerPickerPlaceholder(
-                title = "Orchestrator 선택 placeholder",
+            ScenarioWorkerPicker(
+                title = "Orchestrator 선택",
+                emptyLabel = "Orchestrator 미지정",
                 currentWorkerId = orchestratorPreviewId,
-                workers = workers,
+                scenarioWorkerIds = scenario.workerProfileIds,
+                workersById = workersById,
                 onSelect = { orchestratorPreviewId = it }
             )
             ScenarioEditKeyValue(
                 "synthesisProfileId",
                 synthesisPreviewId ?: "Synthesis 미지정"
             )
-            ScenarioWorkerPickerPlaceholder(
-                title = "Synthesis 선택 placeholder",
+            ScenarioWorkerPicker(
+                title = "Synthesis 선택",
+                emptyLabel = "Synthesis 미지정",
                 currentWorkerId = synthesisPreviewId,
-                workers = workers,
+                scenarioWorkerIds = scenario.workerProfileIds,
+                workersById = workersById,
                 onSelect = { synthesisPreviewId = it }
             )
         }
@@ -147,11 +153,17 @@ fun ScenarioEditScreen(
             if (disabledWorkerIds.isNotEmpty()) {
                 ScenarioWarningText("disabled Worker 포함: ${disabledWorkerIds.joinToString()}")
             }
-            if (scenario.orchestratorProfileId != null && scenario.orchestratorProfileId !in workersById) {
+            if (orchestratorPreviewId != null && orchestratorPreviewId !in workersById) {
                 ScenarioWarningText("orchestratorProfileId가 존재하지 않는 Worker를 참조합니다.")
             }
-            if (scenario.synthesisProfileId != null && scenario.synthesisProfileId !in workersById) {
+            if (synthesisPreviewId != null && synthesisPreviewId !in workersById) {
                 ScenarioWarningText("synthesisProfileId가 존재하지 않는 Worker를 참조합니다.")
+            }
+            if (orchestratorPreviewId != null && orchestratorPreviewId !in scenario.workerProfileIds) {
+                ScenarioWarningText("orchestratorProfileId가 Scenario WorkerSet에 포함되지 않은 Worker를 참조합니다.")
+            }
+            if (synthesisPreviewId != null && synthesisPreviewId !in scenario.workerProfileIds) {
+                ScenarioWarningText("synthesisProfileId가 Scenario WorkerSet에 포함되지 않은 Worker를 참조합니다.")
             }
             ScenarioEditNotice("자동 삭제는 하지 않습니다. 참조 제거 / 다른 Worker 재지정 / 일단 유지는 후속 구현 예정입니다.")
         }
@@ -169,6 +181,8 @@ fun ScenarioEditScreen(
                         description = description,
                         enabled = enabledPreview,
                         defaultExecutionMode = executionModePreview,
+                        orchestratorProfileId = orchestratorPreviewId,
+                        synthesisProfileId = synthesisPreviewId,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -226,7 +240,7 @@ private fun ScenarioEditHeaderCard(
                 }
             }
             Text(
-                text = "이번 단계는 name / description / enabled / defaultExecutionMode 저장만 연결합니다. WorkerSet / 핵심 Worker 지정 / 실행 연결은 아직 없습니다.",
+                text = "이번 단계는 name / description / enabled / defaultExecutionMode / Orchestrator / Synthesis 지정 저장만 연결합니다. WorkerSet / 실행 연결은 아직 없습니다.",
                 color = Color(0xFFD0D3DA)
             )
         }
@@ -373,10 +387,12 @@ private fun ScenarioWorkerReferenceRow(
 }
 
 @Composable
-private fun ScenarioWorkerPickerPlaceholder(
+private fun ScenarioWorkerPicker(
     title: String,
+    emptyLabel: String,
     currentWorkerId: String?,
-    workers: List<ConversationWorkerProfile>,
+    scenarioWorkerIds: List<String>,
+    workersById: Map<String, ConversationWorkerProfile>,
     onSelect: (String?) -> Unit,
 ) {
     Column(
@@ -393,21 +409,37 @@ private fun ScenarioWorkerPickerPlaceholder(
             color = Color(0xFF9DB7E8)
         )
         ScenarioSelectableWorkerRow(
-            label = "미지정",
-            description = "null · 저장 미연결 preview",
+            label = emptyLabel,
+            description = "null 저장",
             selected = currentWorkerId == null,
             onClick = { onSelect(null) }
         )
-        workers.take(8).forEach { worker ->
-            ScenarioSelectableWorkerRow(
-                label = worker.displayName.ifBlank { worker.workerProfileId },
-                description = "${worker.roleLabel.ifBlank { "역할 미지정" }} · ${if (worker.enabled) "활성" else "비활성"}",
-                selected = currentWorkerId == worker.workerProfileId,
-                onClick = { onSelect(worker.workerProfileId) }
-            )
+
+        if (scenarioWorkerIds.isEmpty()) {
+            ScenarioWarningText("Scenario에 포함된 Worker가 없습니다. 미지정만 선택할 수 있습니다.")
         }
-        if (workers.size > 8) {
-            Text(text = "표시 제한: ${workers.size}개 중 8개만 preview", color = Color(0xFFFFD18A))
+
+        scenarioWorkerIds.forEach { workerId ->
+            val worker = workersById[workerId]
+            if (worker == null) {
+                ScenarioSelectableWorkerRow(
+                    label = workerId,
+                    description = "참조 Worker 없음",
+                    selected = currentWorkerId == workerId,
+                    onClick = { onSelect(workerId) }
+                )
+            } else {
+                ScenarioSelectableWorkerRow(
+                    label = worker.displayName.ifBlank { worker.workerProfileId },
+                    description = "${worker.roleLabel.ifBlank { "역할 미지정" }} · ${if (worker.enabled) "활성" else "비활성"}",
+                    selected = currentWorkerId == worker.workerProfileId,
+                    onClick = { onSelect(worker.workerProfileId) }
+                )
+            }
+        }
+
+        if (currentWorkerId != null && currentWorkerId !in scenarioWorkerIds) {
+            ScenarioWarningText("현재 선택값은 Scenario WorkerSet에 포함되지 않았습니다. 미지정 또는 포함 Worker로 변경해 저장할 수 있습니다.")
         }
     }
 }

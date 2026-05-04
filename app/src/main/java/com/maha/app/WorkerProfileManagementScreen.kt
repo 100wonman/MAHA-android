@@ -454,7 +454,9 @@ private fun ConversationScenarioPreviewCard(
                     if (scenario.enabled) "활성" else "비활성",
                     "Worker ${scenario.workerProfileIds.size}개",
                     if (scenario.isDefaultTemplate) "기본" else "사용자",
-                    if (scenario.userModified) "수정본" else "원본"
+                    if (scenario.userModified) "수정본" else "원본",
+                    "O: ${scenario.orchestratorProfileId.toScenarioWorkerSummary(workersById, "미지정")}",
+                    "S: ${scenario.synthesisProfileId.toScenarioWorkerSummary(workersById, "미지정")}"
                 )
             )
 
@@ -473,8 +475,8 @@ private fun ConversationScenarioPreviewCard(
                 WorkerProfileDetailTitle(title = "WorkerSet 참조")
                 WorkerProfileKeyValue("workerProfileIds", scenario.workerProfileIds.joinToString().ifBlank { "없음" })
                 WorkerProfileKeyValue("Worker 표시", scenario.workerProfileIds.toScenarioWorkerDisplay(workersById))
-                WorkerProfileKeyValue("orchestratorProfileId", scenario.orchestratorProfileId ?: "Orchestrator 미지정")
-                WorkerProfileKeyValue("synthesisProfileId", scenario.synthesisProfileId ?: "Synthesis 미지정")
+                WorkerProfileKeyValue("orchestratorProfileId", scenario.orchestratorProfileId.toScenarioWorkerDetail(workersById, "Orchestrator 미지정"))
+                WorkerProfileKeyValue("synthesisProfileId", scenario.synthesisProfileId.toScenarioWorkerDetail(workersById, "Synthesis 미지정"))
 
                 WorkerProfileTagRow(values = listOf("read-only", "Scenario 편집 후속 구현 예정"))
                 WorkerProfileCollapseButton(onClick = { expanded = false })
@@ -625,6 +627,28 @@ private fun WorkerProfileEmptyCard(text: String) {
     }
 }
 
+
+private fun String?.toScenarioWorkerSummary(
+    workersById: Map<String, ConversationWorkerProfile>,
+    emptyLabel: String,
+): String {
+    if (this == null) return emptyLabel
+    val worker = workersById[this]
+    return worker?.displayName?.ifBlank { worker.workerProfileId } ?: "참조 없음"
+}
+
+private fun String?.toScenarioWorkerDetail(
+    workersById: Map<String, ConversationWorkerProfile>,
+    emptyLabel: String,
+): String {
+    if (this == null) return emptyLabel
+    val worker = workersById[this]
+    return if (worker == null) {
+        "$this · 참조 Worker 없음"
+    } else {
+        "${worker.displayName.ifBlank { worker.workerProfileId }} · ${worker.roleLabel.ifBlank { "역할 미지정" }} · ${if (worker.enabled) "활성" else "비활성"} · ${worker.workerProfileId}"
+    }
+}
 
 private fun List<String>.toScenarioWorkerDisplay(
     workersById: Map<String, ConversationWorkerProfile>,
