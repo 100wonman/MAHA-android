@@ -44,7 +44,8 @@ fun ScenarioEditScreen(
 
     val dirty = name != scenario.name ||
             description != scenario.description ||
-            enabledPreview != scenario.enabled
+            enabledPreview != scenario.enabled ||
+            executionModePreview != scenario.defaultExecutionMode
 
     Column(
         modifier = modifier,
@@ -101,13 +102,13 @@ fun ScenarioEditScreen(
         }
 
         ScenarioEditSection(title = "실행 방식", initiallyExpanded = false) {
-            ScenarioEditNotice("이 값은 Scenario의 기본 실행 방식 후보입니다. 이번 단계에서는 name / description / enabled만 저장하며, 실행 방식 변경은 저장하지 않습니다.")
+            ScenarioEditNotice("Scenario의 기본 실행 방식입니다. 실제 실행 시에는 Orchestrator가 요청 내용과 Worker 의존성을 함께 판단합니다. 현재 단계에서는 설정값 저장만 수행하고 실행 엔진에는 연결하지 않습니다.")
             ScenarioExecutionModeSelector(
                 value = executionModePreview,
                 onValueChange = { executionModePreview = it }
             )
             ScenarioEditKeyValue("원본 defaultExecutionMode", scenario.defaultExecutionMode.name)
-            ScenarioEditKeyValue("preview defaultExecutionMode", executionModePreview.name)
+            ScenarioEditKeyValue("선택 defaultExecutionMode", executionModePreview.name)
         }
 
         ScenarioEditSection(title = "핵심 Worker 지정", initiallyExpanded = false) {
@@ -167,6 +168,7 @@ fun ScenarioEditScreen(
                         name = normalizedName,
                         description = description,
                         enabled = enabledPreview,
+                        defaultExecutionMode = executionModePreview,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -224,7 +226,7 @@ private fun ScenarioEditHeaderCard(
                 }
             }
             Text(
-                text = "이번 단계는 name / description / enabled 저장만 연결합니다. WorkerSet / 실행 방식 / 핵심 Worker 지정 / 실행 연결은 아직 없습니다.",
+                text = "이번 단계는 name / description / enabled / defaultExecutionMode 저장만 연결합니다. WorkerSet / 핵심 Worker 지정 / 실행 연결은 아직 없습니다.",
                 color = Color(0xFFD0D3DA)
             )
         }
@@ -325,7 +327,7 @@ private fun ScenarioExecutionModeSelector(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "defaultExecutionMode preview",
+                text = "defaultExecutionMode",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF9DB7E8)
