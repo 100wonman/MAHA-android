@@ -1,4 +1,369 @@
 ==============================
+[2026-05-04 20:05] Worker Profile 관리 UI 모바일 가시성 보정
+==============================
+
+[작업]
+- Worker Profile 관리 화면의 모바일 상하 스크롤 부담 완화
+- Worker 카드 기본 표시 정보를 요약 중심으로 축소
+- Scenario 카드 기본 표시 정보를 요약 중심으로 축소
+- 긴 roleDescription / systemInstruction / policy 정보는 상세 placeholder 또는 접힘 영역으로 이동
+- Worker / Scenario 목록의 spacing/padding 및 정보 밀도 보정
+- read-only / 후속 구현 예정 정책 유지
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Worker Profile 관리 화면을 Worker / Scenario 탭 구조로 분리
+- Worker 카드 기본 표시 정보를 핵심 요약 중심으로 축소
+- Scenario 카드 기본 표시 정보를 핵심 요약 중심으로 축소
+- roleDescription / systemInstruction / policy / capability 상세는 접힘 영역으로 이동
+- 카드 padding / spacing을 줄여 모바일 상하 스크롤 부담 완화
+
+[모바일 가시성 테스트]
+- Worker 카드 기본 정보 축소: 상당히 좋아짐
+- Scenario 카드 기본 정보 축소: 상당히 좋아짐
+- systemInstruction 기본 노출 축소: 확인
+- 상하 스크롤 감소: 대폭 감소
+- 상세 정보 접근 가능: 용이함/상세 정보 하단에 접기 버튼 추가 요청
+
+[Worker 표시 테스트]
+- displayName/roleLabel: 유지
+- enabled: 유지
+- providerId/modelId 요약: 유지
+- executionOrder: 유지
+- canRunInParallel: 유지
+- 상세 placeholder: 접힘 영역으로 이동
+
+[Scenario 표시 테스트]
+- name: 유지
+- defaultExecutionMode: 유지
+- worker count: 유지
+- enabled: 유지
+- 상세 placeholder: 접힘 영역으로 이동
+
+[연결 금지 확인]
+- 실제 저장/로드 없음: 유지
+- worker_profiles.json 생성 없음: 유지
+- conversation_scenarios.json 생성 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- 대화모드 설정 메인: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 관리 UI 모바일 가시성 보정
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- 현재 단계는 read-only skeleton UI 보정이다.
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 하지 않는다.
+
+목표:
+- Worker Profile 관리 화면의 과도한 상하 스크롤 문제를 완화한다.
+- 모바일 환경에서 Worker / Scenario 정보를 더 압축적으로 볼 수 있게 한다.
+- 기본 화면은 요약 중심으로 표시하고, 상세 정보는 접힘/펼침 또는 상세 placeholder로 분리한다.
+- 실제 저장/로드, 편집 저장, 실행 연결은 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ Worker Profile 관리 화면 모바일 가시성 보정
+✔ Worker 카드 기본 표시 정보 축소
+✔ Scenario 카드 기본 표시 정보 축소
+✔ 긴 설명 / systemInstruction preview 기본 노출 축소
+✔ 상세 정보는 접힘/펼침 또는 상세 placeholder로 이동
+✔ Worker 목록과 Scenario 목록을 섹션/탭/접힘 구조 중 하나로 정리
+✔ “전체 펼침”보다 “요약 우선” 구조 적용
+✔ 모바일에서 한 화면에 더 많은 카드가 보이도록 spacing/padding 조정
+✔ read-only / 후속 구현 예정 정책 유지
+✔ 기존 진입 카드 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ 실제 WorkerProfile 저장/로드 구현
+❌ worker_profiles.json 실제 생성
+❌ conversation_scenarios.json 실제 생성
+❌ Worker 편집 저장 구현
+❌ System Instruction 편집 저장 구현
+❌ Provider/Model 선택 저장 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 모바일 가시성 보정 정책
+--------------------------------------------------
+
+현재 문제:
+- Worker Profile 관리 화면에서 Worker와 Scenario 정보가 모두 펼쳐져 상하 스크롤이 길다.
+- 모바일 이동 중 확인하기 어렵다.
+- systemInstruction preview, roleDescription, capability/policy 정보가 기본 화면에 많이 노출되면 정보 밀도가 과해진다.
+
+보정 방향:
+- 기본 화면은 요약 카드 중심
+- 상세 정보는 접힘 영역 또는 상세 placeholder로 이동
+- Worker / Scenario 섹션은 분리하되, 동시에 너무 많이 펼치지 않는다.
+
+권장 구조 중 하나 선택:
+
+A안. 탭 구조
+- Worker 탭
+- Scenario 탭
+
+B안. 접힘 섹션
+- Worker 목록 접힘
+- Scenario 목록 접힘
+
+C안. 요약 + 상세 placeholder
+- 기본 카드에는 핵심 4~6개만 표시
+- 클릭 시 상세 placeholder 표시
+
+권장:
+- 구현 부담이 낮으면 접힘 섹션 또는 요약 카드 우선
+- AppRoot 대규모 변경이 필요하면 피한다.
+
+--------------------------------------------------
+3. Worker 카드 기본 표시 정책
+--------------------------------------------------
+
+기본 카드에 표시할 항목:
+
+- displayName
+- roleLabel
+- enabled 상태
+- Provider/Model 요약
+- 실행 순서
+- 병렬 가능 여부
+
+기본 카드에서 숨기거나 축소할 항목:
+
+- roleDescription 긴 문장
+- systemInstruction 긴 preview
+- capabilityOverrides 전체
+- inputPolicy/outputPolicy 전체
+- dependsOnWorkerIds 전체
+
+상세 접힘 또는 placeholder에 표시할 항목:
+
+- roleDescription
+- systemInstruction preview
+- capabilityOverrides 요약
+- inputPolicy/outputPolicy 요약
+- dependsOnWorkerIds
+- isDefaultTemplate
+- userModified
+- createdAt/updatedAt 필요 시
+
+문구:
+- “상세 보기”
+- “System Instruction 보기”
+- “편집 기능은 후속 구현 예정”
+
+주의:
+- 실제 편집/저장 기능 구현 금지
+- 상세 placeholder는 read-only 유지
+
+--------------------------------------------------
+4. Scenario 카드 기본 표시 정책
+--------------------------------------------------
+
+기본 카드에 표시할 항목:
+
+- name
+- defaultExecutionMode
+- 포함 Worker 수
+- enabled 상태
+
+기본 카드에서 숨기거나 축소할 항목:
+
+- 긴 description
+- workerProfileIds 전체
+- orchestratorProfileId / synthesisProfileId 상세
+- isDefaultTemplate / userModified 상세
+
+상세 접힘 또는 placeholder에 표시할 항목:
+
+- description
+- workerProfileIds 요약
+- orchestratorProfileId
+- synthesisProfileId
+- isDefaultTemplate
+- userModified
+
+문구:
+- “Scenario 상세”
+- “WorkerSet 편집은 후속 구현 예정”
+
+--------------------------------------------------
+5. 레이아웃 보정 정책
+--------------------------------------------------
+
+보정 후보:
+- 카드 padding 축소
+- 섹션 간 간격 축소
+- label/value를 한 줄 또는 짧은 행으로 표시
+- 긴 값은 maxLines + ellipsis 적용
+- systemInstruction은 기본 1~2줄까지만 표시
+- 상세는 접힘으로 이동
+- 불필요한 설명문은 화면 상단 1개 안내문으로 통합
+
+주의:
+- 텍스트가 잘려 의미가 사라지면 안 된다.
+- 상세 접근 가능성은 유지한다.
+- 코드/JSON/실행정보 렌더링 정책과 무관한 화면이다.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화모드 설정 메인 Worker Profile 관리 진입 카드
+- Worker Profile 관리 화면 진입
+- Worker 목록 표시
+- Scenario 목록 표시
+- WorkerProfileStore in-memory skeleton 데이터 표시
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 모바일 가시성
+- Worker 카드 기본 정보 축소:
+- Scenario 카드 기본 정보 축소:
+- systemInstruction 기본 노출 축소:
+- 상하 스크롤 감소:
+- 상세 정보 접근 가능:
+
+B. Worker 표시
+- displayName/roleLabel:
+- enabled:
+- providerId/modelId 요약:
+- executionOrder:
+- canRunInParallel:
+- 상세 placeholder:
+
+C. Scenario 표시
+- name:
+- defaultExecutionMode:
+- worker count:
+- enabled:
+- 상세 placeholder:
+
+D. 연결 금지 확인
+- 실제 저장/로드 없음:
+- worker_profiles.json 생성 없음:
+- conversation_scenarios.json 생성 없음:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+E. 기존 기능 영향
+- 대화모드 설정 메인:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 저장/로드 구현 금지
+❌ JSON 파일 생성 금지
+❌ JsonStore 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ Worker 편집 저장 구현 금지
+❌ System Instruction 편집 저장 구현 금지
+❌ Provider/Model 선택 저장 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- Worker Profile 관리 화면의 모바일 상하 스크롤 부담 감소
+- 기본 화면이 Worker/Scenario 요약 중심으로 표시됨
+- 상세 정보는 접힘/placeholder로 접근 가능
+- read-only / 후속 구현 예정 정책 유지
+- 실제 저장/로드 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 상세/편집 placeholder 보강 또는 WorkerProfileStore 실제 저장/로드 구현 설계
+
+==============================
 [2026-05-04 20:00] Worker Profile 관리 UI skeleton 추가
 ==============================
 
