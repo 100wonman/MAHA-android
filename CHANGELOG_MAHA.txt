@@ -1,4 +1,396 @@
 ==============================
+[2026-05-04 17:00] Worker Profile 최소 Kotlin 모델 skeleton 추가
+==============================
+
+[작업]
+- Worker Profile 후속 구현을 위한 WorkerProfileModels.kt 추가
+- ConversationWorkerProfile data class skeleton 추가
+- ConversationScenarioProfile data class skeleton 추가
+- WorkerCapabilityOverrides / WorkerInputPolicy / WorkerOutputPolicy skeleton 추가
+- worker_profiles.json / conversation_scenarios.json 후속 저장 구현을 고려한 envelope 후보 추가 가능
+- Worker별 System Instruction / Provider / Model / capability override 필드 반영
+- 실제 저장/로드, UI, ConversationEngine, Provider 호출 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileModels.kt 신규 추가
+- ConversationWorkerProfile / ConversationScenarioProfile skeleton 추가
+- WorkerCapabilityOverrides / WorkerInputPolicy / WorkerOutputPolicy 추가
+- WorkerProfileStoreEnvelope / ConversationScenarioStoreEnvelope 후보 추가
+- CapabilityLayerStatus / CapabilityType / ExecutionMode 재사용
+
+[모델 파일 테스트]
+- WorkerProfileModels.kt: 추가
+- package/import: com.maha.app, 외부 import 없음
+- 외부 의존성: 없음
+- 기존 파일 수정: 없음
+
+[WorkerProfile 모델 테스트]
+- ConversationWorkerProfile: 추가
+- systemInstruction: 필드 추가
+- providerId/modelId: String? 참조로 유지
+- capabilityOverrides: WorkerCapabilityOverrides 사용
+- inputPolicy/outputPolicy: WorkerInputPolicy / WorkerOutputPolicy 사용
+- executionOrder/canRunInParallel/dependsOnWorkerIds: 필드 추가
+
+[Scenario 모델 테스트]
+- ConversationScenarioProfile: 추가
+- workerProfileIds: List<String> 참조로 유지
+- defaultExecutionMode: ExecutionMode.SINGLE 기본값
+- orchestratorProfileId: String? 참조
+- synthesisProfileId: String? 참조
+- userEditable/userModified: 필드 추가
+
+[연결 금지 확인]
+- 저장/로드 미구현: 유지
+- JsonStore 변경 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Worker 관리 UI 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileModels.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 최소 Kotlin 모델 skeleton 추가
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계는 모델 skeleton 추가만 수행한다.
+
+목표:
+- Worker Profile / Conversation Scenario 후속 구현을 위한 최소 Kotlin enum/data class skeleton을 추가한다.
+- 실제 저장/로드, UI, ConversationEngine 연결은 하지 않는다.
+- 기존 Provider / Model / Capability Layer / RAG / Web Search / 작업모드는 변경하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ WorkerProfileModels.kt 신규 추가
+✔ ConversationWorkerProfile data class 추가
+✔ ConversationScenarioProfile data class 추가
+✔ WorkerCapabilityOverrides data class 추가
+✔ WorkerInputPolicy data class 추가
+✔ WorkerOutputPolicy data class 추가
+✔ WorkerProfileStoreEnvelope 후보 data class 추가 가능
+✔ ConversationScenarioStoreEnvelope 후보 data class 추가 가능
+✔ 기존 ExecutionMode / CapabilityType / CapabilityLayerStatus 재사용 가능
+✔ providerId / modelId는 String? 참조로만 유지
+✔ systemInstruction 필드 추가
+✔ userModified / isDefaultTemplate / enabled 필드 추가
+✔ createdAt / updatedAt 필드 추가
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ 실제 저장/로드 구현
+❌ worker_profiles.json 실제 생성
+❌ conversation_scenarios.json 실제 생성
+❌ JsonStore 구현 변경
+❌ SAF 백업/복원 코드 변경
+❌ ConversationEngine 연결
+❌ ConversationViewModel 연결
+❌ Worker 관리 UI 구현
+❌ System Instruction 편집 UI 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 신규 파일 후보
+--------------------------------------------------
+
+신규 파일:
+
+- WorkerProfileModels.kt
+
+위치 후보:
+
+- app/src/main/java/com/maha/app/WorkerProfileModels.kt
+
+주의:
+- 기존 파일에 억지로 섞지 말고 독립 파일로 추가한다.
+- package는 기존 앱 package와 동일하게 유지한다.
+- 외부 라이브러리 추가 금지.
+- kotlinx serialization 추가 금지.
+- JSON serializer 작성 금지.
+- 실제 저장소 연결 금지.
+
+--------------------------------------------------
+3. ConversationWorkerProfile 설계
+--------------------------------------------------
+
+ConversationWorkerProfile 후보 필드:
+
+- workerProfileId: String
+- displayName: String
+- roleLabel: String
+- roleDescription: String
+- systemInstruction: String
+- providerId: String?
+- modelId: String?
+- capabilityOverrides: WorkerCapabilityOverrides
+- inputPolicy: WorkerInputPolicy
+- outputPolicy: WorkerOutputPolicy
+- executionOrder: Int
+- canRunInParallel: Boolean
+- dependsOnWorkerIds: List<String>
+- enabled: Boolean
+- isDefaultTemplate: Boolean
+- userModified: Boolean
+- createdAt: Long
+- updatedAt: Long
+
+정책:
+- workerProfileId는 이름 변경과 무관한 안정 ID다.
+- roleLabel은 enum 고정값이 아니라 사용자 정의 문자열 가능성을 열어둔다.
+- systemInstruction은 사용자 편집 가능 값을 담는 필드다.
+- providerId/modelId는 참조 ID이며 API Key/baseUrl/rawModelName 복사 금지.
+- enabled=false이면 후속 실행 후보에서 제외할 수 있다.
+
+--------------------------------------------------
+4. ConversationScenarioProfile 설계
+--------------------------------------------------
+
+ConversationScenarioProfile 후보 필드:
+
+- scenarioId: String
+- name: String
+- description: String
+- workerProfileIds: List<String>
+- defaultExecutionMode: ExecutionMode
+- orchestratorProfileId: String?
+- synthesisProfileId: String?
+- userEditable: Boolean
+- isDefaultTemplate: Boolean
+- userModified: Boolean
+- enabled: Boolean
+- createdAt: Long
+- updatedAt: Long
+
+정책:
+- Scenario는 WorkerProfile 목록을 참조한다.
+- WorkerProfile 자체를 중복 저장하지 않는다.
+- 기본 Scenario도 사용자 편집 가능 구조를 유지한다.
+- 실제 저장/로드는 후속 단계에서 구현한다.
+
+--------------------------------------------------
+5. WorkerCapabilityOverrides 설계
+--------------------------------------------------
+
+WorkerCapabilityOverrides 후보 필드:
+
+- functionCalling: CapabilityLayerStatus
+- webSearch: CapabilityLayerStatus
+- codeExecution: CapabilityLayerStatus
+- structuredOutput: CapabilityLayerStatus
+- thinkingSummary: CapabilityLayerStatus
+- ragSearch: CapabilityLayerStatus
+- memoryRecall: CapabilityLayerStatus
+- fileRead: CapabilityLayerStatus
+- fileWrite: CapabilityLayerStatus
+- codeCheck: CapabilityLayerStatus
+- parallelExecution: CapabilityLayerStatus
+
+정책:
+- Worker override는 Model capability와 별도다.
+- USER_ENABLED여도 실제 실행 가능을 의미하지 않는다.
+- 실제 실행 가능 여부는 Capability Layer가 판단한다.
+- 기존 ProviderSettingsModels.kt의 CapabilityStatus와 혼동 금지.
+- CapabilityLayerStatus를 사용한다.
+
+--------------------------------------------------
+6. WorkerInputPolicy / WorkerOutputPolicy 설계
+--------------------------------------------------
+
+WorkerInputPolicy 후보 필드:
+
+- userInputOnly: Boolean
+- previousWorkerOutput: Boolean
+- selectedWorkerOutputs: List<String>
+- ragContextAllowed: Boolean
+- memoryContextAllowed: Boolean
+- webSearchContextAllowed: Boolean
+- maxInputChars: Int
+- includeRunHistory: Boolean
+
+WorkerOutputPolicy 후보 필드:
+
+- expectedOutputType: CapabilityType
+- requireJson: Boolean
+- requireMarkdownTable: Boolean
+- requireCodeBlock: Boolean
+- allowPlainText: Boolean
+- maxOutputChars: Int
+- passToNextWorker: Boolean
+- exposeToUser: Boolean
+- saveAsMemoryCandidate: Boolean
+
+주의:
+- 이번 단계에서는 정책 필드만 정의한다.
+- 실제 입력 전달/출력 제어 로직 구현 금지.
+
+--------------------------------------------------
+7. Store Envelope 후보
+--------------------------------------------------
+
+후속 저장소 구현을 고려해 envelope data class를 추가할 수 있다.
+
+WorkerProfileStoreEnvelope 후보:
+
+- schemaVersion: Int
+- updatedAt: Long
+- workerProfiles: List<ConversationWorkerProfile>
+
+ConversationScenarioStoreEnvelope 후보:
+
+- schemaVersion: Int
+- updatedAt: Long
+- scenarios: List<ConversationScenarioProfile>
+
+주의:
+- envelope class 추가는 가능하지만 실제 파일 저장 금지.
+- serializer 작성 금지.
+- schemaVersion 기본값은 1.
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- Capability Resolver 진단 UI
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+9. 테스트 기준
+--------------------------------------------------
+
+A. 모델 파일 추가
+- WorkerProfileModels.kt 추가:
+- package/import 정상:
+- 외부 의존성 없음:
+- 기존 파일 수정 최소화:
+
+B. WorkerProfile 모델
+- ConversationWorkerProfile:
+- systemInstruction:
+- providerId/modelId:
+- capabilityOverrides:
+- inputPolicy/outputPolicy:
+- executionOrder/canRunInParallel/dependsOnWorkerIds:
+
+C. Scenario 모델
+- ConversationScenarioProfile:
+- workerProfileIds:
+- defaultExecutionMode:
+- orchestratorProfileId:
+- synthesisProfileId:
+- userEditable/userModified:
+
+D. 연결 금지 확인
+- 저장/로드 미구현:
+- JsonStore 변경 없음:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Worker 관리 UI 미구현:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+
+E. 기존 기능 영향
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Capability Resolver 진단 UI:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+❌ 저장/로드 구현 금지
+❌ JSON serializer 작성 금지
+❌ JsonStore 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 관리 UI 구현 금지
+❌ System Instruction 편집 UI 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- WorkerProfileModels.kt 추가
+- ConversationWorkerProfile / ConversationScenarioProfile skeleton 정의 완료
+- WorkerCapabilityOverrides / InputPolicy / OutputPolicy skeleton 정의 완료
+- 저장/로드 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 저장소 skeleton 설계 또는 Worker Profile 관리 UI 설계
+
+==============================
 [2026-05-04 16:40] Worker Profile 저장 schema 설계
 ==============================
 
