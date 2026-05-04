@@ -1,4 +1,462 @@
 ==============================
+[2026-05-04 20:40] Worker Profile 편집 UI 설계
+==============================
+
+[작업]
+- Worker Profile 편집 UI 구조 설계
+- Worker 추가/복제/비활성화/삭제 정책 정의
+- Worker 상세 편집 화면 섹션 정의
+- System Instruction 편집 및 기본값 복원 정책 정의
+- Worker별 Provider/Model 선택 정책 정의
+- capability override / InputPolicy / OutputPolicy 편집 정책 정의
+- 변경사항 감지 / 저장 / 취소 정책 정의
+- 실제 Compose 구현 및 Store 저장 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Worker Profile 편집 UI 설계 문서 작성
+- Worker 추가/복제/비활성화/삭제 정책 정의
+- System Instruction 편집 저장 정책 정의
+- Provider/Model 선택 및 capability override 편집 정책 정의
+- 변경사항 감지 / 저장 / 취소 정책 정의
+
+[설계 산출물]
+- 문서명: MAHA_WORKER_PROFILE_EDIT_UI_v1.md
+- 작성 위치: /mnt/data/MAHA_WORKER_PROFILE_EDIT_UI_v1.md
+- 주요 섹션: 목적, 설계 전제, Worker 편집 진입 흐름, 추가/복제/비활성화/삭제 정책, 상세 편집 화면, System Instruction 편집, Provider/Model 선택, capability override, InputPolicy/OutputPolicy, 변경사항 감지/저장/취소, orphan 재지정, 후속 구현 단계
+
+[Worker 편집 흐름 설계]
+- 진입 흐름: Worker 카드 상세/편집, 새 Worker 추가, 복제 액션
+- 추가: 새 ID, Custom role, providerId/modelId null 허용, userModified=true
+- 복제: 새 ID 생성, instruction/provider/model/capability/policy 복사, 사용자 Worker로 취급
+- 비활성화: enabled=false, Profile 보존, 실행 후보 제외 가능
+- 삭제: 확인 Dialog 필수, 초기에는 비활성화 우선
+
+[상세 편집 설계]
+- 기본 정보: displayName, roleLabel, roleDescription, enabled
+- System Instruction: multiline 편집, 글자 수, 기본 템플릿 보기, 민감정보 안내
+- Provider/Model: Worker별 Provider/Model dropdown, API Key 미설정/orphan 경고
+- capability override: Worker 단위 사용자 의도 설정, 실제 실행 가능 보장 아님
+- InputPolicy/OutputPolicy: 고급 접힘 섹션으로 분리
+- 실행 계획: executionOrder, canRunInParallel, dependsOnWorkerIds
+
+[저장 정책 설계]
+- 변경사항 감지: 원본 profile snapshot 유지, dirty=true 관리
+- 저장: 명시적 저장 버튼, WorkerProfileStore.upsertWorkerProfile 연결 후보
+- 취소: 변경사항 폐기 확인
+- userModified: 저장 시 true 설정
+- updatedAt: 저장 시 갱신
+
+[오류/경고 설계]
+- orphan Provider: “이 Worker가 참조하는 Provider를 찾을 수 없습니다.”
+- orphan Model: “이 Worker가 참조하는 Model을 찾을 수 없습니다.”
+- Scenario 참조 중 삭제: 삭제 전 경고 필요
+- 민감정보 안내: System Instruction에 API Key/비밀번호/개인정보 입력 금지 안내
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- 빌드 영향: 없음
+- Provider 호출: 변경 없음
+- RAG: 변경 없음
+- Web Search: 변경 없음
+- Worker Profile UI: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_WORKER_PROFILE_EDIT_UI_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Worker Profile 편집 UI 설계
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계에서는 실제 Compose UI 구현을 하지 않고 설계만 한다.
+
+목표:
+- Worker Profile 편집 UI 구조를 설계한다.
+- Worker 추가/복제/비활성화/삭제 정책을 정의한다.
+- System Instruction 편집 저장 정책을 정의한다.
+- Provider/Model 선택 저장 정책을 정의한다.
+- capability override / InputPolicy / OutputPolicy 편집 저장 정책을 정의한다.
+- Conversation Scenario 편집 UI는 후속 단계로 분리한다.
+
+--------------------------------------------------
+1. 설계 범위
+--------------------------------------------------
+
+이번 단계에서 설계:
+
+✔ Worker Profile 추가 UI 설계
+✔ Worker Profile 복제 UI 설계
+✔ Worker Profile 비활성화/활성화 UI 설계
+✔ Worker Profile 삭제 UI 설계
+✔ Worker Profile 상세 편집 UI 설계
+✔ System Instruction 편집 UI 설계
+✔ Provider/Model 선택 UI 설계
+✔ capability override 편집 UI 설계
+✔ InputPolicy / OutputPolicy 편집 UI 설계
+✔ 편집 저장 / 취소 / 변경사항 감지 정책 설계
+✔ 기본 템플릿 / 사용자 수정본 정책 설계
+✔ orphan Provider/Model 재지정 UI 설계
+✔ WorkerProfileStore 저장 연결 시점 설계
+
+이번 단계에서 금지:
+
+❌ 실제 Compose UI 구현
+❌ WorkerProfileStore 코드 변경
+❌ WorkerProfileStore 저장 호출 연결
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 산출물
+--------------------------------------------------
+
+신규 문서 후보:
+
+- MAHA_WORKER_PROFILE_EDIT_UI_v1.md
+
+문서에 반드시 포함:
+
+1. 목적
+2. 설계 전제
+3. Worker 편집 진입 흐름
+4. Worker 추가 정책
+5. Worker 복제 정책
+6. Worker 비활성화/활성화 정책
+7. Worker 삭제 정책
+8. Worker 상세 편집 화면 구조
+9. System Instruction 편집 정책
+10. Provider/Model 선택 정책
+11. capability override 편집 정책
+12. InputPolicy / OutputPolicy 편집 정책
+13. 변경사항 감지 / 저장 / 취소 정책
+14. 기본 템플릿 / 사용자 수정본 정책
+15. orphan Provider/Model 재지정 정책
+16. 후속 구현 단계
+
+주의:
+- 문서는 후속 구현 기준이다.
+- 실제 UI 코드는 작성하지 않는다.
+- Scenario 편집은 이번 문서에서 최소 언급만 하고 후속 작업으로 분리한다.
+
+--------------------------------------------------
+3. Worker 편집 진입 흐름
+--------------------------------------------------
+
+진입 후보:
+- Worker Profile 관리 화면의 Worker 카드에서 “상세/편집” 선택
+- Worker 카드 상세 영역의 “편집” 버튼
+- Worker 목록 상단의 “새 Worker 추가” 버튼
+- Worker 카드의 “복제” 액션
+
+화면 방식 후보:
+- 별도 화면
+- Modal bottom sheet
+- Dialog
+- 단계형 편집 화면
+
+권장:
+- 모바일 가시성을 위해 별도 화면 또는 전체 화면 편집을 우선 검토한다.
+- 긴 System Instruction 편집은 Dialog보다 전체 화면이 안전하다.
+
+주의:
+- 현재 단계에서는 설계만 한다.
+- 기존 read-only preview는 유지한다.
+
+--------------------------------------------------
+4. Worker 추가 정책
+--------------------------------------------------
+
+새 Worker 생성 시 기본값 후보:
+
+- workerProfileId: 새 ID 생성
+- displayName: “새 Worker”
+- roleLabel: “Custom”
+- roleDescription: 빈 문자열
+- systemInstruction: 빈 문자열 또는 기본 placeholder
+- providerId: null
+- modelId: null
+- capabilityOverrides: UNKNOWN 중심
+- inputPolicy: 안전 기본값
+- outputPolicy: plain text 허용
+- executionOrder: 마지막 순서
+- canRunInParallel: false
+- dependsOnWorkerIds: emptyList
+- enabled: true
+- isDefaultTemplate: false
+- userModified: true
+
+정책:
+- 새 Worker는 기본 템플릿이 아니다.
+- 사용자 생성 Worker는 userModified=true로 저장한다.
+- providerId/modelId가 없어도 저장 가능해야 한다.
+- 실행 시에는 Provider/Model 미지정 제한 상태로 표시할 수 있다.
+
+--------------------------------------------------
+5. Worker 복제 정책
+--------------------------------------------------
+
+복제 대상:
+- 기본 템플릿 Worker
+- 사용자 수정 Worker
+
+복제 시 정책:
+- 새 workerProfileId 생성
+- displayName에 “복사본” 또는 사용자가 수정 가능한 이름 부여
+- systemInstruction 포함 복사
+- providerId/modelId 참조 복사 가능
+- capabilityOverrides 복사
+- inputPolicy/outputPolicy 복사
+- isDefaultTemplate=false
+- userModified=true
+- createdAt/updatedAt 새로 갱신
+
+주의:
+- 기본 템플릿 원본은 보존한다.
+- 복제본은 사용자 Worker로 취급한다.
+
+--------------------------------------------------
+6. 비활성화 / 삭제 정책
+--------------------------------------------------
+
+비활성화:
+- enabled=false로 변경
+- WorkerProfile은 보존
+- Scenario에 포함되어 있어도 실행 후보에서 제외 가능
+- UI에서 비활성 배지 표시
+
+삭제:
+- 사용자 확인 Dialog 필수
+- 기본 템플릿 삭제는 제한 또는 강한 확인 필요
+- Scenario에서 참조 중인 Worker 삭제 시 경고 필요
+- 자동으로 Scenario 참조를 제거할지, orphan으로 남길지는 후속 정책 필요
+
+권장:
+- 초기 구현에서는 삭제보다 비활성화를 우선한다.
+- 삭제는 사용자 생성 Worker부터 허용한다.
+
+--------------------------------------------------
+7. Worker 상세 편집 화면 구조
+--------------------------------------------------
+
+섹션 구성:
+
+A. 기본 정보
+- displayName
+- roleLabel
+- roleDescription
+- enabled
+
+B. 실행 엔진
+- Provider 선택
+- Model 선택
+- Provider/Model 상태 요약
+- API Key 필요/미설정 경고
+- orphan Provider/Model 재지정
+
+C. System Instruction
+- 긴 텍스트 편집
+- 글자 수 표시
+- 기본 템플릿 보기
+- 기본값 복원
+- 민감정보 입력 금지 안내
+
+D. Capability Override
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+- thinkingSummary
+- ragSearch
+- memoryRecall
+- fileRead
+- fileWrite
+- codeCheck
+- parallelExecution
+
+E. InputPolicy
+- 사용자 입력 사용
+- 이전 Worker 출력 사용
+- 특정 Worker 출력 사용
+- RAG context 허용
+- Memory context 허용
+- Web Search context 허용
+- 실행 이력 포함
+- 최대 입력 길이
+
+F. OutputPolicy
+- expectedOutputType
+- JSON 요구
+- Markdown table 요구
+- Code block 요구
+- Plain text 허용
+- 최대 출력 길이
+- 다음 Worker 전달
+- 사용자에게 노출
+- Memory 후보 저장
+
+G. 실행 계획
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+
+--------------------------------------------------
+8. System Instruction 편집 정책
+--------------------------------------------------
+
+원칙:
+- System Instruction은 Worker 행동 기준이다.
+- 반드시 사용자 편집 가능해야 한다.
+- 앱 업데이트로 사용자 수정본을 덮어쓰지 않는다.
+- 기본값 복원은 명시적 사용자 액션으로만 한다.
+
+UI 요구:
+- multiline text field
+- 긴 텍스트 입력 가능
+- 글자 수 표시
+- 저장 전 변경사항 감지
+- 민감정보 입력 금지 안내
+- 기본 템플릿 보기
+- 기본값 복원 확인 Dialog
+
+주의:
+- API Key, 비밀번호, 개인 민감정보를 넣지 말라는 안내 필요
+- 자동 저장보다 명시적 저장이 안전하다.
+
+--------------------------------------------------
+9. Provider/Model 선택 정책
+--------------------------------------------------
+
+정책:
+- Worker별 Provider/Model 선택 가능
+- providerId/modelId만 WorkerProfile에 저장
+- API Key/baseUrl/rawModelName 복사 저장 금지
+- Provider/Model 삭제 시 orphan 상태 표시
+- 사용자는 재지정 가능해야 한다
+
+UI 후보:
+- Provider dropdown
+- Model dropdown
+- ProviderType 표시
+- Model capability 요약
+- API Key 미설정 경고
+- Provider 관리로 이동
+- Model 관리로 이동
+
+주의:
+- Provider/Model 선택은 Worker 실행 엔진 지정이다.
+- Provider/Model 선택이 곧 capability 실행 가능을 보장하지 않는다.
+
+--------------------------------------------------
+10. capability override 편집 정책
+--------------------------------------------------
+
+상태 후보:
+- UNKNOWN
+- AVAILABLE
+- LIMITED
+- NOT_AVAILABLE
+- NOT_IMPLEMENTED
+- USER_ENABLED
+
+정책:
+- override는 “이 Worker에서 사용자가 원하는 capability”다.
+- 실제 실행 가능 여부는 Capability Layer가 판단한다.
+- ModelProfile capability와 Worker override를 혼동하지 않는다.
+
+UI 안내 문구:
+“이 설정은 Worker가 사용하길 원하는 capability입니다. 실제 실행 가능 여부는 Provider/Model 상태와 MAHA 구현 상태를 함께 판단합니다.”
+
+--------------------------------------------------
+11. 변경사항 감지 / 저장 / 취소 정책
+--------------------------------------------------
+
+변경사항 감지:
+- 편집 화면 진입 시 원본 profile snapshot 유지
+- 필드 변경 시 dirty=true
+- 뒤로가기 시 변경사항 폐기 확인
+
+저장:
+- 저장 버튼 명시
+- 저장 성공 시 WorkerProfileStore.upsertWorkerProfile 호출 후보
+- updatedAt 갱신
+- userModified=true 설정
+
+취소:
+- 원본 유지
+- 변경사항 폐기 확인
+
+주의:
+- 이번 단계에서는 실제 저장 구현 금지
+- 후속 구현에서 Store 연결
+
+--------------------------------------------------
+12. 기존 기능 유지
+--------------------------------------------------
+
+이번 단계는 설계문서 작성만 한다.
+
+반드시 유지:
+- Worker Profile 관리 UI skeleton
+- WorkerProfileStore 실제 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+완료 기준:
+- MAHA_WORKER_PROFILE_EDIT_UI_v1.md 작성
+- Worker 추가/복제/비활성화/삭제 정책 정의 완료
+- Worker 상세 편집 화면 구조 정의 완료
+- System Instruction 편집 정책 정의 완료
+- Provider/Model 선택 정책 정의 완료
+- capability override / InputPolicy / OutputPolicy 편집 정책 정의 완료
+- 변경사항 감지 / 저장 / 취소 정책 정의 완료
+- 실제 코드 변경 없음
+- 빌드 영향 없음 또는 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 편집 UI skeleton 추가 또는 Scenario 편집 UI 설계
+
+==============================
 [2026-05-04 20:30] WorkerProfileStore 실제 저장/로드 구현
 ==============================
 
