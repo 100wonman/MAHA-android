@@ -66,6 +66,7 @@ fun WorkerProfileManagementScreen(
     val scenarios = scenarioEnvelope.scenarios.sortedBy { it.name.lowercase() }
     var selectedTab by remember { mutableStateOf(WorkerProfileManagementTab.WORKERS) }
     var editingWorker by remember { mutableStateOf<ConversationWorkerProfile?>(null) }
+    var editingScenario by remember { mutableStateOf<ConversationScenarioProfile?>(null) }
 
     val currentEditingWorker = editingWorker
     if (currentEditingWorker != null) {
@@ -76,6 +77,17 @@ fun WorkerProfileManagementScreen(
                 reloadWorkerProfileStore()
                 editingWorker = null
             },
+            modifier = modifier
+        )
+        return
+    }
+
+    val currentEditingScenario = editingScenario
+    if (currentEditingScenario != null) {
+        ScenarioEditScreen(
+            scenario = currentEditingScenario,
+            workers = workers,
+            onCancel = { editingScenario = null },
             modifier = modifier
         )
         return
@@ -136,8 +148,13 @@ fun WorkerProfileManagementScreen(
                 if (scenarios.isEmpty()) {
                     WorkerProfileEmptyCard(text = "표시할 Conversation Scenario가 없습니다.")
                 } else {
+                    val workersById = workers.associateBy { it.workerProfileId }
                     scenarios.forEach { scenario ->
-                        ConversationScenarioPreviewCard(scenario = scenario)
+                        ConversationScenarioPreviewCard(
+                            scenario = scenario,
+                            workersById = workersById,
+                            onEdit = { editingScenario = scenario }
+                        )
                     }
                 }
             }
@@ -381,7 +398,11 @@ private fun WorkerProfilePreviewCard(
 }
 
 @Composable
-private fun ConversationScenarioPreviewCard(scenario: ConversationScenarioProfile) {
+private fun ConversationScenarioPreviewCard(
+    scenario: ConversationScenarioProfile,
+    workersById: Map<String, ConversationWorkerProfile>,
+    onEdit: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
 
     Card(
@@ -414,8 +435,13 @@ private fun ConversationScenarioPreviewCard(scenario: ConversationScenarioProfil
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                    }
+                    TextButton(onClick = onEdit) {
+                        Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -442,6 +468,7 @@ private fun ConversationScenarioPreviewCard(scenario: ConversationScenarioProfil
 
                 WorkerProfileDetailTitle(title = "WorkerSet 참조")
                 WorkerProfileKeyValue("workerProfileIds", scenario.workerProfileIds.joinToString().ifBlank { "없음" })
+                WorkerProfileKeyValue("Worker 표시", scenario.workerProfileIds.toScenarioWorkerDisplay(workersById))
                 WorkerProfileKeyValue("orchestratorProfileId", scenario.orchestratorProfileId ?: "Orchestrator 미지정")
                 WorkerProfileKeyValue("synthesisProfileId", scenario.synthesisProfileId ?: "Synthesis 미지정")
 
@@ -592,6 +619,21 @@ private fun WorkerProfileEmptyCard(text: String) {
             modifier = Modifier.padding(12.dp)
         )
     }
+}
+
+
+private fun List<String>.toScenarioWorkerDisplay(
+    workersById: Map<String, ConversationWorkerProfile>,
+): String {
+    if (isEmpty()) return "없음"
+    return mapIndexed { index, workerId ->
+        val worker = workersById[workerId]
+        if (worker == null) {
+            "${index + 1}. $workerId · missing Worker"
+        } else {
+            "${index + 1}. ${worker.displayName.ifBlank { worker.workerProfileId }} · ${worker.roleLabel.ifBlank { "역할 미지정" }} · ${if (worker.enabled) "활성" else "비활성"}"
+        }
+    }.joinToString("\n")
 }
 
 private fun String.previewText(maxLength: Int): String {
