@@ -32,6 +32,9 @@ fun WorkerProfileManagementScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val providerSettingsStore = remember(context) { ProviderSettingsStore(context) }
+    var providerProfiles by remember(context) { mutableStateOf(providerSettingsStore.loadProviderProfiles()) }
+    var modelProfiles by remember(context) { mutableStateOf(providerSettingsStore.loadModelProfiles()) }
     var workerEnvelope by remember(context) {
         mutableStateOf(
             run {
@@ -49,9 +52,13 @@ fun WorkerProfileManagementScreen(
         )
     }
     val reloadWorkerProfileStore = {
+        providerProfiles = providerSettingsStore.loadProviderProfiles()
+        modelProfiles = providerSettingsStore.loadModelProfiles()
         workerEnvelope = WorkerProfileStore.loadWorkerProfiles(forceReload = true)
         scenarioEnvelope = WorkerProfileStore.loadConversationScenarios(forceReload = true)
     }
+    val providerById = providerProfiles.associateBy { it.providerId }
+    val modelById = modelProfiles.associateBy { it.modelId }
     val workers = workerEnvelope.workerProfiles.sortedWith(
         compareBy<ConversationWorkerProfile> { it.executionOrder }
             .thenBy { it.displayName.lowercase() }
@@ -105,6 +112,16 @@ fun WorkerProfileManagementScreen(
                     workers.forEach { worker ->
                         WorkerProfilePreviewCard(
                             worker = worker,
+                            providerLabel = worker.providerId?.let { providerId ->
+                                providerById[providerId]?.let { provider ->
+                                    "${provider.displayName} (${provider.providerType.name})"
+                                } ?: "참조 Provider 없음"
+                            } ?: "미지정",
+                            modelLabel = worker.modelId?.let { modelId ->
+                                modelById[modelId]?.let { model ->
+                                    model.displayName.ifBlank { model.rawModelName.ifBlank { model.modelId } }
+                                } ?: "참조 Model 없음"
+                            } ?: "미지정",
                             onEdit = { editingWorker = worker }
                         )
                     }
@@ -178,7 +195,7 @@ private fun WorkerProfileReadOnlyNoticeCard() {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "현재 저장소는 로드/기본 생성만 연결되어 있습니다. 편집 화면은 skeleton이며 저장/Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
+            text = "Worker 기본 정보, System Instruction, Provider/Model 참조 저장은 연결되어 있습니다. Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
             color = Color(0xFFE6D0B8),
             modifier = Modifier.padding(12.dp)
         )
@@ -263,6 +280,8 @@ private fun WorkerProfileCompactSectionTitle(
 @Composable
 private fun WorkerProfilePreviewCard(
     worker: ConversationWorkerProfile,
+    providerLabel: String,
+    modelLabel: String,
     onEdit: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -318,14 +337,14 @@ private fun WorkerProfilePreviewCard(
 
             WorkerProfileInlineSummary(
                 leftLabel = "Provider",
-                leftValue = worker.providerId ?: "미지정",
+                leftValue = providerLabel,
                 rightLabel = "Model",
-                rightValue = worker.modelId ?: "미지정"
+                rightValue = modelLabel
             )
 
             if (expanded) {
                 Spacer(modifier = Modifier.height(2.dp))
-                WorkerProfileReadOnlyPlaceholder(text = "Worker 상세 placeholder입니다. 실제 편집 저장은 후속 구현 예정입니다. 편집 버튼은 UI skeleton 화면만 엽니다.")
+                WorkerProfileReadOnlyPlaceholder(text = "Worker 상세 preview입니다. 편집 버튼에서 기본 정보, System Instruction, Provider/Model 참조를 저장할 수 있습니다.")
 
                 WorkerProfileDetailTitle(title = "기본 정보")
                 WorkerProfileKeyValue("역할 설명", worker.roleDescription.ifBlank { "역할 설명 없음" })
@@ -335,10 +354,12 @@ private fun WorkerProfilePreviewCard(
 
                 WorkerProfileDetailTitle(title = "System Instruction")
                 WorkerProfileKeyValue("전체 보기 placeholder", worker.systemInstruction.previewText(1200))
-                WorkerProfileReadOnlyPlaceholder(text = "System Instruction 편집 저장 기능은 아직 연결되지 않았습니다.")
+                WorkerProfileReadOnlyPlaceholder(text = "System Instruction은 편집 화면에서 저장할 수 있습니다.")
 
                 WorkerProfileDetailTitle(title = "Provider / Model 참조")
+                WorkerProfileKeyValue("Provider", providerLabel)
                 WorkerProfileKeyValue("providerId", worker.providerId ?: "Provider 미지정")
+                WorkerProfileKeyValue("Model", modelLabel)
                 WorkerProfileKeyValue("modelId", worker.modelId ?: "Model 미지정")
 
                 WorkerProfileDetailTitle(title = "실행 계획 필드")
@@ -352,7 +373,7 @@ private fun WorkerProfilePreviewCard(
                 WorkerProfileKeyValue("outputPolicy", worker.outputPolicy.toReadableSummary())
                 WorkerProfileKeyValue("expectedOutputType", worker.outputPolicy.expectedOutputType.name)
 
-                WorkerProfileTagRow(values = listOf("read-only", "편집 저장 후속 구현 예정"))
+                WorkerProfileTagRow(values = listOf("preview", "기본 정보 저장 가능"))
                 WorkerProfileCollapseButton(onClick = { expanded = false })
             }
         }

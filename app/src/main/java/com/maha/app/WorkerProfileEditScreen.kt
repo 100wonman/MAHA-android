@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,13 +40,35 @@ fun WorkerProfileEditScreen(
     var roleDescription by remember(worker.workerProfileId) { mutableStateOf(worker.roleDescription) }
     var systemInstruction by remember(worker.workerProfileId) { mutableStateOf(worker.systemInstruction) }
     var enabledPreview by remember(worker.workerProfileId) { mutableStateOf(worker.enabled) }
+    var selectedProviderId by remember(worker.workerProfileId) { mutableStateOf(worker.providerId) }
+    var selectedModelId by remember(worker.workerProfileId) { mutableStateOf(worker.modelId) }
     var saveMessage by remember(worker.workerProfileId) { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val providerSettingsStore = remember(context) { ProviderSettingsStore(context) }
+    val providerProfiles = remember(context) {
+        providerSettingsStore.loadProviderProfiles()
+            .sortedWith(compareBy<ProviderProfile> { it.providerType.name }.thenBy { it.displayName.lowercase() })
+    }
+    val modelProfiles = remember(context) {
+        providerSettingsStore.loadModelProfiles()
+            .sortedWith(compareBy<ConversationModelProfile> { it.providerId }.thenBy { it.displayName.lowercase() })
+    }
+    val providerById = remember(providerProfiles) { providerProfiles.associateBy { it.providerId } }
+    val modelById = remember(modelProfiles) { modelProfiles.associateBy { it.modelId } }
+    val filteredModels = remember(selectedProviderId, modelProfiles) {
+        selectedProviderId?.let { providerId ->
+            modelProfiles.filter { it.providerId == providerId }
+        } ?: modelProfiles
+    }
 
     val dirty = displayName != worker.displayName ||
             roleLabel != worker.roleLabel ||
             roleDescription != worker.roleDescription ||
             systemInstruction != worker.systemInstruction ||
-            enabledPreview != worker.enabled
+            enabledPreview != worker.enabled ||
+            selectedProviderId != worker.providerId ||
+            selectedModelId != worker.modelId
 
     Column(
         modifier = modifier,
@@ -53,7 +76,7 @@ fun WorkerProfileEditScreen(
     ) {
         WorkerEditHeaderCard(
             title = "Worker Profile 편집",
-            subtitle = "기본 정보와 System Instruction 저장만 연결됩니다. Provider/Model, capability, policy, 실행 연결은 아직 제외됩니다.",
+            subtitle = "기본 정보, System Instruction, Provider/Model 참조 저장만 연결됩니다. capability, policy, 실행 연결은 아직 제외됩니다.",
             dirty = dirty,
             onBack = onCancel
         )
@@ -106,21 +129,57 @@ fun WorkerProfileEditScreen(
         }
 
         WorkerEditSection(title = "Provider / Model", initiallyExpanded = true) {
-            WorkerEditKeyValue("providerId 현재 값", worker.providerId ?: "Provider 미지정")
-            WorkerEditKeyValue("modelId 현재 값", worker.modelId ?: "Model 미지정")
-            WorkerEditPlaceholderRow(
-                label = "Provider 선택",
-                value = "선택 UI placeholder",
-                actionLabel = "후속 구현 예정",
-                onAction = { saveMessage = "Provider 선택 저장은 후속 구현 예정입니다." }
+            WorkerEditNotice("Provider/Model은 Worker가 사용할 실행 엔진 참조입니다. API Key, baseUrl, rawModelName 원문은 WorkerProfile에 복사 저장하지 않습니다.")
+
+            WorkerProviderSelectionList(
+                providers = providerProfiles,
+                selectedProviderId = selectedProviderId,
+                hasApiKey = { providerId -> providerSettingsStore.hasProviderApiKey(providerId) },
+                onSelectProvider = { nextProviderId ->
+                    selectedProviderId = nextProviderId
+                    val selectedModelStillValid = nextProviderId != null &&
+                            selectedModelId != null &&
+                            modelProfiles.any { model ->
+                                model.modelId == selectedModelId && model.providerId == nextProviderId
+                            }
+                    if (!selectedModelStillValid) {
+                        selectedModelId = null
+                    }
+                    saveMessage = if (nextProviderId == null) {
+                        "Provider 미지정 선택: Model도 미지정으로 초기화했습니다."
+                    } else {
+                        "Provider 선택 변경: 다른 Provider의 기존 Model 선택은 초기화됩니다."
+                    }
+                }
             )
-            WorkerEditPlaceholderRow(
-                label = "Model 선택",
-                value = "선택 UI placeholder",
-                actionLabel = "후속 구현 예정",
-                onAction = { saveMessage = "Model 선택 저장은 후속 구현 예정입니다." }
+
+            WorkerModelSelectionList(
+                models = filteredModels,
+                providersById = providerById,
+                selectedProviderId = selectedProviderId,
+                selectedModelId = selectedModelId,
+                onSelectModel = { nextModelId ->
+                    selectedModelId = nextModelId
+                    if (nextModelId == null) {
+                        saveMessage = "Model 미지정을 선택했습니다."
+                    }
+                }
             )
-            WorkerEditNotice("WorkerProfile에는 providerId/modelId 참조만 저장해야 하며 API Key, baseUrl, rawModelName 복사 저장은 금지합니다.")
+
+            val selectedProviderLabel = selectedProviderId?.let { providerId ->
+                providerById[providerId]?.let { provider ->
+                    "${provider.displayName} (${provider.providerType.name})"
+                } ?: "참조 Provider 없음: $providerId"
+            } ?: "Provider 미지정"
+            val selectedModelLabel = selectedModelId?.let { modelId ->
+                modelById[modelId]?.let { model ->
+                    "${model.displayName} / ${model.rawModelName}"
+                } ?: "참조 Model 없음: $modelId"
+            } ?: "Model 미지정"
+            WorkerEditKeyValue("저장될 providerId", selectedProviderId ?: "null")
+            WorkerEditKeyValue("선택 Provider", selectedProviderLabel)
+            WorkerEditKeyValue("저장될 modelId", selectedModelId ?: "null")
+            WorkerEditKeyValue("선택 Model", selectedModelLabel)
         }
 
         WorkerEditSection(title = "Capability Override", initiallyExpanded = false) {
@@ -159,6 +218,8 @@ fun WorkerProfileEditScreen(
                         roleDescription = roleDescription,
                         systemInstruction = systemInstruction,
                         enabled = enabledPreview,
+                        providerId = selectedProviderId,
+                        modelId = selectedModelId,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -207,7 +268,7 @@ private fun WorkerEditHeaderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (dirty) "변경사항 있음 · 저장 미연결" else "변경사항 없음",
+                        text = if (dirty) "변경사항 있음" else "변경사항 없음",
                         color = if (dirty) Color(0xFFFFD18A) else Color(0xFFB8E6C8)
                     )
                 }
@@ -276,6 +337,137 @@ private fun WorkerEditTextField(
         minLines = minLines,
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+
+@Composable
+private fun WorkerProviderSelectionList(
+    providers: List<ProviderProfile>,
+    selectedProviderId: String?,
+    hasApiKey: (String) -> Boolean,
+    onSelectProvider: (String?) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "Provider 선택",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF9DB7E8)
+        )
+        WorkerSelectionButton(
+            selected = selectedProviderId == null,
+            label = "Provider 미지정",
+            description = "providerId=null · 저장 허용",
+            onClick = { onSelectProvider(null) }
+        )
+        if (providers.isEmpty()) {
+            Text(text = "등록된 Provider가 없습니다.", color = Color(0xFFFFD18A))
+        } else {
+            providers.forEach { provider ->
+                val keyRequired = provider.providerType.name in setOf("GOOGLE", "OPENAI", "OPENAI_COMPATIBLE", "NVIDIA")
+                val keyState = if (keyRequired) {
+                    if (hasApiKey(provider.providerId)) "Key 설정됨" else "Key 미설정"
+                } else {
+                    "Key 선택"
+                }
+                WorkerSelectionButton(
+                    selected = selectedProviderId == provider.providerId,
+                    label = provider.displayName.ifBlank { provider.providerId },
+                    description = "${provider.providerType.name} · $keyState · ${provider.providerId}",
+                    onClick = { onSelectProvider(provider.providerId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkerModelSelectionList(
+    models: List<ConversationModelProfile>,
+    providersById: Map<String, ProviderProfile>,
+    selectedProviderId: String?,
+    selectedModelId: String?,
+    onSelectModel: (String?) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "Model 선택",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF9DB7E8)
+        )
+        WorkerSelectionButton(
+            selected = selectedModelId == null,
+            label = "Model 미지정",
+            description = "modelId=null · 저장 허용",
+            onClick = { onSelectModel(null) }
+        )
+        if (models.isEmpty()) {
+            val message = if (selectedProviderId == null) {
+                "등록된 Model이 없습니다."
+            } else {
+                "선택한 Provider에 연결된 Model이 없습니다."
+            }
+            Text(text = message, color = Color(0xFFFFD18A))
+        } else {
+            models.forEach { model ->
+                val provider = providersById[model.providerId]
+                val providerLabel = provider?.displayName ?: "참조 Provider 없음"
+                WorkerSelectionButton(
+                    selected = selectedModelId == model.modelId,
+                    label = model.displayName.ifBlank { model.rawModelName.ifBlank { model.modelId } },
+                    description = "${model.rawModelName.ifBlank { model.modelId }} · $providerLabel · ${model.modelId}",
+                    onClick = { onSelectModel(model.modelId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkerSelectionButton(
+    selected: Boolean,
+    label: String,
+    description: String,
+    onClick: () -> Unit,
+) {
+    val backgroundColor = if (selected) Color(0xFF33445C) else Color(0xFF1E2530)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(backgroundColor, MaterialTheme.shapes.small)
+            .border(1.dp, if (selected) Color(0xFFBFD7FF) else Color(0xFF3B4556), MaterialTheme.shapes.small)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = if (selected) "✓ $label" else label,
+                color = if (selected) Color.White else Color(0xFFBFD7FF),
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = description,
+            color = Color(0xFFB8BCC6),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -368,7 +560,7 @@ private fun WorkerEditActionBar(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled. Provider/Model, capability, policy, 실행 계획은 기존 값을 보존합니다.",
+                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled, providerId, modelId. capability, policy, 실행 계획은 기존 값을 보존합니다.",
                 color = Color(0xFFB8BCC6)
             )
         }
