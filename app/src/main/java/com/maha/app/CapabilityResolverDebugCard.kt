@@ -344,6 +344,10 @@ private fun CapabilityPlanPreview(
     resultMode: String,
     selectedScenario: ConversationScenarioProfile?
 ) {
+    var showCapabilityDetails by rememberSaveable { mutableStateOf(false) }
+    var showWorkerDetails by rememberSaveable { mutableStateOf(false) }
+    var showLimitationDetails by rememberSaveable { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -351,89 +355,357 @@ private fun CapabilityPlanPreview(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        CapabilityDebugSection(title = "Preview 안내") {
-            CapabilityDebugRow("결과 모드", if (resultMode == "SCENARIO_PREVIEW") "Scenario Preview" else "기본 진단")
-            CapabilityDebugRow("previewOnly", "true")
-            CapabilityDebugRow("Provider 호출", "없음")
-            CapabilityDebugRow("Worker 실행", "없음")
-            CapabilityDebugRow("RAG / Web Search / Tool 실행", "없음")
-            selectedScenario?.let { scenario ->
-                CapabilityDebugRow("선택 Scenario", scenario.name.ifBlank { scenario.scenarioId })
-                CapabilityDebugRow("Scenario 기본 실행 방식", scenario.defaultExecutionMode.name)
-            }
-        }
+        CapabilityPreviewOnlyCard(
+            resultMode = resultMode,
+            selectedScenario = selectedScenario
+        )
 
-        CapabilityDebugSection(title = "Plan 요약") {
-            CapabilityDebugRow("실행 방식", plan.executionMode.name)
-            CapabilityDebugRow("사용자 목표 상태", plan.userGoalStatus.name)
-            CapabilityDebugRow("요구 capability 수", plan.requestedCapabilities.size.toString())
-            CapabilityDebugRow("해석 capability 수", plan.resolvedCapabilities.size.toString())
-            CapabilityDebugRow("제한 사유 수", plan.limitationReasons.size.toString())
-            CapabilityDebugRow("WorkerPlan 수", plan.workerPlans.size.toString())
-            CapabilityDebugRow("Provider-native 사용 후보", plan.providerNativeUsed.toString())
-            CapabilityDebugRow("MAHA-native 사용 후보", plan.mahaNativeUsed.toString())
-            CapabilityDebugRow("planId", plan.planId)
-        }
+        CapabilityPlanSummaryCard(
+            plan = plan,
+            selectedScenario = selectedScenario
+        )
 
-        CapabilityDebugSection(title = "Requested Capabilities") {
-            if (plan.requestedCapabilities.isEmpty()) {
-                CapabilityDebugText("요구 capability 없음")
+        CapabilityExpandableSection(
+            title = "Capability 요약",
+            subtitle = "요구 ${plan.requestedCapabilities.size}개 · 해석 ${plan.resolvedCapabilities.size}개",
+            expanded = showCapabilityDetails,
+            onToggle = { showCapabilityDetails = !showCapabilityDetails }
+        ) {
+            if (plan.requestedCapabilities.isEmpty() && plan.resolvedCapabilities.isEmpty()) {
+                CapabilityDebugText("Capability 요약 없음")
             } else {
-                plan.requestedCapabilities.forEach { requirement ->
-                    CapabilityDebugText(
-                        "- ${requirement.userVisibleLabel} (${requirement.capabilityType.name}) · required=${requirement.required} · priority=${requirement.priority}\n" +
-                                "  reason=${requirement.reason}"
-                    )
+                if (plan.requestedCapabilities.isNotEmpty()) {
+                    CapabilityDebugText("요구 capability")
+                    plan.requestedCapabilities.forEach { requirement ->
+                        CapabilityMiniCard(
+                            title = requirement.userVisibleLabel.ifBlank { requirement.capabilityType.name },
+                            badge = requirement.capabilityType.name,
+                            lines = listOf(
+                                "필수=${requirement.required}",
+                                "우선순위=${requirement.priority}",
+                                "사유=${requirement.reason.ifBlank { "없음" }}"
+                            )
+                        )
+                    }
+                }
+
+                if (plan.resolvedCapabilities.isNotEmpty()) {
+                    CapabilityDebugText("해석 capability")
+                    plan.resolvedCapabilities.forEach { resolution ->
+                        CapabilityMiniCard(
+                            title = resolution.requirement.capabilityType.name,
+                            badge = resolution.status.name,
+                            lines = listOf(
+                                "source=${resolution.source.name}",
+                                "executionAvailable=${resolution.executionAvailable}",
+                                "limitation=${resolution.limitationReason?.reasonCode ?: "없음"}"
+                            )
+                        )
+                    }
                 }
             }
         }
 
-        CapabilityDebugSection(title = "Resolved Capabilities") {
-            if (plan.resolvedCapabilities.isEmpty()) {
-                CapabilityDebugText("해석된 capability 없음")
-            } else {
-                plan.resolvedCapabilities.forEach { resolution ->
-                    CapabilityDebugText(
-                        "- ${resolution.requirement.capabilityType.name} · status=${resolution.status.name} · source=${resolution.source.name}\n" +
-                                "  executionAvailable=${resolution.executionAvailable}\n" +
-                                "  limitation=${resolution.limitationReason?.reasonCode ?: "없음"}"
-                    )
-                }
-            }
-        }
-
-        CapabilityDebugSection(title = "Limitation Reasons") {
-            if (plan.limitationReasons.isEmpty()) {
-                CapabilityDebugText("제한 사유 없음")
-            } else {
-                plan.limitationReasons.forEach { reason ->
-                    CapabilityDebugText(
-                        "- ${reason.capabilityType.name} · ${reason.status.name} · ${reason.reasonCode}\n" +
-                                "  message=${reason.userMessage}\n" +
-                                "  technical=${reason.technicalMessage.ifBlank { "없음" }}\n" +
-                                "  action=${reason.suggestedAction ?: "없음"}"
-                    )
-                }
-            }
-        }
-
-        CapabilityDebugSection(title = "Worker Plans") {
+        CapabilityExpandableSection(
+            title = "WorkerPlan preview",
+            subtitle = "${plan.workerPlans.size}개 Worker 후보",
+            expanded = showWorkerDetails,
+            onToggle = { showWorkerDetails = !showWorkerDetails }
+        ) {
             if (plan.workerPlans.isEmpty()) {
                 CapabilityDebugText("Worker 계획 없음")
             } else {
                 plan.workerPlans.sortedBy { it.executionOrder }.forEach { worker ->
-                    CapabilityDebugText(
-                        "- ${worker.workerRole.name} · ${worker.displayName}\n" +
-                                "  order=${worker.executionOrder} · parallel=${worker.canRunInParallel}\n" +
-                                "  provider=${worker.assignedProviderId ?: "미지정"} · model=${worker.assignedModelId ?: "미지정"}\n" +
-                                "  dependsOn=${worker.dependsOnWorkerIds.ifEmpty { listOf("없음") }.joinToString()}\n" +
-                                "  expectedOutput=${worker.expectedOutputType.name}\n" +
-                                "  plannedStatus=${worker.plannedStatus.name}\n" +
-                                "  limitation=${worker.limitationReason?.reasonCode ?: "없음"}"
-                    )
+                    CapabilityWorkerPlanCard(worker = worker)
                 }
             }
         }
+
+        CapabilityExpandableSection(
+            title = "제한/경고",
+            subtitle = "${plan.limitationReasons.size}개",
+            expanded = showLimitationDetails,
+            onToggle = { showLimitationDetails = !showLimitationDetails }
+        ) {
+            if (plan.limitationReasons.isEmpty()) {
+                CapabilityDebugText("제한 사유 없음")
+            } else {
+                plan.limitationReasons.forEach { reason ->
+                    CapabilityLimitationCard(reason = reason)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityPreviewOnlyCard(
+    resultMode: String,
+    selectedScenario: ConversationScenarioProfile?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF162A3B))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapabilityBadge("Preview only")
+                CapabilityBadge("실제 실행 없음")
+            }
+            CapabilityDebugText("Provider 호출 · Worker 실행 · RAG · Web Search · Tool 실행을 수행하지 않습니다.")
+            CapabilityDebugRow(
+                label = "결과 모드",
+                value = if (resultMode == "SCENARIO_PREVIEW") "Scenario Preview" else "기본 진단"
+            )
+            selectedScenario?.let { scenario ->
+                CapabilityDebugRow(
+                    label = "선택 Scenario",
+                    value = "${scenario.name.ifBlank { scenario.scenarioId }} · ${scenario.defaultExecutionMode.name} · Worker ${scenario.workerProfileIds.size}개"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityPlanSummaryCard(
+    plan: OrchestratorPlan,
+    selectedScenario: ConversationScenarioProfile?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Plan 요약",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapabilityBadge(plan.executionMode.name)
+                CapabilityBadge(plan.userGoalStatus.name)
+            }
+            CapabilityCompactInfoRow("Scenario 기본값", selectedScenario?.defaultExecutionMode?.name ?: "미선택")
+            CapabilityCompactInfoRow("WorkerPlan", "${plan.workerPlans.size}개")
+            CapabilityCompactInfoRow("Capability", "요구 ${plan.requestedCapabilities.size}개 · 해석 ${plan.resolvedCapabilities.size}개")
+            CapabilityCompactInfoRow("제한/경고", "${plan.limitationReasons.size}개")
+        }
+    }
+}
+
+@Composable
+private fun CapabilityExpandableSection(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF8F9AAD)
+                    )
+                }
+                TextButton(onClick = onToggle) {
+                    Text(if (expanded) "접기" else "펼치기")
+                }
+            }
+
+            if (expanded) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityWorkerPlanCard(worker: WorkerPlan) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapabilityBadge(worker.workerRole.name)
+                CapabilityBadge(worker.plannedStatus.name)
+            }
+            Text(
+                text = worker.displayName.ifBlank { worker.workerRole.name },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFD7DEE8)
+            )
+            CapabilityCompactInfoRow("Provider / Model", "${worker.assignedProviderId ?: "Provider 미지정"} / ${worker.assignedModelId ?: "Model 미지정"}")
+            CapabilityCompactInfoRow("순서 / 병렬", "${worker.executionOrder} / ${worker.canRunInParallel}")
+            CapabilityCompactInfoRow("의존 Worker", worker.dependsOnWorkerIds.joinToString().ifBlank { "없음" })
+            CapabilityCompactInfoRow("예상 출력", worker.expectedOutputType.name)
+            worker.limitationReason?.let { reason ->
+                CapabilityCompactInfoRow("제한", compactReasonLabel(reason.reasonCode))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityLimitationCard(reason: LimitationReason) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapabilityBadge(compactReasonLabel(reason.reasonCode))
+                CapabilityBadge(reason.status.name)
+            }
+            CapabilityDebugText(reason.userMessage.ifBlank { "제한 사유 메시지 없음" })
+            CapabilityCompactInfoRow("source", reason.source.name)
+            CapabilityCompactInfoRow("recoverable", reason.recoverable.toString())
+            reason.suggestedAction?.takeIf { it.isNotBlank() }?.let { action ->
+                CapabilityCompactInfoRow("action", action)
+            }
+            reason.technicalMessage.takeIf { it.isNotBlank() }?.let { message ->
+                CapabilityCompactInfoRow("technical", message)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityMiniCard(
+    title: String,
+    badge: String,
+    lines: List<String>
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CapabilityBadge(badge)
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFD7DEE8)
+            )
+            lines.forEach { line -> CapabilityDebugText(line) }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityCompactInfoRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF111A26), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(0.42f),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF8F9AAD)
+        )
+        SelectionContainer(modifier = Modifier.weight(0.58f)) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFD7DEE8)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CapabilityBadge(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier
+            .background(Color(0xFF24344A), RoundedCornerShape(999.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = Color(0xFFD7DEE8),
+        fontWeight = FontWeight.SemiBold
+    )
+}
+
+private fun compactReasonLabel(reasonCode: String): String {
+    return when (reasonCode) {
+        "NEED_PROVIDER" -> "Provider 미지정"
+        "NEED_MODEL" -> "Model 미지정"
+        "WORKER_PROFILE_NOT_FOUND" -> "참조 Worker 없음"
+        "WORKER_DISABLED" -> "비활성 Worker"
+        "PREVIEW_ONLY" -> "실제 실행 없음"
+        "SCENARIO_DISABLED" -> "Scenario 비활성"
+        "SCENARIO_HAS_NO_WORKERS" -> "Worker 없음"
+        else -> reasonCode
     }
 }
 

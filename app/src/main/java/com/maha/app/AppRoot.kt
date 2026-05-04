@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
@@ -59,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +70,20 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+
+private fun responsiveSettingsDrawerWidth(maxWidth: Dp): Dp {
+    val rawWidth = when {
+        maxWidth < 600.dp -> maxWidth * 0.95f
+        maxWidth < 900.dp -> maxWidth * 0.75f
+        else -> maxWidth * 0.50f
+    }
+    val clampedWidth = rawWidth.coerceIn(
+        minimumValue = 320.dp,
+        maximumValue = 720.dp
+    )
+    return if (maxWidth < 320.dp) maxWidth else clampedWidth
+}
 
 @Composable
 fun AppRoot() {
@@ -551,12 +568,16 @@ fun AppRoot() {
             gesturesEnabled = (isConversationListScreenOpen || selectedConversationSessionId != null) &&
                     !workDrawerState.isOpen,
             drawerContent = {
-                ModalDrawerSheet(
-                    modifier = Modifier.statusBarsPadding(),
-                    drawerContainerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    ConversationGlobalSettingsScreen(
-                        selectedPage = selectedConversationSettingsPage,
+                BoxWithConstraints {
+                    val settingsDrawerWidth = responsiveSettingsDrawerWidth(maxWidth)
+                    ModalDrawerSheet(
+                        modifier = Modifier
+                            .statusBarsPadding()
+                            .width(settingsDrawerWidth),
+                        drawerContainerColor = MaterialTheme.colorScheme.surface
+                    ) {
+                        ConversationGlobalSettingsScreen(
+                            selectedPage = selectedConversationSettingsPage,
                         storageStatusText = conversationViewModel.storageStatusText,
                         storageLocationText = conversationViewModel.storageLocationText,
                         appSpecificSessionCount = conversationViewModel.appSpecificSessionCount,
@@ -582,16 +603,17 @@ fun AppRoot() {
                                 conversationViewModel.clearSelectedSession()
                             }
                         },
-                        onBackClick = {
-                            when (selectedConversationSettingsPage) {
-                                "storage" -> selectedConversationSettingsPage = "rag"
-                                "providerManagement" -> selectedConversationSettingsPage = "modelApi"
-                                "modelManagement" -> selectedConversationSettingsPage = "modelApi"
-                                null -> scope.launch { conversationDrawerState.close() }
-                                else -> selectedConversationSettingsPage = null
+                            onBackClick = {
+                                when (selectedConversationSettingsPage) {
+                                    "storage" -> selectedConversationSettingsPage = "rag"
+                                    "providerManagement" -> selectedConversationSettingsPage = "modelApi"
+                                    "modelManagement" -> selectedConversationSettingsPage = "modelApi"
+                                    null -> scope.launch { conversationDrawerState.close() }
+                                    else -> selectedConversationSettingsPage = null
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         ) {
