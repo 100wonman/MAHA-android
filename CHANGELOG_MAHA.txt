@@ -1,4 +1,442 @@
 ==============================
+[2026-05-04 20:30] WorkerProfileStore 실제 저장/로드 구현
+==============================
+
+[작업]
+- WorkerProfileStore에 worker_profiles.json 실제 저장/로드 구현
+- conversation_scenarios.json 실제 저장/로드 구현
+- 파일 없음 시 기본 Worker / Scenario 템플릿 envelope 생성
+- in-memory cache와 file persistence 연결
+- schemaVersion v1 처리 및 parse 실패 fallback 구현
+- WorkerProfile / Scenario CRUD를 cache/save 흐름으로 보정
+- Worker 편집 UI 저장, ConversationEngine, Provider 호출, RAG, Web Search, SAF 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileStore.kt에 worker_profiles.json / conversation_scenarios.json 실제 저장/로드 구현
+- 파일 없음 시 기본 Worker / Scenario envelope 생성
+- in-memory cache와 file persistence 연결
+- schemaVersion=1, parse 실패 fallback, 저장 실패 crash 방지 처리
+- Worker Profile 관리 화면 진입 시 Store initialize만 수행하도록 최소 보정
+
+[파일 저장/로드 테스트]
+- worker_profiles.json 생성: 확인
+- worker_profiles.json 로드: 확인
+- worker_profiles.json 저장: 확인
+- conversation_scenarios.json 생성: 확인
+- conversation_scenarios.json 로드: 확인
+- conversation_scenarios.json 저장: 확인
+
+[cache / 기본 템플릿 테스트]
+- in-memory cache: 구현
+- 파일 없음 시 기본 Worker: 구현
+- 파일 없음 시 기본 Scenario: 구현
+- save 후 reload: 구현
+- schemaVersion=1: 구현
+
+[CRUD 테스트]
+- WorkerProfile upsert: cache/save 흐름으로 구현
+- WorkerProfile delete: cache/save 흐름으로 구현
+- WorkerProfile list: 구현
+- Scenario upsert: cache/save 흐름으로 구현
+- Scenario delete: cache/save 흐름으로 구현
+- Scenario list: 구현
+
+[오류 처리 테스트]
+- parse 실패 crash 없음: fallback 처리
+- 빈 파일 처리: fallback 처리
+- 필수 필드 누락 기본값: 기본값 보정
+- 중복 ID upsert: 같은 ID 대체
+- 저장 실패 crash 없음: runCatching 처리
+
+[연결 금지 확인]
+- Worker 편집 UI 저장 미연결: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: Store initialize/read-only preview만 보정
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileStore.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+WorkerProfileStore 실제 저장/로드 구현
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계는 WorkerProfileStore의 실제 파일 저장/로드만 구현한다.
+
+목표:
+- WorkerProfileStore.kt에 worker_profiles.json / conversation_scenarios.json 실제 저장/로드를 구현한다.
+- 파일이 없을 때 기본 Worker / Scenario 템플릿 envelope를 생성한다.
+- in-memory cache와 파일 persistence를 연결한다.
+- schemaVersion v1 처리와 parse 실패 fallback을 구현한다.
+- Worker Profile 관리 UI에는 아직 편집 저장을 연결하지 않는다.
+- ConversationEngine / Provider 호출 / RAG / Web Search / SAF 백업/복원에는 연결하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ worker_profiles.json 실제 로드
+✔ worker_profiles.json 실제 저장
+✔ conversation_scenarios.json 실제 로드
+✔ conversation_scenarios.json 실제 저장
+✔ 파일 없음 시 기본 Worker 템플릿 envelope 생성
+✔ 파일 없음 시 기본 Scenario envelope 생성
+✔ in-memory cache 유지
+✔ save 후 cache 갱신
+✔ schemaVersion = 1 처리
+✔ parse 실패 시 crash 방지 및 기본 envelope fallback
+✔ 저장 실패 시 crash 방지
+✔ WorkerProfile CRUD가 실제 cache/save 흐름을 사용하도록 보정
+✔ Scenario CRUD가 실제 cache/save 흐름을 사용하도록 보정
+✔ 기존 WorkerProfileStore skeleton API 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ Worker Profile 편집 UI 저장 연결
+❌ System Instruction 편집 UI 구현
+❌ Provider/Model 선택 UI 저장 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ Provider 호출 로직 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일
+--------------------------------------------------
+
+주요 대상:
+
+- WorkerProfileStore.kt
+
+필요 시 최소 보정 가능:
+
+- WorkerProfileModels.kt
+
+주의:
+- 가능하면 AppRoot.kt / WorkerProfileManagementScreen.kt는 변경하지 않는다.
+- UI 저장 연결은 다음 단계로 분리한다.
+- 외부 라이브러리 추가 금지.
+- API Key/baseUrl/rawModelName 복사 저장 금지.
+
+--------------------------------------------------
+3. 저장 파일 정책
+--------------------------------------------------
+
+파일명:
+
+- worker_profiles.json
+- conversation_scenarios.json
+
+저장 위치:
+- 기존 앱 내부 저장소 정책과 동일한 private files 영역 사용
+- 기존 Store류가 사용하는 방식이 있으면 그 패턴을 따른다
+
+worker_profiles.json 구조:
+
+{
+  "schemaVersion": 1,
+  "updatedAt": 0,
+  "workerProfiles": []
+}
+
+conversation_scenarios.json 구조:
+
+{
+  "schemaVersion": 1,
+  "updatedAt": 0,
+  "scenarios": []
+}
+
+주의:
+- 실제 파일명은 설계 문서와 동일하게 유지한다.
+- schemaVersion 기본값은 1.
+- updatedAt은 저장 시 갱신한다.
+
+--------------------------------------------------
+4. JSON 처리 정책
+--------------------------------------------------
+
+정책:
+- 기존 프로젝트에서 사용하는 JSON 처리 방식이 있으면 동일 패턴을 따른다.
+- 새 외부 의존성 추가 금지.
+- kotlinx serialization 신규 추가 금지.
+- 기존 org.json 사용 패턴이 있으면 org.json 기반으로 구현 가능.
+- 필수 필드 누락 시 기본값을 사용한다.
+
+parse 실패:
+- 앱 crash 금지
+- 기존 파일은 삭제하지 않음
+- 임시 기본 envelope fallback 반환
+- 후속 UI에서 오류 표시 가능하도록 TODO 주석 또는 내부 error comment 남김
+
+주의:
+- 민감정보 저장 금지
+- WorkerProfile에는 providerId/modelId 참조만 저장한다.
+
+--------------------------------------------------
+5. in-memory cache 정책
+--------------------------------------------------
+
+정책:
+- Store 최초 접근 시 파일 로드
+- cache가 있으면 cache 반환
+- save 시 파일 저장 후 cache 갱신
+- forceReload 후보 함수는 가능하면 추가
+- clearCache 후보 함수는 가능하면 추가
+
+함수 후보:
+- loadWorkerProfiles(forceReload: Boolean = false)
+- loadConversationScenarios(forceReload: Boolean = false)
+- clearCache()
+
+주의:
+- 기존 skeleton 함수 signature를 크게 깨지 않는다.
+- 기존 호출부가 없으므로 빌드 안정성을 우선한다.
+
+--------------------------------------------------
+6. 기본 템플릿 생성 정책
+--------------------------------------------------
+
+파일이 없거나 envelope가 비어 있을 때:
+
+- createDefaultWorkerTemplates()
+- createDefaultConversationScenarios()
+
+를 사용해 기본값 생성 가능.
+
+기본 Worker:
+- Orchestrator
+- Main Worker
+- Synthesis Worker
+- Research Worker
+- Reviewer Worker
+- RAG Worker
+- Memory Worker
+- Web Search Worker
+- Tool Worker
+- Code Check Worker
+- Comparison Worker
+
+기본 Scenario:
+- 기본 단일 대화
+- 조사/요약
+- 코드 검토
+- 글쓰기/리뷰
+- RAG 중심
+- 비교/병렬 분석
+
+정책:
+- isDefaultTemplate=true
+- userModified=false
+- enabled=true
+- providerId/modelId=null 허용
+- systemInstruction은 짧은 기본 placeholder 유지
+- 사용자 수정본 덮어쓰기 금지
+
+주의:
+- 기존 파일이 있고 userModified=true 항목이 있으면 덮어쓰지 않는다.
+- 이번 단계에서는 앱 업데이트 시 새 템플릿 병합까지 과하게 구현하지 않아도 된다.
+
+--------------------------------------------------
+7. CRUD 저장 정책
+--------------------------------------------------
+
+WorkerProfile CRUD:
+- getWorkerProfile(...)
+- upsertWorkerProfile(...)
+- deleteWorkerProfile(...)
+- listEnabledWorkerProfiles()
+- listDefaultWorkerTemplates()
+
+Scenario CRUD:
+- getScenario(...)
+- upsertScenario(...)
+- deleteScenario(...)
+- listEnabledScenarios()
+- getDefaultScenario()
+
+정책:
+- upsert/delete는 cache 갱신 후 save 수행
+- delete는 실제 삭제 가능하되 기본 템플릿 삭제 정책은 후속 UI에서 제어
+- updatedAt 갱신
+- 중복 ID는 upsert 기준으로 대체
+
+주의:
+- UI가 아직 저장을 호출하지 않더라도 함수는 동작 가능해야 한다.
+- 삭제 확인 UI 구현 금지.
+
+--------------------------------------------------
+8. orphan 검증 정책
+--------------------------------------------------
+
+이번 단계:
+- orphan 검증 함수는 기존 skeleton 유지 또는 최소 동작
+- 실제 ProviderSettingsStore / ModelProfile Store와 깊게 연결하지 않는다
+- Provider/Model 삭제 여부 검증은 후속 단계로 분리 가능
+
+허용:
+- workerProfiles 안의 dependsOnWorkerIds 참조 검증
+- scenario.workerProfileIds 참조 검증
+- orchestratorProfileId / synthesisProfileId 참조 검증
+
+금지:
+- Provider/Model Store 실제 조회를 위한 대규모 연결
+- orphan 자동 삭제
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 UI skeleton
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+10. 테스트 기준
+--------------------------------------------------
+
+A. 파일 저장/로드
+- worker_profiles.json 생성:
+- worker_profiles.json 로드:
+- worker_profiles.json 저장:
+- conversation_scenarios.json 생성:
+- conversation_scenarios.json 로드:
+- conversation_scenarios.json 저장:
+
+B. cache / 기본 템플릿
+- in-memory cache:
+- 파일 없음 시 기본 Worker 생성:
+- 파일 없음 시 기본 Scenario 생성:
+- save 후 reload:
+- schemaVersion=1:
+
+C. CRUD
+- WorkerProfile upsert:
+- WorkerProfile delete:
+- WorkerProfile list:
+- Scenario upsert:
+- Scenario delete:
+- Scenario list:
+
+D. 오류 처리
+- parse 실패 crash 없음:
+- 빈 파일 처리:
+- 필수 필드 누락 기본값:
+- 중복 ID upsert 처리:
+- 저장 실패 crash 없음:
+
+E. 연결 금지 확인
+- Worker 편집 UI 저장 미연결:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+F. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ Worker 편집 UI 저장 연결 금지
+❌ System Instruction 편집 UI 구현 금지
+❌ Provider/Model 선택 저장 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- worker_profiles.json / conversation_scenarios.json 실제 저장/로드 구현
+- 파일 없음 시 기본 Worker / Scenario envelope 생성
+- in-memory cache 동작
+- CRUD 함수가 cache/save 흐름으로 동작
+- parse/저장 실패 시 crash 없음
+- UI 저장 연결 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 편집 UI 설계 또는 Worker Profile 관리 UI 저장 연결
+
+==============================
 [2026-05-04 20:20] WorkerProfileStore 실제 저장/로드 구현 설계
 ==============================
 

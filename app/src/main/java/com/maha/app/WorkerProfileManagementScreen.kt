@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,8 +31,15 @@ import androidx.compose.ui.unit.dp
 fun WorkerProfileManagementScreen(
     modifier: Modifier = Modifier,
 ) {
-    val workerEnvelope = remember { WorkerProfileStore.loadWorkerProfiles() }
-    val scenarioEnvelope = remember { WorkerProfileStore.loadConversationScenarios() }
+    val context = LocalContext.current
+    val workerEnvelope = remember(context) {
+        WorkerProfileStore.initialize(context)
+        WorkerProfileStore.loadWorkerProfiles(forceReload = true)
+    }
+    val scenarioEnvelope = remember(context) {
+        WorkerProfileStore.initialize(context)
+        WorkerProfileStore.loadConversationScenarios(forceReload = true)
+    }
     val workers = workerEnvelope.workerProfiles.sortedWith(
         compareBy<ConversationWorkerProfile> { it.executionOrder }
             .thenBy { it.displayName.lowercase() }

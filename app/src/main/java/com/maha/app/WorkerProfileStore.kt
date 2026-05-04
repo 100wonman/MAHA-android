@@ -1,15 +1,22 @@
 package com.maha.app
 
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.File
+
 /**
- * WorkerProfileStore skeleton for the future variable Worker Profile system.
+ * WorkerProfileStore persistence implementation for the variable Worker Profile system.
  *
- * Important:
- * - This file does not read or write JSON files.
- * - This file does not create worker_profiles.json or conversation_scenarios.json.
- * - This file is not connected to ConversationEngine, ViewModel, Provider calls,
- *   RAG, Web Search, SAF backup/restore, or any Worker management UI.
- * - The in-memory envelopes below are only a safe skeleton so future UI/store
- *   work can call the functions without crashing before persistence is added.
+ * Scope:
+ * - Reads/writes worker_profiles.json and conversation_scenarios.json in the MAHA/settings folder.
+ * - Keeps an in-memory cache after first load.
+ * - Creates default Worker/Scenario envelopes when files do not exist.
+ * - Avoids crashes on parse/save failure and preserves existing files where possible.
+ *
+ * Not connected to ConversationEngine, ConversationViewModel, Provider calls, RAG, Web Search,
+ * SAF backup/restore, Worker execution, or editing flows.
  */
 object WorkerProfileStore {
     const val SCHEMA_VERSION: Int = 1
@@ -36,42 +43,137 @@ object WorkerProfileStore {
     const val DEFAULT_RAG_SCENARIO_ID: String = "default_rag_centered"
     const val DEFAULT_COMPARISON_SCENARIO_ID: String = "default_comparison_parallel"
 
-    private var workerEnvelope: WorkerProfileStoreEnvelope = WorkerProfileStoreEnvelope(
-        schemaVersion = SCHEMA_VERSION,
-        updatedAt = now(),
-        workerProfiles = createDefaultWorkerTemplates(),
-    )
+    private var appContext: Context? = null
+    private var workerEnvelopeCache: WorkerProfileStoreEnvelope? = null
+    private var scenarioEnvelopeCache: ConversationScenarioStoreEnvelope? = null
 
-    private var scenarioEnvelope: ConversationScenarioStoreEnvelope = ConversationScenarioStoreEnvelope(
-        schemaVersion = SCHEMA_VERSION,
-        updatedAt = now(),
-        scenarios = createDefaultConversationScenarios(),
-    )
+    /**
+     * Initializes file persistence. Existing no-arg APIs remain safe when this is not called;
+     * they use in-memory fallback envelopes without touching disk.
+     */
+    fun initialize(context: Context) {
+        val newContext = context.applicationContext
+        if (appContext !== newContext) {
+            appContext = newContext
+            workerEnvelopeCache = null
+            scenarioEnvelopeCache = null
+        }
+        ensureSettingsDirOnly()
+        ensureWorkerProfilesFile()
+        ensureConversationScenariosFile()
+    }
 
-    fun loadWorkerProfiles(): WorkerProfileStoreEnvelope {
-        // TODO: Replace this in-memory skeleton with JSON file loading.
-        return workerEnvelope
+    fun clearCache() {
+        workerEnvelopeCache = null
+        scenarioEnvelopeCache = null
+    }
+
+    fun loadWorkerProfiles(forceReload: Boolean = false): WorkerProfileStoreEnvelope {
+        if (!forceReload) {
+            workerEnvelopeCache?.let { return it }
+        }
+
+        val context = appContext
+        if (context == null) {
+            val fallback = workerEnvelopeCache ?: createDefaultWorkerEnvelope()
+            workerEnvelopeCache = fallback
+            return fallback
+        }
+
+        ensureSettingsDirOnly()
+        val file = workerProfilesFile(context)
+        if (!file.exists()) {
+            val envelope = createDefaultWorkerEnvelope()
+            writeWorkerEnvelopeSafely(file, envelope)
+            workerEnvelopeCache = envelope
+            return envelope
+        }
+
+        val envelope = runCatching {
+            val raw = file.readText()
+            if (raw.isBlank()) throw JSONException("worker_profiles.json is blank")
+            JSONObject(raw).toWorkerProfileStoreEnvelope()
+        }.getOrElse {
+            // Preserve the existing broken file. Return safe defaults for app continuity.
+            createDefaultWorkerEnvelope()
+        }.repairWorkerEnvelopeDefaults()
+
+        workerEnvelopeCache = envelope
+        return envelope
     }
 
     fun saveWorkerProfiles(envelope: WorkerProfileStoreEnvelope) {
-        // TODO: Replace this in-memory skeleton with JSON file saving.
-        workerEnvelope = envelope.copy(
+        val normalized = envelope.copy(
             schemaVersion = SCHEMA_VERSION,
             updatedAt = now(),
         )
+
+        val context = appContext
+        if (context == null) {
+            workerEnvelopeCache = normalized
+            return
+        }
+
+        ensureSettingsDirOnly()
+        val file = workerProfilesFile(context)
+        val saved = writeWorkerEnvelopeSafely(file, normalized)
+        if (saved) {
+            workerEnvelopeCache = normalized
+        }
     }
 
-    fun loadConversationScenarios(): ConversationScenarioStoreEnvelope {
-        // TODO: Replace this in-memory skeleton with JSON file loading.
-        return scenarioEnvelope
+    fun loadConversationScenarios(forceReload: Boolean = false): ConversationScenarioStoreEnvelope {
+        if (!forceReload) {
+            scenarioEnvelopeCache?.let { return it }
+        }
+
+        val context = appContext
+        if (context == null) {
+            val fallback = scenarioEnvelopeCache ?: createDefaultScenarioEnvelope()
+            scenarioEnvelopeCache = fallback
+            return fallback
+        }
+
+        ensureSettingsDirOnly()
+        val file = conversationScenariosFile(context)
+        if (!file.exists()) {
+            val envelope = createDefaultScenarioEnvelope()
+            writeScenarioEnvelopeSafely(file, envelope)
+            scenarioEnvelopeCache = envelope
+            return envelope
+        }
+
+        val envelope = runCatching {
+            val raw = file.readText()
+            if (raw.isBlank()) throw JSONException("conversation_scenarios.json is blank")
+            JSONObject(raw).toConversationScenarioStoreEnvelope()
+        }.getOrElse {
+            // Preserve the existing broken file. Return safe defaults for app continuity.
+            createDefaultScenarioEnvelope()
+        }.repairScenarioEnvelopeDefaults()
+
+        scenarioEnvelopeCache = envelope
+        return envelope
     }
 
     fun saveConversationScenarios(envelope: ConversationScenarioStoreEnvelope) {
-        // TODO: Replace this in-memory skeleton with JSON file saving.
-        scenarioEnvelope = envelope.copy(
+        val normalized = envelope.copy(
             schemaVersion = SCHEMA_VERSION,
             updatedAt = now(),
         )
+
+        val context = appContext
+        if (context == null) {
+            scenarioEnvelopeCache = normalized
+            return
+        }
+
+        ensureSettingsDirOnly()
+        val file = conversationScenariosFile(context)
+        val saved = writeScenarioEnvelopeSafely(file, normalized)
+        if (saved) {
+            scenarioEnvelopeCache = normalized
+        }
     }
 
     fun getWorkerProfile(workerProfileId: String): ConversationWorkerProfile? {
@@ -81,18 +183,24 @@ object WorkerProfileStore {
     }
 
     fun upsertWorkerProfile(profile: ConversationWorkerProfile) {
-        val current = loadWorkerProfiles().workerProfiles
-        val next = current.filterNot { it.workerProfileId == profile.workerProfileId } + profile.copy(
-            updatedAt = if (profile.updatedAt == 0L) now() else profile.updatedAt,
+        val currentEnvelope = loadWorkerProfiles()
+        val timestamp = now()
+        val normalizedProfile = profile.copy(
+            createdAt = if (profile.createdAt == 0L) timestamp else profile.createdAt,
+            updatedAt = timestamp,
         )
-        saveWorkerProfiles(loadWorkerProfiles().copy(workerProfiles = next))
+        val nextProfiles = currentEnvelope.workerProfiles
+            .filterNot { it.workerProfileId == normalizedProfile.workerProfileId } + normalizedProfile
+
+        saveWorkerProfiles(currentEnvelope.copy(workerProfiles = nextProfiles))
     }
 
     fun deleteWorkerProfile(workerProfileId: String) {
-        val next = loadWorkerProfiles().workerProfiles.filterNot { profile ->
+        val currentEnvelope = loadWorkerProfiles()
+        val nextProfiles = currentEnvelope.workerProfiles.filterNot { profile ->
             profile.workerProfileId == workerProfileId
         }
-        saveWorkerProfiles(loadWorkerProfiles().copy(workerProfiles = next))
+        saveWorkerProfiles(currentEnvelope.copy(workerProfiles = nextProfiles))
         // Scenario references are intentionally not auto-deleted here.
         // Future validation UI should show missing Worker references as limitations.
     }
@@ -112,18 +220,24 @@ object WorkerProfileStore {
     }
 
     fun upsertScenario(scenario: ConversationScenarioProfile) {
-        val current = loadConversationScenarios().scenarios
-        val next = current.filterNot { it.scenarioId == scenario.scenarioId } + scenario.copy(
-            updatedAt = if (scenario.updatedAt == 0L) now() else scenario.updatedAt,
+        val currentEnvelope = loadConversationScenarios()
+        val timestamp = now()
+        val normalizedScenario = scenario.copy(
+            createdAt = if (scenario.createdAt == 0L) timestamp else scenario.createdAt,
+            updatedAt = timestamp,
         )
-        saveConversationScenarios(loadConversationScenarios().copy(scenarios = next))
+        val nextScenarios = currentEnvelope.scenarios
+            .filterNot { it.scenarioId == normalizedScenario.scenarioId } + normalizedScenario
+
+        saveConversationScenarios(currentEnvelope.copy(scenarios = nextScenarios))
     }
 
     fun deleteScenario(scenarioId: String) {
-        val next = loadConversationScenarios().scenarios.filterNot { scenario ->
+        val currentEnvelope = loadConversationScenarios()
+        val nextScenarios = currentEnvelope.scenarios.filterNot { scenario ->
             scenario.scenarioId == scenarioId
         }
-        saveConversationScenarios(loadConversationScenarios().copy(scenarios = next))
+        saveConversationScenarios(currentEnvelope.copy(scenarios = nextScenarios))
     }
 
     fun listEnabledScenarios(): List<ConversationScenarioProfile> {
@@ -148,13 +262,9 @@ object WorkerProfileStore {
 
         if (missingTemplates.isEmpty()) return currentEnvelope
 
-        val nextEnvelope = currentEnvelope.copy(
-            schemaVersion = SCHEMA_VERSION,
-            updatedAt = now(),
-            workerProfiles = currentProfiles + missingTemplates,
-        )
+        val nextEnvelope = currentEnvelope.copy(workerProfiles = currentProfiles + missingTemplates)
         saveWorkerProfiles(nextEnvelope)
-        return loadWorkerProfiles()
+        return loadWorkerProfiles(forceReload = true)
     }
 
     fun ensureDefaultScenarios(): ConversationScenarioStoreEnvelope {
@@ -167,17 +277,12 @@ object WorkerProfileStore {
 
         if (missingScenarios.isEmpty()) return currentEnvelope
 
-        val nextEnvelope = currentEnvelope.copy(
-            schemaVersion = SCHEMA_VERSION,
-            updatedAt = now(),
-            scenarios = currentScenarios + missingScenarios,
-        )
+        val nextEnvelope = currentEnvelope.copy(scenarios = currentScenarios + missingScenarios)
         saveConversationScenarios(nextEnvelope)
-        return loadConversationScenarios()
+        return loadConversationScenarios(forceReload = true)
     }
 
     fun createDefaultWorkerTemplates(): List<ConversationWorkerProfile> {
-        val createdAt = now()
         return listOf(
             defaultWorker(
                 workerProfileId = DEFAULT_ORCHESTRATOR_ID,
@@ -403,7 +508,11 @@ object WorkerProfileStore {
         knownProviderIds: Set<String> = emptySet(),
         knownModelIds: Set<String> = emptySet(),
     ): List<String> {
-        return findOrphanProviderReferences(knownProviderIds) + findOrphanModelReferences(knownModelIds)
+        val issues = mutableListOf<String>()
+        issues += findOrphanProviderReferences(knownProviderIds)
+        issues += findOrphanModelReferences(knownModelIds)
+        issues += findOrphanWorkerDependencyReferences()
+        return issues
     }
 
     fun validateScenarioReferences(
@@ -450,6 +559,332 @@ object WorkerProfileStore {
             .map { profile ->
                 "WorkerProfile '${profile.workerProfileId}' references missing modelId '${profile.modelId}'."
             }
+    }
+
+    fun findOrphanWorkerDependencyReferences(): List<String> {
+        val workers = loadWorkerProfiles().workerProfiles
+        val knownWorkerIds = workers.map { it.workerProfileId }.toSet()
+        return workers.flatMap { profile ->
+            profile.dependsOnWorkerIds
+                .filterNot { dependencyId -> dependencyId in knownWorkerIds }
+                .map { missingId ->
+                    "WorkerProfile '${profile.workerProfileId}' references missing dependsOnWorkerId '$missingId'."
+                }
+        }
+    }
+
+    private fun createDefaultWorkerEnvelope(): WorkerProfileStoreEnvelope {
+        return WorkerProfileStoreEnvelope(
+            schemaVersion = SCHEMA_VERSION,
+            updatedAt = now(),
+            workerProfiles = createDefaultWorkerTemplates(),
+        )
+    }
+
+    private fun createDefaultScenarioEnvelope(): ConversationScenarioStoreEnvelope {
+        return ConversationScenarioStoreEnvelope(
+            schemaVersion = SCHEMA_VERSION,
+            updatedAt = now(),
+            scenarios = createDefaultConversationScenarios(),
+        )
+    }
+
+    private fun WorkerProfileStoreEnvelope.repairWorkerEnvelopeDefaults(): WorkerProfileStoreEnvelope {
+        val repairedProfiles = workerProfiles
+            .filter { it.workerProfileId.isNotBlank() }
+            .distinctBy { it.workerProfileId }
+
+        return copy(
+            schemaVersion = SCHEMA_VERSION,
+            updatedAt = if (updatedAt == 0L) now() else updatedAt,
+            workerProfiles = repairedProfiles.ifEmpty { createDefaultWorkerTemplates() },
+        )
+    }
+
+    private fun ConversationScenarioStoreEnvelope.repairScenarioEnvelopeDefaults(): ConversationScenarioStoreEnvelope {
+        val repairedScenarios = scenarios
+            .filter { it.scenarioId.isNotBlank() }
+            .distinctBy { it.scenarioId }
+
+        return copy(
+            schemaVersion = SCHEMA_VERSION,
+            updatedAt = if (updatedAt == 0L) now() else updatedAt,
+            scenarios = repairedScenarios.ifEmpty { createDefaultConversationScenarios() },
+        )
+    }
+
+    private fun settingsDir(context: Context): File {
+        val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(File(baseDir, "MAHA"), "settings")
+    }
+
+    private fun workerProfilesFile(context: Context): File {
+        return File(settingsDir(context), WORKER_PROFILES_FILE_NAME)
+    }
+
+    private fun conversationScenariosFile(context: Context): File {
+        return File(settingsDir(context), CONVERSATION_SCENARIOS_FILE_NAME)
+    }
+
+    private fun ensureSettingsDirOnly() {
+        val context = appContext ?: return
+        val dir = settingsDir(context)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+    }
+
+    private fun ensureWorkerProfilesFile() {
+        val context = appContext ?: return
+        val file = workerProfilesFile(context)
+        if (!file.exists()) {
+            writeWorkerEnvelopeSafely(file, createDefaultWorkerEnvelope())
+        }
+    }
+
+    private fun ensureConversationScenariosFile() {
+        val context = appContext ?: return
+        val file = conversationScenariosFile(context)
+        if (!file.exists()) {
+            writeScenarioEnvelopeSafely(file, createDefaultScenarioEnvelope())
+        }
+    }
+
+    private fun writeWorkerEnvelopeSafely(file: File, envelope: WorkerProfileStoreEnvelope): Boolean {
+        return runCatching {
+            writeTextAtomic(file, envelope.toJsonObject().toString(2))
+            true
+        }.getOrElse { false }
+    }
+
+    private fun writeScenarioEnvelopeSafely(file: File, envelope: ConversationScenarioStoreEnvelope): Boolean {
+        return runCatching {
+            writeTextAtomic(file, envelope.toJsonObject().toString(2))
+            true
+        }.getOrElse { false }
+    }
+
+    private fun writeTextAtomic(target: File, text: String) {
+        val parent = target.parentFile ?: return
+        if (!parent.exists()) {
+            parent.mkdirs()
+        }
+        val temp = File(parent, "${target.name}.tmp")
+        temp.writeText(text)
+        if (target.exists()) {
+            target.delete()
+        }
+        temp.renameTo(target)
+    }
+
+    private fun JSONObject.toWorkerProfileStoreEnvelope(): WorkerProfileStoreEnvelope {
+        val array = optJSONArray("workerProfiles") ?: JSONArray()
+        val profiles = buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                add(item.toConversationWorkerProfile())
+            }
+        }
+        return WorkerProfileStoreEnvelope(
+            schemaVersion = optInt("schemaVersion", SCHEMA_VERSION),
+            updatedAt = optLong("updatedAt", now()),
+            workerProfiles = profiles,
+        )
+    }
+
+    private fun WorkerProfileStoreEnvelope.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("schemaVersion", SCHEMA_VERSION)
+            .put("updatedAt", updatedAt.ifZero { now() })
+            .put("workerProfiles", workerProfiles.toJsonArray { it.toJsonObject() })
+    }
+
+    private fun JSONObject.toConversationWorkerProfile(): ConversationWorkerProfile {
+        val timestamp = now()
+        return ConversationWorkerProfile(
+            workerProfileId = optString("workerProfileId"),
+            displayName = optString("displayName"),
+            roleLabel = optString("roleLabel"),
+            roleDescription = optString("roleDescription"),
+            systemInstruction = optString("systemInstruction"),
+            providerId = optNullableString("providerId"),
+            modelId = optNullableString("modelId"),
+            capabilityOverrides = optJSONObject("capabilityOverrides")?.toWorkerCapabilityOverrides()
+                ?: WorkerCapabilityOverrides(),
+            inputPolicy = optJSONObject("inputPolicy")?.toWorkerInputPolicy() ?: WorkerInputPolicy(),
+            outputPolicy = optJSONObject("outputPolicy")?.toWorkerOutputPolicy() ?: WorkerOutputPolicy(),
+            executionOrder = optInt("executionOrder", 0),
+            canRunInParallel = optBoolean("canRunInParallel", false),
+            dependsOnWorkerIds = optStringList("dependsOnWorkerIds"),
+            enabled = optBoolean("enabled", true),
+            isDefaultTemplate = optBoolean("isDefaultTemplate", false),
+            userModified = optBoolean("userModified", false),
+            createdAt = optLong("createdAt", timestamp),
+            updatedAt = optLong("updatedAt", timestamp),
+        )
+    }
+
+    private fun ConversationWorkerProfile.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("workerProfileId", workerProfileId)
+            .put("displayName", displayName)
+            .put("roleLabel", roleLabel)
+            .put("roleDescription", roleDescription)
+            .put("systemInstruction", systemInstruction)
+            .put("providerId", providerId)
+            .put("modelId", modelId)
+            .put("capabilityOverrides", capabilityOverrides.toJsonObject())
+            .put("inputPolicy", inputPolicy.toJsonObject())
+            .put("outputPolicy", outputPolicy.toJsonObject())
+            .put("executionOrder", executionOrder)
+            .put("canRunInParallel", canRunInParallel)
+            .put("dependsOnWorkerIds", dependsOnWorkerIds.toJsonArray())
+            .put("enabled", enabled)
+            .put("isDefaultTemplate", isDefaultTemplate)
+            .put("userModified", userModified)
+            .put("createdAt", createdAt.ifZero { now() })
+            .put("updatedAt", updatedAt.ifZero { now() })
+    }
+
+    private fun JSONObject.toConversationScenarioStoreEnvelope(): ConversationScenarioStoreEnvelope {
+        val array = optJSONArray("scenarios") ?: JSONArray()
+        val scenarios = buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                add(item.toConversationScenarioProfile())
+            }
+        }
+        return ConversationScenarioStoreEnvelope(
+            schemaVersion = optInt("schemaVersion", SCHEMA_VERSION),
+            updatedAt = optLong("updatedAt", now()),
+            scenarios = scenarios,
+        )
+    }
+
+    private fun ConversationScenarioStoreEnvelope.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("schemaVersion", SCHEMA_VERSION)
+            .put("updatedAt", updatedAt.ifZero { now() })
+            .put("scenarios", scenarios.toJsonArray { it.toJsonObject() })
+    }
+
+    private fun JSONObject.toConversationScenarioProfile(): ConversationScenarioProfile {
+        val timestamp = now()
+        return ConversationScenarioProfile(
+            scenarioId = optString("scenarioId"),
+            name = optString("name"),
+            description = optString("description"),
+            workerProfileIds = optStringList("workerProfileIds"),
+            defaultExecutionMode = optEnum("defaultExecutionMode", ExecutionMode.SINGLE),
+            orchestratorProfileId = optNullableString("orchestratorProfileId"),
+            synthesisProfileId = optNullableString("synthesisProfileId"),
+            userEditable = optBoolean("userEditable", true),
+            isDefaultTemplate = optBoolean("isDefaultTemplate", false),
+            userModified = optBoolean("userModified", false),
+            enabled = optBoolean("enabled", true),
+            createdAt = optLong("createdAt", timestamp),
+            updatedAt = optLong("updatedAt", timestamp),
+        )
+    }
+
+    private fun ConversationScenarioProfile.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("scenarioId", scenarioId)
+            .put("name", name)
+            .put("description", description)
+            .put("workerProfileIds", workerProfileIds.toJsonArray())
+            .put("defaultExecutionMode", defaultExecutionMode.name)
+            .put("orchestratorProfileId", orchestratorProfileId)
+            .put("synthesisProfileId", synthesisProfileId)
+            .put("userEditable", userEditable)
+            .put("isDefaultTemplate", isDefaultTemplate)
+            .put("userModified", userModified)
+            .put("enabled", enabled)
+            .put("createdAt", createdAt.ifZero { now() })
+            .put("updatedAt", updatedAt.ifZero { now() })
+    }
+
+    private fun JSONObject.toWorkerCapabilityOverrides(): WorkerCapabilityOverrides {
+        return WorkerCapabilityOverrides(
+            functionCalling = optEnum("functionCalling", CapabilityLayerStatus.UNKNOWN),
+            webSearch = optEnum("webSearch", CapabilityLayerStatus.UNKNOWN),
+            codeExecution = optEnum("codeExecution", CapabilityLayerStatus.UNKNOWN),
+            structuredOutput = optEnum("structuredOutput", CapabilityLayerStatus.UNKNOWN),
+            thinkingSummary = optEnum("thinkingSummary", CapabilityLayerStatus.UNKNOWN),
+            ragSearch = optEnum("ragSearch", CapabilityLayerStatus.UNKNOWN),
+            memoryRecall = optEnum("memoryRecall", CapabilityLayerStatus.UNKNOWN),
+            fileRead = optEnum("fileRead", CapabilityLayerStatus.UNKNOWN),
+            fileWrite = optEnum("fileWrite", CapabilityLayerStatus.UNKNOWN),
+            codeCheck = optEnum("codeCheck", CapabilityLayerStatus.UNKNOWN),
+            parallelExecution = optEnum("parallelExecution", CapabilityLayerStatus.UNKNOWN),
+        )
+    }
+
+    private fun WorkerCapabilityOverrides.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("functionCalling", functionCalling.name)
+            .put("webSearch", webSearch.name)
+            .put("codeExecution", codeExecution.name)
+            .put("structuredOutput", structuredOutput.name)
+            .put("thinkingSummary", thinkingSummary.name)
+            .put("ragSearch", ragSearch.name)
+            .put("memoryRecall", memoryRecall.name)
+            .put("fileRead", fileRead.name)
+            .put("fileWrite", fileWrite.name)
+            .put("codeCheck", codeCheck.name)
+            .put("parallelExecution", parallelExecution.name)
+    }
+
+    private fun JSONObject.toWorkerInputPolicy(): WorkerInputPolicy {
+        return WorkerInputPolicy(
+            userInputOnly = optBoolean("userInputOnly", true),
+            previousWorkerOutput = optBoolean("previousWorkerOutput", false),
+            selectedWorkerOutputs = optStringList("selectedWorkerOutputs"),
+            ragContextAllowed = optBoolean("ragContextAllowed", false),
+            memoryContextAllowed = optBoolean("memoryContextAllowed", false),
+            webSearchContextAllowed = optBoolean("webSearchContextAllowed", false),
+            maxInputChars = optInt("maxInputChars", 0),
+            includeRunHistory = optBoolean("includeRunHistory", false),
+        )
+    }
+
+    private fun WorkerInputPolicy.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("userInputOnly", userInputOnly)
+            .put("previousWorkerOutput", previousWorkerOutput)
+            .put("selectedWorkerOutputs", selectedWorkerOutputs.toJsonArray())
+            .put("ragContextAllowed", ragContextAllowed)
+            .put("memoryContextAllowed", memoryContextAllowed)
+            .put("webSearchContextAllowed", webSearchContextAllowed)
+            .put("maxInputChars", maxInputChars)
+            .put("includeRunHistory", includeRunHistory)
+    }
+
+    private fun JSONObject.toWorkerOutputPolicy(): WorkerOutputPolicy {
+        return WorkerOutputPolicy(
+            expectedOutputType = optEnum("expectedOutputType", CapabilityType.TEXT_GENERATION),
+            requireJson = optBoolean("requireJson", false),
+            requireMarkdownTable = optBoolean("requireMarkdownTable", false),
+            requireCodeBlock = optBoolean("requireCodeBlock", false),
+            allowPlainText = optBoolean("allowPlainText", true),
+            maxOutputChars = optInt("maxOutputChars", 0),
+            passToNextWorker = optBoolean("passToNextWorker", true),
+            exposeToUser = optBoolean("exposeToUser", true),
+            saveAsMemoryCandidate = optBoolean("saveAsMemoryCandidate", false),
+        )
+    }
+
+    private fun WorkerOutputPolicy.toJsonObject(): JSONObject {
+        return JSONObject()
+            .put("expectedOutputType", expectedOutputType.name)
+            .put("requireJson", requireJson)
+            .put("requireMarkdownTable", requireMarkdownTable)
+            .put("requireCodeBlock", requireCodeBlock)
+            .put("allowPlainText", allowPlainText)
+            .put("maxOutputChars", maxOutputChars)
+            .put("passToNextWorker", passToNextWorker)
+            .put("exposeToUser", exposeToUser)
+            .put("saveAsMemoryCandidate", saveAsMemoryCandidate)
     }
 
     private fun defaultWorker(
@@ -513,6 +948,45 @@ object WorkerProfileStore {
             createdAt = createdAt,
             updatedAt = createdAt,
         )
+    }
+
+    private fun JSONArray.toStringList(): List<String> {
+        return buildList {
+            for (index in 0 until length()) {
+                val value = optString(index)
+                if (value.isNotBlank()) add(value)
+            }
+        }
+    }
+
+    private fun JSONObject.optStringList(key: String): List<String> {
+        return optJSONArray(key)?.toStringList() ?: emptyList()
+    }
+
+    private fun List<String>.toJsonArray(): JSONArray {
+        val array = JSONArray()
+        forEach { value -> array.put(value) }
+        return array
+    }
+
+    private fun <T> List<T>.toJsonArray(mapper: (T) -> JSONObject): JSONArray {
+        val array = JSONArray()
+        forEach { item -> array.put(mapper(item)) }
+        return array
+    }
+
+    private fun JSONObject.optNullableString(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        return optString(key).takeIf { it.isNotBlank() }
+    }
+
+    private inline fun <reified T : Enum<T>> JSONObject.optEnum(key: String, fallback: T): T {
+        val rawValue = optString(key).takeIf { it.isNotBlank() } ?: return fallback
+        return runCatching { enumValueOf<T>(rawValue) }.getOrDefault(fallback)
+    }
+
+    private fun Long.ifZero(defaultValue: () -> Long): Long {
+        return if (this == 0L) defaultValue() else this
     }
 
     private fun now(): Long = System.currentTimeMillis()
