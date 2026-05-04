@@ -3,19 +3,18 @@ package com.maha.app
 /**
  * CapabilityResolver
  *
- * 후속 Orchestrator 구현을 위한 capability 판단 skeleton입니다.
+ * Orchestrator / Capability Layer 후속 구현을 위한 진단용 skeleton입니다.
  *
  * 현재 단계의 원칙:
- * - ConversationEngine / ViewModel / UI / 저장 schema와 연결하지 않습니다.
- * - 실제 Provider / Model / RAG / Web Search / Tool 실행 상태를 조회하지 않습니다.
- * - keyword 기반으로 요구 capability를 추정하는 최소 구조만 제공합니다.
- * - CapabilityStatus가 아니라 CapabilityLayerStatus를 사용해 기존 ModelCapability V2와 충돌하지 않습니다.
+ * - ConversationEngine / ViewModel / UI 실행 흐름 / 저장 schema와 연결하지 않습니다.
+ * - 실제 Provider / RAG / Web Search / Tool 실행 상태를 조회하지 않습니다.
+ * - 사용자 입력을 keyword 기반으로 분석해 capability 요구와 계획 preview만 만듭니다.
+ * - 기존 ModelCapability V2의 CapabilityStatus가 아니라 CapabilityLayerStatus를 사용합니다.
  */
 object CapabilityResolver {
 
     fun inferRequirements(userInput: String): List<CapabilityRequirement> {
-        val text = userInput.trim()
-        val lower = text.lowercase()
+        val lower = userInput.trim().lowercase()
         val requirements = mutableListOf<CapabilityRequirement>()
 
         fun add(
@@ -40,85 +39,102 @@ object CapabilityResolver {
             }
         }
 
+        val wantsJson = containsAny(lower, listOf("json", "제이슨"))
+        val wantsTable = containsAny(lower, listOf("마크다운 표", "markdown table", "비교표", "표로", "표 ", " table")) || lower == "표"
+        val wantsCodeBlock = containsAny(lower, listOf("코드블록", "코드 블록", "code block", "```"))
+        val wantsSearch = containsAny(lower, listOf("검색", "최신", "오늘", "뉴스", "날씨", "현재", "실시간", "웹 검색", "web search"))
+        val wantsRag = containsAny(lower, listOf("rag", "내 문서", "자료 기반", "참조 문서", "저장된 문서", "인덱스"))
+        val wantsMemory = containsAny(lower, listOf("기억", "이전 대화", "전에 말한", "지난번", "대화 이력"))
+        val wantsFileWrite = containsAny(lower, listOf("파일 수정", "파일 저장", "저장해", "수정해", "작성해서 저장"))
+        val wantsFileRead = containsAny(lower, listOf("파일", "저장소", "문서 읽", "읽어", "열어"))
+        val wantsCodeCheck = containsAny(lower, listOf("검증", "빌드 오류", "컴파일", "코드 확인", "코드 검토", "테스트해", "수정안"))
+        val wantsTool = containsAny(lower, listOf("도구", "tool", "function_call", "function call", "tool_call", "tool calls", "함수 호출"))
+        val wantsComparison = containsAny(lower, listOf("비교", "여러 관점", "세 가지 관점", "각각 분석", "동시에", "병렬", "여러 모델", "여러 자료"))
+        val wantsReview = containsAny(lower, listOf("검토", "리뷰", "최종 확인", "누락 확인"))
+
         add(
             capabilityType = CapabilityType.TEXT_GENERATION,
             priority = 0,
-            reason = "기본 대화 응답 생성",
-            label = "일반 텍스트 생성"
+            reason = "기본 답변 생성을 위해 필요합니다.",
+            label = "일반 답변 생성"
         )
 
-        if (containsAny(lower, listOf("코드블록", "code block", "```", "코드 블록"))) {
-            add(
-                capabilityType = CapabilityType.CODE_BLOCK_OUTPUT,
-                priority = 10,
-                reason = "사용자가 코드블록 형태의 출력을 요구함",
-                label = "코드블록 출력"
-            )
-        }
-
-        if (containsAny(lower, listOf("json", "제이슨"))) {
+        if (wantsJson) {
             add(
                 capabilityType = CapabilityType.JSON_OUTPUT,
-                priority = 10,
-                reason = "사용자가 JSON 형태의 출력을 요구함",
+                priority = 20,
+                reason = "사용자가 JSON 형식 출력을 요청했습니다.",
                 label = "JSON 출력"
             )
             add(
                 capabilityType = CapabilityType.STRUCTURED_OUTPUT,
                 required = false,
-                priority = 8,
-                reason = "JSON 출력을 위한 구조화 응답 후보",
+                priority = 12,
+                reason = "JSON 출력은 구조화된 응답 형식에 해당합니다.",
                 label = "구조화 출력"
             )
         }
 
-        if (containsAny(lower, listOf("표", "table", "마크다운 표", "markdown table"))) {
+        if (wantsTable) {
             add(
                 capabilityType = CapabilityType.TABLE_OUTPUT,
-                priority = 10,
-                reason = "사용자가 표 형태의 출력을 요구함",
+                priority = 20,
+                reason = "사용자가 표 형식 출력을 요청했습니다.",
                 label = "테이블 출력"
             )
             add(
                 capabilityType = CapabilityType.STRUCTURED_OUTPUT,
                 required = false,
-                priority = 8,
-                reason = "테이블 출력을 위한 구조화 응답 후보",
+                priority = 12,
+                reason = "표 출력은 구조화된 응답 형식에 해당합니다.",
                 label = "구조화 출력"
             )
         }
 
-        if (containsAny(lower, listOf("rag", "내 문서", "자료 기반", "참조 문서", "저장된 문서", "인덱스"))) {
+        if (wantsCodeBlock || wantsCodeCheck) {
             add(
-                capabilityType = CapabilityType.RAG_SEARCH,
-                priority = 20,
-                reason = "앱 내부 RAG 검색이 필요할 수 있음",
-                label = "RAG 검색"
+                capabilityType = CapabilityType.CODE_BLOCK_OUTPUT,
+                priority = if (wantsCodeCheck) 18 else 20,
+                reason = if (wantsCodeCheck) {
+                    "코드 검증 또는 수정 결과를 코드블록으로 보여줄 수 있습니다."
+                } else {
+                    "사용자가 코드블록 형식 출력을 요청했습니다."
+                },
+                label = "코드블록 출력"
             )
         }
 
-        if (containsAny(lower, listOf("검색", "최신", "오늘", "뉴스", "날씨", "현재", "실시간", "웹 검색", "web search"))) {
+        if (wantsSearch) {
             add(
                 capabilityType = CapabilityType.WEB_SEARCH_PROVIDER_NATIVE,
-                priority = 20,
-                reason = "Provider-native Web Search가 필요할 수 있음",
+                priority = 30,
+                reason = "날씨, 뉴스, 최신 정보처럼 외부 정보 확인이 필요할 수 있습니다.",
                 acceptableFallbacks = listOf(CapabilityType.WEB_SEARCH_MAHA_NATIVE),
                 label = "Provider Web Search"
             )
             add(
                 capabilityType = CapabilityType.WEB_SEARCH_MAHA_NATIVE,
                 required = false,
-                priority = 18,
-                reason = "MAHA-native Web Search 대체 후보",
+                priority = 25,
+                reason = "Provider-native 검색이 없을 때 MAHA 내부 검색 도구가 대체 후보가 될 수 있습니다.",
                 label = "MAHA Web Search"
             )
         }
 
-        if (containsAny(lower, listOf("기억", "이전 대화", "전에 말한", "지난번", "대화 이력"))) {
+        if (wantsRag) {
+            add(
+                capabilityType = CapabilityType.RAG_SEARCH,
+                priority = 26,
+                reason = "앱 내부 문서 또는 RAG 인덱스 기반 검색이 필요할 수 있습니다.",
+                label = "RAG 검색"
+            )
+        }
+
+        if (wantsMemory) {
             add(
                 capabilityType = CapabilityType.MEMORY_RECALL,
-                priority = 20,
-                reason = "장기 기억 또는 이전 대화 참조가 필요할 수 있음",
+                priority = 24,
+                reason = "장기 기억 또는 이전 대화 내용을 참조해야 할 수 있습니다.",
                 acceptableFallbacks = listOf(CapabilityType.CONVERSATION_HISTORY_SEARCH),
                 label = "기억 호출"
             )
@@ -126,84 +142,84 @@ object CapabilityResolver {
                 capabilityType = CapabilityType.CONVERSATION_HISTORY_SEARCH,
                 required = false,
                 priority = 18,
-                reason = "대화 이력 검색 대체 후보",
+                reason = "장기 기억이 없을 때 대화 이력 검색이 대체 후보가 될 수 있습니다.",
                 label = "대화 이력 검색"
             )
         }
 
-        if (containsAny(lower, listOf("파일", "저장소", "문서 읽", "읽어", "열어"))) {
+        if (wantsFileRead) {
             add(
                 capabilityType = CapabilityType.LOCAL_FILE_READ,
-                priority = 20,
-                reason = "로컬 파일 또는 저장소 읽기가 필요할 수 있음",
+                priority = 24,
+                reason = "로컬 파일 또는 저장소의 내용을 읽어야 할 수 있습니다.",
                 label = "로컬 파일 읽기"
             )
         }
 
-        if (containsAny(lower, listOf("파일 수정", "파일 저장", "저장해", "수정해", "작성해서 저장"))) {
+        if (wantsFileWrite) {
             add(
                 capabilityType = CapabilityType.LOCAL_FILE_WRITE,
-                priority = 25,
-                reason = "로컬 파일 쓰기 또는 수정이 필요할 수 있음",
+                priority = 28,
+                reason = "로컬 파일을 작성하거나 수정해야 할 수 있습니다.",
                 label = "로컬 파일 쓰기"
             )
         }
 
-        if (containsAny(lower, listOf("검증", "빌드 오류", "컴파일", "코드 확인", "코드 검토", "테스트해"))) {
+        if (wantsCodeCheck) {
             add(
                 capabilityType = CapabilityType.CODE_CHECK,
-                priority = 20,
-                reason = "코드 검증 또는 오류 분석이 필요할 수 있음",
+                priority = 30,
+                reason = "코드 검증 또는 오류 분석 단계가 필요할 수 있습니다.",
                 label = "코드 검증"
             )
             add(
                 capabilityType = CapabilityType.SEQUENTIAL_EXECUTION,
                 required = false,
-                priority = 15,
-                reason = "생성 후 검증 같은 순차 실행 후보",
+                priority = 16,
+                reason = "코드 분석 후 수정안 작성처럼 단계적 처리가 어울립니다.",
                 label = "순차 실행"
             )
         }
 
-        if (containsAny(lower, listOf("도구", "tool", "function_call", "tool_call", "tool calls", "함수 호출"))) {
+        if (wantsTool) {
             add(
                 capabilityType = CapabilityType.TOOL_CALL_DETECTION,
-                priority = 20,
-                reason = "tool_call 또는 function_call 감지가 필요할 수 있음",
-                label = "Tool 호출 감지"
+                priority = 24,
+                reason = "tool_call 또는 function_call 형식 감지가 필요할 수 있습니다.",
+                label = "Tool 요청 감지"
             )
             add(
                 capabilityType = CapabilityType.TOOL_EXECUTION,
                 required = false,
-                priority = 25,
-                reason = "실제 Tool 실행은 후속 구현 대상",
+                priority = 24,
+                reason = "실제 Tool 실행은 Tool Registry 구현 이후의 후속 기능입니다.",
                 label = "Tool 실행"
             )
         }
 
-        if (containsAny(lower, listOf("비교", "여러 관점", "각각 분석", "동시에", "병렬", "여러 모델", "여러 자료"))) {
+        if (wantsComparison) {
             add(
                 capabilityType = CapabilityType.PARALLEL_EXECUTION,
                 required = false,
-                priority = 30,
-                reason = "독립 하위 작업을 병렬로 나눌 수 있음",
-                label = "병렬 실행"
+                priority = 28,
+                reason = "여러 관점 또는 여러 자료를 독립적으로 나눠 볼 수 있습니다.",
+                label = "병렬 실행 후보"
             )
             add(
                 capabilityType = CapabilityType.SYNTHESIS,
                 required = false,
-                priority = 30,
-                reason = "병렬 결과 통합이 필요할 수 있음",
+                priority = 26,
+                reason = "나뉜 결과를 하나로 통합하는 단계가 필요할 수 있습니다.",
                 label = "결과 통합"
             )
         }
 
-        if (containsAny(lower, listOf("검토", "리뷰", "최종 확인", "누락 확인"))) {
+        if (wantsReview) {
             add(
                 capabilityType = CapabilityType.REVIEW,
                 required = false,
-                priority = 20,
-                reason = "최종 검토 Worker 후보",
+                priority = 18,
+                reason = "최종 결과 검토가 필요할 수 있습니다.",
                 label = "검토"
             )
         }
@@ -222,21 +238,30 @@ object CapabilityResolver {
         return requirements.map { requirement ->
             val status = defaultStatusFor(requirement.capabilityType)
             val source = defaultSourceFor(requirement.capabilityType)
-            val executionAvailable = status == CapabilityLayerStatus.AVAILABLE ||
-                    status == CapabilityLayerStatus.LIMITED ||
-                    status == CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE ||
-                    status == CapabilityLayerStatus.PROVIDER_NATIVE_ONLY
+            val executionAvailable = when (status) {
+                CapabilityLayerStatus.AVAILABLE,
+                CapabilityLayerStatus.LIMITED,
+                CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE,
+                CapabilityLayerStatus.PROVIDER_NATIVE_ONLY -> true
+                else -> false
+            }
 
             CapabilityResolution(
                 requirement = requirement,
                 status = status,
                 source = source,
-                providerNativeAvailable = source == CapabilitySource.PROVIDER_NATIVE,
-                mahaNativeAvailable = source == CapabilitySource.MAHA_NATIVE,
+                providerNativeAvailable = source == CapabilitySource.PROVIDER_NATIVE && status != CapabilityLayerStatus.NOT_IMPLEMENTED,
+                mahaNativeAvailable = source == CapabilitySource.MAHA_NATIVE && status != CapabilityLayerStatus.NOT_IMPLEMENTED,
                 selectedProviderId = selectedProviderId,
                 selectedModelId = selectedModelId,
                 executionAvailable = executionAvailable,
-                limitationReason = buildLimitationReasonIfNeeded(requirement, status, source, selectedProviderId, selectedModelId)
+                limitationReason = buildLimitationReasonIfNeeded(
+                    requirement = requirement,
+                    status = status,
+                    source = source,
+                    selectedProviderId = selectedProviderId,
+                    selectedModelId = selectedModelId
+                )
             )
         }
     }
@@ -244,28 +269,25 @@ object CapabilityResolver {
     fun recommendExecutionMode(requirements: List<CapabilityRequirement>): ExecutionMode {
         val types = requirements.map { it.capabilityType }.toSet()
 
-        if (CapabilityType.MIXED_EXECUTION in types) return ExecutionMode.MIXED
-        if (CapabilityType.PARALLEL_EXECUTION in types &&
-            (CapabilityType.SYNTHESIS in types || CapabilityType.REVIEW in types)
-        ) {
+        if (CapabilityType.PARALLEL_EXECUTION in types && CapabilityType.SYNTHESIS in types) {
             return ExecutionMode.MIXED
         }
-        if (CapabilityType.PARALLEL_EXECUTION in types) return ExecutionMode.PARALLEL
-
-        val sequentialHints = setOf(
-            CapabilityType.RAG_SEARCH,
-            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE,
-            CapabilityType.WEB_SEARCH_MAHA_NATIVE,
-            CapabilityType.MEMORY_RECALL,
-            CapabilityType.CONVERSATION_HISTORY_SEARCH,
-            CapabilityType.LOCAL_FILE_READ,
-            CapabilityType.LOCAL_FILE_WRITE,
-            CapabilityType.CODE_CHECK,
-            CapabilityType.TOOL_EXECUTION,
-            CapabilityType.SEQUENTIAL_EXECUTION
-        )
-        if (types.any { it in sequentialHints }) return ExecutionMode.SEQUENTIAL
-
+        if (CapabilityType.PARALLEL_EXECUTION in types) {
+            return ExecutionMode.PARALLEL
+        }
+        if (CapabilityType.CODE_CHECK in types || CapabilityType.SEQUENTIAL_EXECUTION in types) {
+            return ExecutionMode.SEQUENTIAL
+        }
+        if (CapabilityType.RAG_SEARCH in types ||
+            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE in types ||
+            CapabilityType.WEB_SEARCH_MAHA_NATIVE in types ||
+            CapabilityType.MEMORY_RECALL in types ||
+            CapabilityType.CONVERSATION_HISTORY_SEARCH in types ||
+            CapabilityType.LOCAL_FILE_READ in types ||
+            CapabilityType.LOCAL_FILE_WRITE in types
+        ) {
+            return ExecutionMode.SEQUENTIAL
+        }
         return ExecutionMode.SINGLE
     }
 
@@ -283,7 +305,6 @@ object CapabilityResolver {
         )
         val executionMode = recommendExecutionMode(requirements)
         val limitationReasons = resolutions.mapNotNull { it.limitationReason }
-        val workerPlans = buildWorkerPlans(requirements, resolutions, executionMode, selectedProviderId, selectedModelId)
 
         return OrchestratorPlan(
             planId = "plan_${System.currentTimeMillis()}",
@@ -294,7 +315,13 @@ object CapabilityResolver {
             executionMode = executionMode,
             userGoalStatus = inferUserGoalStatus(resolutions),
             limitationReasons = limitationReasons,
-            workerPlans = workerPlans,
+            workerPlans = buildWorkerPlans(
+                requirements = requirements,
+                resolutions = resolutions,
+                executionMode = executionMode,
+                selectedProviderId = selectedProviderId,
+                selectedModelId = selectedModelId
+            ),
             providerNativeUsed = resolutions.any { it.source == CapabilitySource.PROVIDER_NATIVE },
             mahaNativeUsed = resolutions.any { it.source == CapabilitySource.MAHA_NATIVE },
             createdAt = System.currentTimeMillis()
@@ -329,11 +356,14 @@ object CapabilityResolver {
         )
 
         var order = 1
+        val contextWorkerIds = mutableListOf<String>()
 
         if (CapabilityType.RAG_SEARCH in types) {
+            val workerId = "worker_rag"
+            contextWorkerIds.add(workerId)
             workers.add(
                 plannedWorker(
-                    workerId = "worker_rag",
+                    workerId = workerId,
                     role = WorkerRole.RAG,
                     displayName = "RAG Worker",
                     requiredCapabilities = listOf(CapabilityType.RAG_SEARCH),
@@ -345,9 +375,11 @@ object CapabilityResolver {
         }
 
         if (CapabilityType.MEMORY_RECALL in types || CapabilityType.CONVERSATION_HISTORY_SEARCH in types) {
+            val workerId = "worker_memory"
+            contextWorkerIds.add(workerId)
             workers.add(
                 plannedWorker(
-                    workerId = "worker_memory",
+                    workerId = workerId,
                     role = WorkerRole.MEMORY,
                     displayName = "Memory Worker",
                     requiredCapabilities = listOf(CapabilityType.MEMORY_RECALL, CapabilityType.CONVERSATION_HISTORY_SEARCH),
@@ -360,50 +392,67 @@ object CapabilityResolver {
         }
 
         if (CapabilityType.WEB_SEARCH_PROVIDER_NATIVE in types || CapabilityType.WEB_SEARCH_MAHA_NATIVE in types) {
+            val workerId = "worker_web_search"
+            contextWorkerIds.add(workerId)
             workers.add(
                 plannedWorker(
-                    workerId = "worker_web_search",
+                    workerId = workerId,
                     role = WorkerRole.WEB_SEARCH,
                     displayName = "Web Search Worker",
                     requiredCapabilities = listOf(CapabilityType.WEB_SEARCH_PROVIDER_NATIVE, CapabilityType.WEB_SEARCH_MAHA_NATIVE),
                     order = order++,
                     canRunInParallel = executionMode == ExecutionMode.PARALLEL || executionMode == ExecutionMode.MIXED,
-                    limitationReason = limitationFor(resolutions, CapabilityType.WEB_SEARCH_PROVIDER_NATIVE)
-                        ?: limitationFor(resolutions, CapabilityType.WEB_SEARCH_MAHA_NATIVE)
+                    limitationReason = limitationFor(resolutions, CapabilityType.WEB_SEARCH_MAHA_NATIVE)
+                        ?: limitationFor(resolutions, CapabilityType.WEB_SEARCH_PROVIDER_NATIVE)
                 )
             )
         }
 
         if (CapabilityType.TOOL_CALL_DETECTION in types || CapabilityType.TOOL_EXECUTION in types) {
+            val workerId = "worker_tool"
+            contextWorkerIds.add(workerId)
             workers.add(
                 plannedWorker(
-                    workerId = "worker_tool",
+                    workerId = workerId,
                     role = WorkerRole.TOOL,
                     displayName = "Tool Worker",
                     requiredCapabilities = listOf(CapabilityType.TOOL_CALL_DETECTION, CapabilityType.TOOL_EXECUTION),
                     order = order++,
                     canRunInParallel = false,
                     limitationReason = limitationFor(resolutions, CapabilityType.TOOL_EXECUTION)
+                        ?: limitationFor(resolutions, CapabilityType.TOOL_CALL_DETECTION)
                 )
             )
         }
 
-        val mainDependencies = workers
-            .filter { it.workerRole != WorkerRole.ORCHESTRATOR }
-            .map { it.workerId }
+        if (CapabilityType.PARALLEL_EXECUTION in types) {
+            val workerId = "worker_comparison"
+            contextWorkerIds.add(workerId)
+            workers.add(
+                plannedWorker(
+                    workerId = workerId,
+                    role = WorkerRole.COMPARISON,
+                    displayName = "Comparison Worker",
+                    requiredCapabilities = listOf(CapabilityType.PARALLEL_EXECUTION),
+                    order = order++,
+                    canRunInParallel = true,
+                    limitationReason = limitationFor(resolutions, CapabilityType.PARALLEL_EXECUTION)
+                )
+            )
+        }
 
         workers.add(
             WorkerPlan(
                 workerId = "worker_main",
                 workerRole = WorkerRole.MAIN,
                 displayName = "Main Worker",
-                inputSource = if (mainDependencies.isEmpty()) "USER_INPUT" else "ORCHESTRATOR_AND_CONTEXT_WORKERS",
-                requiredCapabilities = listOf(CapabilityType.TEXT_GENERATION),
+                inputSource = if (contextWorkerIds.isEmpty()) "USER_INPUT" else "ORCHESTRATOR_AND_CONTEXT_WORKERS",
+                requiredCapabilities = outputCapabilitiesFor(requirements),
                 assignedProviderId = selectedProviderId,
                 assignedModelId = selectedModelId,
                 executionOrder = order++,
                 canRunInParallel = false,
-                dependsOnWorkerIds = mainDependencies,
+                dependsOnWorkerIds = contextWorkerIds,
                 expectedOutputType = expectedOutputTypeFor(requirements),
                 plannedStatus = UserGoalStatus.SUCCESS
             )
@@ -425,6 +474,9 @@ object CapabilityResolver {
         }
 
         if (CapabilityType.SYNTHESIS in types || executionMode == ExecutionMode.MIXED) {
+            val dependencyIds = workers
+                .filter { it.workerRole != WorkerRole.ORCHESTRATOR && it.workerRole != WorkerRole.SYNTHESIS }
+                .map { it.workerId }
             workers.add(
                 WorkerPlan(
                     workerId = "worker_synthesis",
@@ -436,9 +488,9 @@ object CapabilityResolver {
                     assignedModelId = selectedModelId,
                     executionOrder = order++,
                     canRunInParallel = false,
-                    dependsOnWorkerIds = workers.filter { it.workerRole != WorkerRole.ORCHESTRATOR }.map { it.workerId },
-                    expectedOutputType = CapabilityType.TEXT_GENERATION,
-                    plannedStatus = UserGoalStatus.SUCCESS,
+                    dependsOnWorkerIds = dependencyIds,
+                    expectedOutputType = expectedOutputTypeFor(requirements),
+                    plannedStatus = if (limitationFor(resolutions, CapabilityType.SYNTHESIS) == null) UserGoalStatus.SUCCESS else UserGoalStatus.LIMITED,
                     limitationReason = limitationFor(resolutions, CapabilityType.SYNTHESIS)
                 )
             )
@@ -458,7 +510,7 @@ object CapabilityResolver {
                     canRunInParallel = false,
                     dependsOnWorkerIds = listOf(workers.last().workerId),
                     expectedOutputType = CapabilityType.REVIEW,
-                    plannedStatus = UserGoalStatus.SUCCESS,
+                    plannedStatus = if (limitationFor(resolutions, CapabilityType.REVIEW) == null) UserGoalStatus.SUCCESS else UserGoalStatus.LIMITED,
                     limitationReason = limitationFor(resolutions, CapabilityType.REVIEW)
                 )
             )
@@ -486,119 +538,24 @@ object CapabilityResolver {
             executionOrder = order,
             canRunInParallel = canRunInParallel,
             dependsOnWorkerIds = dependsOnWorkerIds,
-            expectedOutputType = CapabilityType.TEXT_GENERATION,
+            expectedOutputType = requiredCapabilities.firstOrNull() ?: CapabilityType.TEXT_GENERATION,
             plannedStatus = if (limitationReason == null) UserGoalStatus.SUCCESS else UserGoalStatus.LIMITED,
             limitationReason = limitationReason
         )
     }
 
-    private fun defaultStatusFor(capabilityType: CapabilityType): CapabilityLayerStatus {
-        return when (capabilityType) {
-            CapabilityType.TEXT_GENERATION,
-            CapabilityType.STRUCTURED_OUTPUT,
-            CapabilityType.CODE_BLOCK_OUTPUT,
-            CapabilityType.JSON_OUTPUT,
-            CapabilityType.TABLE_OUTPUT,
-            CapabilityType.TOOL_CALL_DETECTION,
-            CapabilityType.SINGLE_EXECUTION -> CapabilityLayerStatus.AVAILABLE
-
-            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE,
-            CapabilityType.RAG_SEARCH -> CapabilityLayerStatus.UNKNOWN
-
-            CapabilityType.WEB_SEARCH_MAHA_NATIVE,
-            CapabilityType.MEMORY_RECALL,
-            CapabilityType.CONVERSATION_HISTORY_SEARCH,
-            CapabilityType.LOCAL_FILE_READ,
-            CapabilityType.LOCAL_FILE_WRITE,
-            CapabilityType.CODE_CHECK,
-            CapabilityType.CODE_EXECUTION,
-            CapabilityType.TOOL_EXECUTION,
-            CapabilityType.TOOL_RESULT_REINJECTION,
-            CapabilityType.TOOL_LOOP,
-            CapabilityType.PARALLEL_EXECUTION,
-            CapabilityType.MIXED_EXECUTION -> CapabilityLayerStatus.NOT_IMPLEMENTED
-
-            CapabilityType.SYNTHESIS,
-            CapabilityType.REVIEW,
-            CapabilityType.SEQUENTIAL_EXECUTION -> CapabilityLayerStatus.LIMITED
-        }
-    }
-
-    private fun defaultSourceFor(capabilityType: CapabilityType): CapabilitySource {
-        return when (capabilityType) {
-            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE -> CapabilitySource.PROVIDER_NATIVE
-            CapabilityType.RAG_SEARCH,
-            CapabilityType.WEB_SEARCH_MAHA_NATIVE,
-            CapabilityType.MEMORY_RECALL,
-            CapabilityType.CONVERSATION_HISTORY_SEARCH,
-            CapabilityType.LOCAL_FILE_READ,
-            CapabilityType.LOCAL_FILE_WRITE,
-            CapabilityType.CODE_CHECK,
-            CapabilityType.CODE_EXECUTION,
-            CapabilityType.TOOL_EXECUTION,
-            CapabilityType.TOOL_RESULT_REINJECTION,
-            CapabilityType.TOOL_LOOP,
-            CapabilityType.PARALLEL_EXECUTION,
-            CapabilityType.MIXED_EXECUTION -> CapabilitySource.MAHA_NATIVE
-            else -> CapabilitySource.UNKNOWN
-        }
-    }
-
-    private fun buildLimitationReasonIfNeeded(
-        requirement: CapabilityRequirement,
-        status: CapabilityLayerStatus,
-        source: CapabilitySource,
-        providerId: String?,
-        modelId: String?
-    ): LimitationReason? {
-        if (status == CapabilityLayerStatus.AVAILABLE || status == CapabilityLayerStatus.LIMITED) {
-            return null
-        }
-
-        return LimitationReason(
-            capabilityType = requirement.capabilityType,
-            status = status,
-            reasonCode = status.name,
-            userMessage = when (status) {
-                CapabilityLayerStatus.UNKNOWN -> "${requirement.userVisibleLabel} 지원 여부는 아직 확정되지 않았습니다."
-                CapabilityLayerStatus.NOT_IMPLEMENTED -> "${requirement.userVisibleLabel} 기능은 아직 구현되지 않았습니다."
-                CapabilityLayerStatus.NEED_API_KEY -> "${requirement.userVisibleLabel} 기능을 사용하려면 API Key가 필요합니다."
-                CapabilityLayerStatus.NEED_USER_PERMISSION -> "${requirement.userVisibleLabel} 기능을 사용하려면 사용자 권한이 필요합니다."
-                else -> "${requirement.userVisibleLabel} 기능을 현재 사용할 수 없습니다."
-            },
-            technicalMessage = "CapabilityResolver skeleton default policy: ${requirement.capabilityType.name} -> ${status.name}",
-            source = source,
-            providerId = providerId,
-            modelId = modelId,
-            recoverable = status == CapabilityLayerStatus.UNKNOWN ||
-                    status == CapabilityLayerStatus.NEED_API_KEY ||
-                    status == CapabilityLayerStatus.NEED_USER_PERMISSION,
-            suggestedAction = when (status) {
-                CapabilityLayerStatus.UNKNOWN -> "후속 Capability Layer 연결에서 Provider/Model 상태를 확인해야 합니다."
-                CapabilityLayerStatus.NOT_IMPLEMENTED -> "후속 구현 단계에서 MAHA-native 기능 연결이 필요합니다."
-                CapabilityLayerStatus.NEED_API_KEY -> "Provider 관리에서 API Key를 설정해야 합니다."
-                CapabilityLayerStatus.NEED_USER_PERMISSION -> "사용자 승인 UI가 필요합니다."
-                else -> null
+    private fun outputCapabilitiesFor(requirements: List<CapabilityRequirement>): List<CapabilityType> {
+        val outputTypes = requirements
+            .map { it.capabilityType }
+            .filter {
+                it == CapabilityType.TEXT_GENERATION ||
+                        it == CapabilityType.CODE_BLOCK_OUTPUT ||
+                        it == CapabilityType.JSON_OUTPUT ||
+                        it == CapabilityType.TABLE_OUTPUT ||
+                        it == CapabilityType.STRUCTURED_OUTPUT
             }
-        )
-    }
-
-    private fun inferUserGoalStatus(resolutions: List<CapabilityResolution>): UserGoalStatus {
-        if (resolutions.isEmpty()) return UserGoalStatus.UNKNOWN
-        val requiredResolutions = resolutions.filter { it.requirement.required }
-        if (requiredResolutions.all { it.executionAvailable }) return UserGoalStatus.SUCCESS
-        if (requiredResolutions.any { it.status == CapabilityLayerStatus.NEED_API_KEY }) return UserGoalStatus.NEED_API_KEY
-        if (requiredResolutions.any { it.status == CapabilityLayerStatus.NEED_USER_PERMISSION }) return UserGoalStatus.NEED_PERMISSION
-        if (requiredResolutions.any { it.status == CapabilityLayerStatus.NOT_IMPLEMENTED }) return UserGoalStatus.NOT_IMPLEMENTED
-        if (requiredResolutions.any { it.status == CapabilityLayerStatus.NOT_AVAILABLE }) return UserGoalStatus.BLOCKED
-        return UserGoalStatus.LIMITED
-    }
-
-    private fun limitationFor(
-        resolutions: List<CapabilityResolution>,
-        capabilityType: CapabilityType
-    ): LimitationReason? {
-        return resolutions.firstOrNull { it.requirement.capabilityType == capabilityType }?.limitationReason
+            .ifEmpty { listOf(CapabilityType.TEXT_GENERATION) }
+        return outputTypes.distinct()
     }
 
     private fun expectedOutputTypeFor(requirements: List<CapabilityRequirement>): CapabilityType {
@@ -610,6 +567,165 @@ object CapabilityResolver {
             CapabilityType.STRUCTURED_OUTPUT in types -> CapabilityType.STRUCTURED_OUTPUT
             else -> CapabilityType.TEXT_GENERATION
         }
+    }
+
+    private fun defaultStatusFor(capabilityType: CapabilityType): CapabilityLayerStatus {
+        return when (capabilityType) {
+            CapabilityType.TEXT_GENERATION,
+            CapabilityType.STRUCTURED_OUTPUT,
+            CapabilityType.CODE_BLOCK_OUTPUT,
+            CapabilityType.JSON_OUTPUT,
+            CapabilityType.TABLE_OUTPUT,
+            CapabilityType.TOOL_CALL_DETECTION,
+            CapabilityType.SYNTHESIS,
+            CapabilityType.REVIEW,
+            CapabilityType.SINGLE_EXECUTION,
+            CapabilityType.SEQUENTIAL_EXECUTION -> CapabilityLayerStatus.AVAILABLE
+
+            CapabilityType.RAG_SEARCH,
+            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE -> CapabilityLayerStatus.UNKNOWN
+
+            CapabilityType.MEMORY_RECALL,
+            CapabilityType.CONVERSATION_HISTORY_SEARCH,
+            CapabilityType.WEB_SEARCH_MAHA_NATIVE,
+            CapabilityType.LOCAL_FILE_READ,
+            CapabilityType.LOCAL_FILE_WRITE,
+            CapabilityType.CODE_CHECK,
+            CapabilityType.CODE_EXECUTION,
+            CapabilityType.TOOL_EXECUTION,
+            CapabilityType.TOOL_RESULT_REINJECTION,
+            CapabilityType.TOOL_LOOP,
+            CapabilityType.PARALLEL_EXECUTION,
+            CapabilityType.MIXED_EXECUTION -> CapabilityLayerStatus.NOT_IMPLEMENTED
+        }
+    }
+
+    private fun defaultSourceFor(capabilityType: CapabilityType): CapabilitySource {
+        return when (capabilityType) {
+            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE -> CapabilitySource.PROVIDER_NATIVE
+            CapabilityType.TOOL_CALL_DETECTION -> CapabilitySource.RUNTIME_DETECTION
+            CapabilityType.TEXT_GENERATION,
+            CapabilityType.STRUCTURED_OUTPUT,
+            CapabilityType.CODE_BLOCK_OUTPUT,
+            CapabilityType.JSON_OUTPUT,
+            CapabilityType.TABLE_OUTPUT -> CapabilitySource.MODEL_PROFILE
+            CapabilityType.RAG_SEARCH,
+            CapabilityType.MEMORY_RECALL,
+            CapabilityType.CONVERSATION_HISTORY_SEARCH,
+            CapabilityType.WEB_SEARCH_MAHA_NATIVE,
+            CapabilityType.LOCAL_FILE_READ,
+            CapabilityType.LOCAL_FILE_WRITE,
+            CapabilityType.CODE_CHECK,
+            CapabilityType.CODE_EXECUTION,
+            CapabilityType.TOOL_EXECUTION,
+            CapabilityType.TOOL_RESULT_REINJECTION,
+            CapabilityType.TOOL_LOOP,
+            CapabilityType.SYNTHESIS,
+            CapabilityType.REVIEW,
+            CapabilityType.SINGLE_EXECUTION,
+            CapabilityType.SEQUENTIAL_EXECUTION,
+            CapabilityType.PARALLEL_EXECUTION,
+            CapabilityType.MIXED_EXECUTION -> CapabilitySource.MAHA_NATIVE
+        }
+    }
+
+    private fun buildLimitationReasonIfNeeded(
+        requirement: CapabilityRequirement,
+        status: CapabilityLayerStatus,
+        source: CapabilitySource,
+        selectedProviderId: String?,
+        selectedModelId: String?
+    ): LimitationReason? {
+        val needsReason = when (status) {
+            CapabilityLayerStatus.AVAILABLE,
+            CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE -> false
+            CapabilityLayerStatus.LIMITED,
+            CapabilityLayerStatus.UNKNOWN,
+            CapabilityLayerStatus.NOT_IMPLEMENTED,
+            CapabilityLayerStatus.NOT_AVAILABLE,
+            CapabilityLayerStatus.NEED_USER_PERMISSION,
+            CapabilityLayerStatus.NEED_API_KEY,
+            CapabilityLayerStatus.PROVIDER_NATIVE_ONLY,
+            CapabilityLayerStatus.USER_ENABLED -> true
+        }
+        if (!needsReason) return null
+
+        val capabilityType = requirement.capabilityType
+        val reasonCode = when (status) {
+            CapabilityLayerStatus.UNKNOWN -> "UNKNOWN_CAPABILITY"
+            CapabilityLayerStatus.NOT_IMPLEMENTED -> "NOT_IMPLEMENTED"
+            CapabilityLayerStatus.LIMITED -> "LIMITED"
+            CapabilityLayerStatus.NEED_API_KEY -> "NEED_API_KEY"
+            CapabilityLayerStatus.NEED_USER_PERMISSION -> "NEED_USER_PERMISSION"
+            CapabilityLayerStatus.PROVIDER_NATIVE_ONLY -> "PROVIDER_NATIVE_ONLY"
+            CapabilityLayerStatus.USER_ENABLED -> "USER_ENABLED_NOT_EXECUTABLE"
+            CapabilityLayerStatus.NOT_AVAILABLE -> "NOT_AVAILABLE"
+            CapabilityLayerStatus.AVAILABLE,
+            CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE -> "NO_LIMITATION"
+        }
+
+        val userMessage = when (capabilityType) {
+            CapabilityType.WEB_SEARCH_MAHA_NATIVE -> "MAHA 내부 Web Search는 아직 연결되지 않았습니다."
+            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE -> "선택한 Provider/Model이 자체 Web Search를 지원하는지 아직 확정할 수 없습니다."
+            CapabilityType.TOOL_EXECUTION,
+            CapabilityType.TOOL_RESULT_REINJECTION,
+            CapabilityType.TOOL_LOOP -> "Tool 실행은 아직 구현되지 않았습니다."
+            CapabilityType.MEMORY_RECALL,
+            CapabilityType.CONVERSATION_HISTORY_SEARCH -> "장기 기억 또는 대화 이력 검색 기능은 아직 구현되지 않았습니다."
+            CapabilityType.LOCAL_FILE_READ -> "로컬 파일 읽기 기능은 아직 구현되지 않았습니다."
+            CapabilityType.LOCAL_FILE_WRITE -> "로컬 파일 쓰기 기능은 아직 구현되지 않았습니다."
+            CapabilityType.CODE_CHECK -> "코드 검증 Worker는 아직 실제 실행 흐름에 연결되지 않았습니다."
+            CapabilityType.RAG_SEARCH -> "RAG 기능은 존재하지만 Capability Resolver 진단 UI에는 아직 실제 실행 상태가 연결되지 않았습니다."
+            CapabilityType.PARALLEL_EXECUTION,
+            CapabilityType.MIXED_EXECUTION -> "병렬/혼합 실행은 설계 후보이며 아직 실제 실행은 구현되지 않았습니다."
+            else -> "현재 capability 상태가 ${status.name}입니다."
+        }
+
+        val suggestedAction = when (capabilityType) {
+            CapabilityType.WEB_SEARCH_MAHA_NATIVE -> "현재는 Gemini native Web Search가 가능한 모델을 사용하거나, 후속 MAHA-native Web Search 구현을 기다려야 합니다."
+            CapabilityType.WEB_SEARCH_PROVIDER_NATIVE -> "Provider 문서 또는 Model capability 설정을 확인하세요."
+            CapabilityType.TOOL_EXECUTION,
+            CapabilityType.TOOL_RESULT_REINJECTION,
+            CapabilityType.TOOL_LOOP -> "현재는 tool 요청 감지만 가능하며 실제 실행은 후속 Tool Registry 구현 후 지원됩니다."
+            CapabilityType.MEMORY_RECALL,
+            CapabilityType.CONVERSATION_HISTORY_SEARCH -> "후속 Memory/Conversation History 기능 구현이 필요합니다."
+            CapabilityType.LOCAL_FILE_READ,
+            CapabilityType.LOCAL_FILE_WRITE -> "후속 File Control 기능 구현이 필요합니다."
+            CapabilityType.CODE_CHECK -> "후속 Code Check Worker 구현이 필요합니다."
+            CapabilityType.RAG_SEARCH -> "실제 대화방 RAG 토글과는 별개입니다. 현재 화면은 계획 preview만 표시합니다."
+            CapabilityType.PARALLEL_EXECUTION,
+            CapabilityType.MIXED_EXECUTION -> "후속 Execution Planner에서 실제 병렬/혼합 실행을 구현해야 합니다."
+            else -> null
+        }
+
+        return LimitationReason(
+            capabilityType = capabilityType,
+            status = status,
+            reasonCode = reasonCode,
+            userMessage = userMessage,
+            technicalMessage = "CapabilityResolver skeleton only. source=${source.name}",
+            source = source,
+            providerId = selectedProviderId,
+            modelId = selectedModelId,
+            recoverable = status == CapabilityLayerStatus.UNKNOWN || status == CapabilityLayerStatus.NOT_IMPLEMENTED,
+            suggestedAction = suggestedAction
+        )
+    }
+
+    private fun inferUserGoalStatus(resolutions: List<CapabilityResolution>): UserGoalStatus {
+        val relevantLimitations = resolutions.filter { resolution ->
+            val priority = resolution.requirement.priority
+            val status = resolution.status
+            priority >= 20 && status != CapabilityLayerStatus.AVAILABLE && status != CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE
+        }
+        return if (relevantLimitations.isEmpty()) UserGoalStatus.SUCCESS else UserGoalStatus.LIMITED
+    }
+
+    private fun limitationFor(
+        resolutions: List<CapabilityResolution>,
+        capabilityType: CapabilityType
+    ): LimitationReason? {
+        return resolutions.firstOrNull { it.requirement.capabilityType == capabilityType }?.limitationReason
     }
 
     private fun containsAny(text: String, keywords: List<String>): Boolean {

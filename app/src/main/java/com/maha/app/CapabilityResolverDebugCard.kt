@@ -65,10 +65,12 @@ fun CapabilityResolverDebugCard(
             )
 
             Text(
-                text = "사용자 입력을 분석해 Orchestrator가 필요 capability와 실행 방식을 어떻게 추정하는지 확인하는 진단 도구입니다. 실제 대화 전송에는 연결되지 않습니다.",
+                text = "이 화면은 실제 대화 실행이 아닙니다. Provider 호출, RAG 검색, Web Search, Tool 실행을 하지 않고 Orchestrator가 어떤 capability와 실행 방식을 추정할지 미리 보여줍니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFB8C0CC)
             )
+
+            CapabilityDebugNotice()
 
             OutlinedTextField(
                 value = userInput,
@@ -111,13 +113,30 @@ fun CapabilityResolverDebugCard(
             val currentPlan = plan
             if (currentPlan == null) {
                 Text(
-                    text = "분석 버튼을 누르면 capability, 실행 방식, WorkerPlan preview가 표시됩니다.",
+                    text = "분석 버튼을 누르면 capability, 실행 방식, 제한 사유, WorkerPlan preview가 표시됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF8F9AAD)
                 )
             } else {
                 CapabilityPlanPreview(plan = currentPlan)
             }
+        }
+    }
+}
+
+@Composable
+private fun CapabilityDebugNotice() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF182435))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            CapabilityDebugText("진단 전용: 실제 답변 성공/실패를 의미하지 않습니다.")
+            CapabilityDebugText("미연결: Provider 호출 · RAG 실행 · Web Search 실행 · Tool 실행")
         }
     }
 }
@@ -168,11 +187,11 @@ private fun CapabilityPlanPreview(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         CapabilityDebugSection(title = "Plan 요약") {
+            CapabilityDebugRow("실행 방식", plan.executionMode.name)
+            CapabilityDebugRow("사용자 목표 상태", plan.userGoalStatus.name)
+            CapabilityDebugRow("Provider-native 사용 후보", plan.providerNativeUsed.toString())
+            CapabilityDebugRow("MAHA-native 사용 후보", plan.mahaNativeUsed.toString())
             CapabilityDebugRow("planId", plan.planId)
-            CapabilityDebugRow("executionMode", plan.executionMode.name)
-            CapabilityDebugRow("userGoalStatus", plan.userGoalStatus.name)
-            CapabilityDebugRow("providerNativeUsed", plan.providerNativeUsed.toString())
-            CapabilityDebugRow("mahaNativeUsed", plan.mahaNativeUsed.toString())
         }
 
         CapabilityDebugSection(title = "Requested Capabilities") {
@@ -181,8 +200,7 @@ private fun CapabilityPlanPreview(
             } else {
                 plan.requestedCapabilities.forEach { requirement ->
                     CapabilityDebugText(
-                        "- ${requirement.capabilityType.name} · required=${requirement.required} · priority=${requirement.priority}\n" +
-                                "  label=${requirement.userVisibleLabel}\n" +
+                        "- ${requirement.userVisibleLabel} (${requirement.capabilityType.name}) · required=${requirement.required} · priority=${requirement.priority}\n" +
                                 "  reason=${requirement.reason}"
                     )
                 }
@@ -303,6 +321,11 @@ private fun CapabilityDebugText(text: String) {
 private fun buildCapabilityPlanCopyText(plan: OrchestratorPlan): String {
     return buildString {
         appendLine("[Capability Resolver Plan]")
+        appendLine("diagnosticOnly=true")
+        appendLine("providerCall=false")
+        appendLine("ragExecution=false")
+        appendLine("webSearchExecution=false")
+        appendLine("toolExecution=false")
         appendLine("planId=${plan.planId}")
         appendLine("requestId=${plan.requestId}")
         appendLine("executionMode=${plan.executionMode.name}")
@@ -323,6 +346,7 @@ private fun buildCapabilityPlanCopyText(plan: OrchestratorPlan): String {
             appendLine("- ${resolution.requirement.capabilityType.name} status=${resolution.status.name} source=${resolution.source.name} executionAvailable=${resolution.executionAvailable}")
             resolution.limitationReason?.let { reason ->
                 appendLine("  limitation=${reason.reasonCode} message=${reason.userMessage}")
+                appendLine("  action=${reason.suggestedAction ?: "없음"}")
             }
         }
         appendLine()
