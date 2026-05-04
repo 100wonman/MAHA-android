@@ -1,4 +1,35 @@
 ==============================
+[2026-05-04 10:20] Provider/Model Tool Capability 정책 정리 및 tool_call 감지 표시 skeleton
+==============================
+
+[작업]
+- Tool 지원 여부와 실제 Tool 실행 가능 여부를 분리
+- ProviderType별 ToolSupportPolicy 기본 정책 정리
+- OPENAI_COMPATIBLE / LOCAL / CUSTOM / NVIDIA의 tool capability 기본 UNKNOWN 유지
+- Provider 응답의 tool_calls / function_call 감지 표시 skeleton 추가
+- 감지된 tool name / arguments preview를 실행정보에 표시하는 구조 추가
+- 실제 tool/function execution, tool result 재주입, tool loop는 제외
+- ModelProfile capability V2 사용자 override 구조 유지
+- 기존 Gemini native Web Search / RAG / Provider 호출 / 작업모드는 변경하지 않음
+
+[결과]
+성공
+- 빌드 성공
+- 기존 Google/Gemini, OpenAI-compatible/Groq, OpenAI Responses 대화 영향 없음
+- 실제 tool_calls/function_call 실증 테스트는 Provider/model 조건상 후속 검증으로 보류
+- 실제 tool execution은 미구현 상태 유지
+
+[보류]
+- Tool Registry 설계
+- 실제 tool/function execution
+- tool result 재주입
+- OpenAI-compatible Provider의 Web Search tool 자동 실행
+- Provider/model별 tool capability override table
+
+[다음 작업]
+MAHA_CORE_INTENT_v1 기준으로 개발 방향 재정렬 후 Orchestrator Capability Layer 설계
+
+==============================
 [2026-05-04 10:00] Provider/Model Tool Capability 정책 정리 및 tool_call 감지 표시 skeleton
 ==============================
 
