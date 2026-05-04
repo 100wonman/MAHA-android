@@ -209,6 +209,8 @@ class OpenAIResponsesProviderAdapter(
         val root = JSONObject(responseText)
         val responseId = root.optNullableString("id")
         val responseStatus = root.optNullableString("status")
+        val output = root.optJSONArray("output")
+        val toolInfo = parseToolRequestInfo(output)
 
         val outputText = root.optNullableString("output_text")
         if (!outputText.isNullOrBlank()) {
@@ -223,12 +225,13 @@ class OpenAIResponsesProviderAdapter(
                     answerSource = "output_text",
                     outputTextParsed = true,
                     outputContentParsed = false,
-                    contentTextCount = countOutputContentText(root.optJSONArray("output"))
+                    contentTextCount = countOutputContentText(output),
+                    toolInfo = toolInfo
                 )
             )
         }
 
-        val collectedParts = collectOutputContentTextParts(root.optJSONArray("output"))
+        val collectedParts = collectOutputContentTextParts(output)
         val collected = collectedParts.joinToString("\n\n")
         return ParsedOpenAIResponse(
             rawText = collected.trim(),
@@ -241,7 +244,8 @@ class OpenAIResponsesProviderAdapter(
                 answerSource = "output.content",
                 outputTextParsed = false,
                 outputContentParsed = collected.isNotBlank(),
-                contentTextCount = collectedParts.size
+                contentTextCount = collectedParts.size,
+                toolInfo = toolInfo
             )
         )
     }
@@ -298,12 +302,76 @@ class OpenAIResponsesProviderAdapter(
                 normalized == "message"
     }
 
+    private fun parseToolRequestInfo(output: JSONArray?): OpenAIResponsesToolRequestInfo {
+        if (output == null) return OpenAIResponsesToolRequestInfo()
+
+        val toolNames = linkedSetOf<String>()
+        val argumentPreviews = mutableListOf<String>()
+        var toolCallDetected = false
+        var functionCallDetected = false
+        var requestedToolCount = 0
+
+        for (index in 0 until output.length()) {
+            val item = output.optJSONObject(index) ?: continue
+            val type = item.optString("type", "").lowercase()
+            val name = item.optString("name", "").takeIf { it.isNotBlank() }
+                ?: item.optString("tool_name", "").takeIf { it.isNotBlank() }
+                ?: item.optString("function", "").takeIf { it.isNotBlank() }
+
+            val looksLikeTool = type.contains("tool") || type.contains("function") || type.contains("web_search")
+            if (looksLikeTool) {
+                toolCallDetected = true
+                requestedToolCount += 1
+                if (type.contains("function")) functionCallDetected = true
+                if (!name.isNullOrBlank()) toolNames.add(name.take(80))
+
+                val argumentText = item.opt("arguments")?.toString()
+                    ?: item.opt("input")?.toString()
+                    ?: item.opt("action")?.toString()
+                sanitizeToolArgumentsPreview(argumentText)?.let { argumentPreviews.add(it) }
+            }
+
+            val content = item.optJSONArray("content") ?: continue
+            for (contentIndex in 0 until content.length()) {
+                val contentItem = content.optJSONObject(contentIndex) ?: continue
+                val contentType = contentItem.optString("type", "").lowercase()
+                val contentLooksLikeTool = contentType.contains("tool") || contentType.contains("function")
+                if (contentLooksLikeTool) {
+                    toolCallDetected = true
+                    requestedToolCount += 1
+                    if (contentType.contains("function")) functionCallDetected = true
+                    contentItem.optString("name", "").takeIf { it.isNotBlank() }?.let { toolNames.add(it.take(80)) }
+                    val argumentText = contentItem.opt("arguments")?.toString() ?: contentItem.opt("input")?.toString()
+                    sanitizeToolArgumentsPreview(argumentText)?.let { argumentPreviews.add(it) }
+                }
+            }
+        }
+
+        return OpenAIResponsesToolRequestInfo(
+            toolCallDetected = toolCallDetected,
+            functionCallDetected = functionCallDetected,
+            requestedToolCount = requestedToolCount,
+            toolNames = toolNames.toList(),
+            argumentsPreview = argumentPreviews.take(5)
+        )
+    }
+
+    private fun sanitizeToolArgumentsPreview(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        return raw
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("(?i)(api[_-]?key|authorization|bearer)\\s*[:=]\\s*[^,} ]+"), "\$1=***")
+            .trim()
+            .take(220)
+    }
+
     private fun buildMetadataSummary(
         root: JSONObject,
         answerSource: String,
         outputTextParsed: Boolean,
         outputContentParsed: Boolean,
-        contentTextCount: Int
+        contentTextCount: Int,
+        toolInfo: OpenAIResponsesToolRequestInfo
     ): String {
         val output = root.optJSONArray("output")
         return buildString {
@@ -315,6 +383,13 @@ class OpenAIResponsesProviderAdapter(
             appendLine("contentTextCount=$contentTextCount")
             appendLine("outputTextParsed=$outputTextParsed")
             appendLine("outputContentParsed=$outputContentParsed")
+            appendLine("toolCallDetected=${toolInfo.toolCallDetected}")
+            appendLine("functionCallDetected=${toolInfo.functionCallDetected}")
+            appendLine("requestedToolCount=${toolInfo.requestedToolCount}")
+            appendLine("toolNames=${toolInfo.toolNames.joinToString(prefix = "[", postfix = "]")}")
+            appendLine("argumentsPreview=${toolInfo.argumentsPreview.joinToString(prefix = "[", postfix = "]")}")
+            appendLine("executionAttempted=false")
+            appendLine("executionBlockedReason=TOOL_EXECUTION_NOT_IMPLEMENTED")
         }.trim()
     }
 
@@ -346,6 +421,14 @@ class OpenAIResponsesProviderAdapter(
         return if (value is String && value.isNotBlank()) value else null
     }
 }
+
+private data class OpenAIResponsesToolRequestInfo(
+    val toolCallDetected: Boolean = false,
+    val functionCallDetected: Boolean = false,
+    val requestedToolCount: Int = 0,
+    val toolNames: List<String> = emptyList(),
+    val argumentsPreview: List<String> = emptyList()
+)
 
 private data class ParsedOpenAIResponse(
     val rawText: String,

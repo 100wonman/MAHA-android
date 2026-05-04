@@ -273,6 +273,7 @@ class OpenAiCompatibleProviderAdapter(
                     finishReason?.contains("function", ignoreCase = true) == true
             val finalToolCallCount = toolCallCount + if (hasFunctionCall) 1 else 0
             val toolNames = extractToolNames(toolCalls, functionCall)
+            val argumentPreviews = extractToolArgumentPreviews(toolCalls, functionCall)
 
             OpenAiCompatibleParseResult(
                 content = content,
@@ -290,6 +291,11 @@ class OpenAiCompatibleProviderAdapter(
                     appendLine("toolCallDetected: ${finalToolCallCount > 0 || hasToolLikeFinishReason}")
                     appendLine("toolCallCount: $finalToolCallCount")
                     appendLine("toolNames: ${toolNames.joinToString(prefix = "[", postfix = "]")}")
+                    appendLine("functionCallDetected: $hasFunctionCall")
+                    appendLine("requestedToolCount: $finalToolCallCount")
+                    appendLine("argumentsPreview: ${argumentPreviews.joinToString(prefix = "[", postfix = "]")}")
+                    appendLine("executionAttempted: false")
+                    appendLine("executionBlockedReason: TOOL_EXECUTION_NOT_IMPLEMENTED")
                     appendLine("tool_calls count: $toolCallCount")
                     appendLine("function_call present: $hasFunctionCall")
                     appendLine("messageKeys: ${messageKeys.joinToString(",")}")
@@ -371,6 +377,38 @@ class OpenAiCompatibleProviderAdapter(
         }
 
         return names.toList()
+    }
+
+    private fun extractToolArgumentPreviews(
+        toolCalls: JSONArray?,
+        functionCall: JSONObject?
+    ): List<String> {
+        val previews = mutableListOf<String>()
+
+        if (toolCalls != null) {
+            for (index in 0 until toolCalls.length()) {
+                val toolCall = toolCalls.optJSONObject(index) ?: continue
+                val functionObject = toolCall.optJSONObject("function")
+                val argumentText = functionObject?.opt("arguments")?.toString()
+                    ?: toolCall.opt("arguments")?.toString()
+                    ?: toolCall.opt("input")?.toString()
+                sanitizeToolArgumentsPreview(argumentText)?.let { previews.add(it) }
+            }
+        }
+
+        val functionArguments = functionCall?.opt("arguments")?.toString()
+        sanitizeToolArgumentsPreview(functionArguments)?.let { previews.add(it) }
+
+        return previews.take(5)
+    }
+
+    private fun sanitizeToolArgumentsPreview(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        return raw
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("(?i)(api[_-]?key|authorization|bearer)\\s*[:=]\\s*[^,} ]+"), "\$1=***")
+            .trim()
+            .take(220)
     }
 
     private fun parseHttpErrorBody(

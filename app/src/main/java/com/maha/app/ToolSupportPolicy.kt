@@ -26,7 +26,9 @@ enum class ToolSupportStatus {
  * - ModelCapability 체크값과 실제 ToolSupportPolicy는 다르다.
  * - Capability는 모델 기능 표시 및 향후 호출 정책 참고값이다.
  * - ToolSupportPolicy는 현재 대화모드의 실제 Provider/Adapter 지원 정책이다.
- * - 현재 1차 구현에서는 requestToolCallsEnabled=false 고정이다.
+ * - SUPPORTED는 모델/Provider가 tool-call 형식을 낼 수 있다는 뜻이지 앱이 tool을 실행한다는 뜻이 아니다.
+ * - 실제 실행 가능 여부는 후속 Tool Registry와 execution adapter가 생긴 뒤 별도로 판단한다.
+ * - 현재 1차 구현에서는 requestToolCallsEnabled=false 고정이며 actual tool execution은 항상 미구현이다.
  */
 data class ToolSupportPolicy(
     val providerType: ProviderType,
@@ -48,6 +50,8 @@ data class ToolSupportPolicy(
             appendLine("codeExecution=${supportsCodeExecution.name}")
             appendLine("structuredOutput=${supportsStructuredOutput.name}")
             appendLine("thinkingSummary=${supportsThinkingSummary.name}")
+            appendLine("toolExecutionImplemented=false")
+            appendLine("toolExecutionBlockedReason=TOOL_EXECUTION_NOT_IMPLEMENTED")
             appendLine("notes=$notes")
         }.trimEnd()
     }
@@ -87,35 +91,35 @@ object ToolSupportResolver {
 
             ProviderType.OPENAI_COMPATIBLE -> ToolSupportPolicy(
                 providerType = providerType,
-                supportsFunctionCalling = ToolSupportStatus.NOT_IMPLEMENTED,
+                supportsFunctionCalling = ToolSupportStatus.UNKNOWN,
                 supportsWebSearch = ToolSupportStatus.UNKNOWN,
                 supportsCodeExecution = ToolSupportStatus.UNKNOWN,
                 supportsStructuredOutput = ToolSupportStatus.UNKNOWN,
                 supportsThinkingSummary = ToolSupportStatus.UNKNOWN,
                 requestToolCallsEnabled = false,
-                notes = "OpenAI-compatible providers may return tool-like responses, but MAHA conversation mode does not execute tools yet."
+                notes = "OpenAI-compatible providers differ by vendor/model. MAHA may detect tool_calls/function_call in responses, but actual tool execution is blocked until Tool Registry execution is implemented."
             )
 
             ProviderType.NVIDIA -> ToolSupportPolicy(
                 providerType = providerType,
-                supportsFunctionCalling = ToolSupportStatus.NOT_IMPLEMENTED,
+                supportsFunctionCalling = ToolSupportStatus.UNKNOWN,
                 supportsWebSearch = ToolSupportStatus.UNKNOWN,
                 supportsCodeExecution = ToolSupportStatus.UNKNOWN,
                 supportsStructuredOutput = ToolSupportStatus.UNKNOWN,
                 supportsThinkingSummary = ToolSupportStatus.UNKNOWN,
                 requestToolCallsEnabled = false,
-                notes = "NVIDIA provider tool behavior is treated as OpenAI-compatible policy, but tool execution is not implemented in MAHA conversation mode."
+                notes = "NVIDIA provider tool support is model/runtime dependent. MAHA does not execute tools in conversation mode yet."
             )
 
             ProviderType.LOCAL -> ToolSupportPolicy(
                 providerType = providerType,
                 supportsFunctionCalling = ToolSupportStatus.UNKNOWN,
-                supportsWebSearch = ToolSupportStatus.NOT_IMPLEMENTED,
-                supportsCodeExecution = ToolSupportStatus.NOT_IMPLEMENTED,
+                supportsWebSearch = ToolSupportStatus.UNKNOWN,
+                supportsCodeExecution = ToolSupportStatus.UNKNOWN,
                 supportsStructuredOutput = ToolSupportStatus.UNKNOWN,
                 supportsThinkingSummary = ToolSupportStatus.UNKNOWN,
                 requestToolCallsEnabled = false,
-                notes = "Local provider tool support depends on the local runtime, but webSearch/codeExecution are not implemented in MAHA conversation mode."
+                notes = "Local provider tool support depends on the local runtime and model. MAHA does not execute tools in conversation mode yet."
             )
 
             ProviderType.CUSTOM -> ToolSupportPolicy(
