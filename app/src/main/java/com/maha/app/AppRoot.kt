@@ -1918,6 +1918,14 @@ private fun ConversationGlobalSettingsScreen(
                         onClick = { onPageSelected("modelApi") }
                     )
                 }
+
+                item {
+                    ConversationGlobalSettingsCard(
+                        title = "Capability Resolver 진단",
+                        subtitle = "사용자 요청의 capability와 Worker 계획을 미리 분석합니다. 실제 대화 실행에는 연결되지 않습니다.",
+                        onClick = { onPageSelected("capabilityResolverDebug") }
+                    )
+                }
             } else {
                 item {
                     Text(
@@ -1927,6 +1935,7 @@ private fun ConversationGlobalSettingsScreen(
                             "output" -> "출력 블록 설정"
                             "rag" -> "메모리 / RAG"
                             "modelApi" -> "모델 / API 설정"
+                            "capabilityResolverDebug" -> "Capability Resolver 진단"
                             "providerManagement" -> "Provider 관리"
                             "modelManagement" -> "Model 관리"
                             else -> "대화 설정"
@@ -1939,17 +1948,17 @@ private fun ConversationGlobalSettingsScreen(
 
                 item {
                     Text(
-                        text = if (selectedPage == "modelApi") {
-                            "현재 Provider / Model / Web Search 상태"
-                        } else {
-                            "상세 설정 placeholder"
+                        text = when (selectedPage) {
+                            "modelApi" -> "현재 Provider / Model / Web Search 상태"
+                            "capabilityResolverDebug" -> "대화 실행과 분리된 capability 분석 진단 도구"
+                            else -> "상세 설정 placeholder"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFFB8BCC6)
                     )
                 }
 
-                if (selectedPage != "modelApi") {
+                if (selectedPage != "modelApi" && selectedPage != "capabilityResolverDebug") {
                     item {
                         Card(
                             colors = CardDefaults.cardColors(
@@ -1982,6 +1991,14 @@ private fun ConversationGlobalSettingsScreen(
                                 )
                             }
                         }
+                    }
+                }
+
+                if (selectedPage == "capabilityResolverDebug") {
+                    item {
+                        CapabilityResolverDebugCard(
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
 
