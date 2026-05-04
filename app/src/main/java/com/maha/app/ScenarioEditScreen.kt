@@ -38,6 +38,7 @@ fun ScenarioEditScreen(
     var description by remember(scenario.scenarioId) { mutableStateOf(scenario.description) }
     var enabledPreview by remember(scenario.scenarioId) { mutableStateOf(scenario.enabled) }
     var executionModePreview by remember(scenario.scenarioId) { mutableStateOf(scenario.defaultExecutionMode) }
+    var scenarioWorkerIds by remember(scenario.scenarioId) { mutableStateOf(scenario.workerProfileIds) }
     var orchestratorPreviewId by remember(scenario.scenarioId) { mutableStateOf(scenario.orchestratorProfileId) }
     var synthesisPreviewId by remember(scenario.scenarioId) { mutableStateOf(scenario.synthesisProfileId) }
     var saveMessage by remember(scenario.scenarioId) { mutableStateOf<String?>(null) }
@@ -46,8 +47,31 @@ fun ScenarioEditScreen(
             description != scenario.description ||
             enabledPreview != scenario.enabled ||
             executionModePreview != scenario.defaultExecutionMode ||
+            scenarioWorkerIds != scenario.workerProfileIds ||
             orchestratorPreviewId != scenario.orchestratorProfileId ||
             synthesisPreviewId != scenario.synthesisProfileId
+
+    fun removeWorkerFromScenario(workerId: String) {
+        scenarioWorkerIds = scenarioWorkerIds.filterNot { it == workerId }
+        if (orchestratorPreviewId == workerId) {
+            orchestratorPreviewId = null
+            saveMessage = "Orchestrator 지정 Worker가 제거되어 미지정으로 변경되었습니다."
+        }
+        if (synthesisPreviewId == workerId) {
+            synthesisPreviewId = null
+            saveMessage = "Synthesis 지정 Worker가 제거되어 미지정으로 변경되었습니다."
+        }
+    }
+
+    fun moveWorkerInScenario(workerId: String, offset: Int) {
+        val currentIndex = scenarioWorkerIds.indexOf(workerId)
+        val targetIndex = currentIndex + offset
+        if (currentIndex < 0 || targetIndex !in scenarioWorkerIds.indices) return
+        val next = scenarioWorkerIds.toMutableList()
+        val moving = next.removeAt(currentIndex)
+        next.add(targetIndex, moving)
+        scenarioWorkerIds = next
+    }
 
     Column(
         modifier = modifier,
@@ -84,23 +108,34 @@ fun ScenarioEditScreen(
         }
 
         ScenarioEditSection(title = "WorkerSet", initiallyExpanded = true) {
-            ScenarioEditNotice("Scenario는 WorkerProfile 자체를 복제하지 않고 workerProfileId 목록만 참조합니다. Worker 추가/제거/순서 변경 저장은 후속 구현 예정입니다.")
-            ScenarioEditKeyValue("포함 Worker 수", "${scenario.workerProfileIds.size}개")
-            if (scenario.workerProfileIds.isEmpty()) {
+            ScenarioEditNotice("Scenario는 WorkerProfile 자체를 복제하지 않고 workerProfileId 목록만 참조합니다. 이 단계에서는 Scenario 내부 WorkerSet만 저장하며 WorkerProfile 자체는 수정하지 않습니다.")
+            ScenarioEditKeyValue("포함 Worker 수", "${scenarioWorkerIds.size}개")
+            if (scenarioWorkerIds.isEmpty()) {
                 ScenarioWarningText("Worker가 없습니다. 실제 실행 후보에서는 제한 상태가 될 수 있습니다.")
             } else {
-                scenario.workerProfileIds.forEachIndexed { index, workerId ->
+                scenarioWorkerIds.forEachIndexed { index, workerId ->
                     val worker = workersById[workerId]
-                    ScenarioWorkerReferenceRow(
+                    ScenarioWorkerEditableRow(
                         index = index,
+                        totalCount = scenarioWorkerIds.size,
                         workerId = workerId,
-                        worker = worker
+                        worker = worker,
+                        onMoveUp = { moveWorkerInScenario(workerId, -1) },
+                        onMoveDown = { moveWorkerInScenario(workerId, 1) },
+                        onRemove = { removeWorkerFromScenario(workerId) }
                     )
                 }
             }
-            ScenarioPlaceholderAction(label = "Worker 추가 placeholder")
-            ScenarioPlaceholderAction(label = "Worker 제거 placeholder")
-            ScenarioPlaceholderAction(label = "Worker 순서 변경 placeholder")
+
+            ScenarioAddWorkerSection(
+                workers = workers,
+                selectedWorkerIds = scenarioWorkerIds,
+                onAdd = { workerId ->
+                    if (workerId !in scenarioWorkerIds) {
+                        scenarioWorkerIds = scenarioWorkerIds + workerId
+                    }
+                }
+            )
         }
 
         ScenarioEditSection(title = "실행 방식", initiallyExpanded = false) {
@@ -123,7 +158,7 @@ fun ScenarioEditScreen(
                 title = "Orchestrator 선택",
                 emptyLabel = "Orchestrator 미지정",
                 currentWorkerId = orchestratorPreviewId,
-                scenarioWorkerIds = scenario.workerProfileIds,
+                scenarioWorkerIds = scenarioWorkerIds,
                 workersById = workersById,
                 onSelect = { orchestratorPreviewId = it }
             )
@@ -135,16 +170,16 @@ fun ScenarioEditScreen(
                 title = "Synthesis 선택",
                 emptyLabel = "Synthesis 미지정",
                 currentWorkerId = synthesisPreviewId,
-                scenarioWorkerIds = scenario.workerProfileIds,
+                scenarioWorkerIds = scenarioWorkerIds,
                 workersById = workersById,
                 onSelect = { synthesisPreviewId = it }
             )
         }
 
         ScenarioEditSection(title = "경고 / 참조 상태", initiallyExpanded = false) {
-            val missingWorkerIds = scenario.workerProfileIds.filterNot { it in workersById }
-            val disabledWorkerIds = scenario.workerProfileIds.filter { workersById[it]?.enabled == false }
-            if (scenario.workerProfileIds.isEmpty()) {
+            val missingWorkerIds = scenarioWorkerIds.filterNot { it in workersById }
+            val disabledWorkerIds = scenarioWorkerIds.filter { workersById[it]?.enabled == false }
+            if (scenarioWorkerIds.isEmpty()) {
                 ScenarioWarningText("Worker 없음: 실행 후보에서는 LIMITED 또는 BLOCKED 후보입니다.")
             }
             if (missingWorkerIds.isNotEmpty()) {
@@ -159,13 +194,13 @@ fun ScenarioEditScreen(
             if (synthesisPreviewId != null && synthesisPreviewId !in workersById) {
                 ScenarioWarningText("synthesisProfileId가 존재하지 않는 Worker를 참조합니다.")
             }
-            if (orchestratorPreviewId != null && orchestratorPreviewId !in scenario.workerProfileIds) {
+            if (orchestratorPreviewId != null && orchestratorPreviewId !in scenarioWorkerIds) {
                 ScenarioWarningText("orchestratorProfileId가 Scenario WorkerSet에 포함되지 않은 Worker를 참조합니다.")
             }
-            if (synthesisPreviewId != null && synthesisPreviewId !in scenario.workerProfileIds) {
+            if (synthesisPreviewId != null && synthesisPreviewId !in scenarioWorkerIds) {
                 ScenarioWarningText("synthesisProfileId가 Scenario WorkerSet에 포함되지 않은 Worker를 참조합니다.")
             }
-            ScenarioEditNotice("자동 삭제는 하지 않습니다. 참조 제거 / 다른 Worker 재지정 / 일단 유지는 후속 구현 예정입니다.")
+            ScenarioEditNotice("자동 삭제는 하지 않습니다. missing Worker는 WorkerSet에서 직접 제거할 수 있고, 제거하지 않으면 기존 참조를 보존합니다.")
         }
 
         ScenarioEditActionBar(
@@ -183,6 +218,7 @@ fun ScenarioEditScreen(
                         defaultExecutionMode = executionModePreview,
                         orchestratorProfileId = orchestratorPreviewId,
                         synthesisProfileId = synthesisPreviewId,
+                        workerProfileIds = scenarioWorkerIds,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -240,7 +276,7 @@ private fun ScenarioEditHeaderCard(
                 }
             }
             Text(
-                text = "이번 단계는 name / description / enabled / defaultExecutionMode / Orchestrator / Synthesis 지정 저장만 연결합니다. WorkerSet / 실행 연결은 아직 없습니다.",
+                text = "이번 단계는 Scenario 기본 정보, 실행 방식, 핵심 Worker 지정, WorkerSet 저장만 연결합니다. Scenario 실행 연결은 아직 없습니다.",
                 color = Color(0xFFD0D3DA)
             )
         }
@@ -360,17 +396,21 @@ private fun ScenarioExecutionModeSelector(
 }
 
 @Composable
-private fun ScenarioWorkerReferenceRow(
+private fun ScenarioWorkerEditableRow(
     index: Int,
+    totalCount: Int,
     workerId: String,
     worker: ConversationWorkerProfile?,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "${index + 1}. ${worker?.displayName?.ifBlank { workerId } ?: "missing Worker"}",
@@ -383,6 +423,98 @@ private fun ScenarioWorkerReferenceRow(
             color = Color(0xFFD0D3DA)
         )
         Text(text = workerId, color = Color(0xFF9DB7E8))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ScenarioSmallActionButton(
+                label = "위로",
+                enabled = index > 0,
+                onClick = onMoveUp,
+                modifier = Modifier.weight(1f)
+            )
+            ScenarioSmallActionButton(
+                label = "아래로",
+                enabled = index < totalCount - 1,
+                onClick = onMoveDown,
+                modifier = Modifier.weight(1f)
+            )
+            ScenarioSmallActionButton(
+                label = "제거",
+                enabled = true,
+                onClick = onRemove,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScenarioAddWorkerSection(
+    workers: List<ConversationWorkerProfile>,
+    selectedWorkerIds: List<String>,
+    onAdd: (String) -> Unit,
+) {
+    val candidates = workers
+        .filterNot { it.workerProfileId in selectedWorkerIds }
+        .sortedWith(
+            compareBy<ConversationWorkerProfile> { !it.enabled }
+                .thenBy { it.displayName.lowercase() }
+        )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1B222D), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "Worker 추가",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF9DB7E8)
+        )
+        Text(
+            text = "이미 포함된 Worker는 추가 후보에서 제외됩니다. WorkerProfile 자체는 생성/수정/삭제하지 않습니다.",
+            color = Color(0xFFD0D3DA)
+        )
+        if (candidates.isEmpty()) {
+            ScenarioEditNotice("추가 가능한 Worker가 없습니다. 중복 Worker 추가는 방지됩니다.")
+        } else {
+            candidates.forEach { worker ->
+                ScenarioSelectableWorkerRow(
+                    label = worker.displayName.ifBlank { worker.workerProfileId },
+                    description = "${worker.roleLabel.ifBlank { "역할 미지정" }} · ${if (worker.enabled) "활성" else "비활성"}",
+                    selected = false,
+                    onClick = { onAdd(worker.workerProfileId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScenarioSmallActionButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.background(
+            if (enabled) Color(0xFF1B222D) else Color(0xFF252A33),
+            MaterialTheme.shapes.small
+        )
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) Color(0xFFBFD7FF) else Color(0xFF7A808A),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

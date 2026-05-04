@@ -1,4 +1,443 @@
 ==============================
+[2026-05-04 23:30] Scenario WorkerSet 편집 UI 구현
+==============================
+
+[작업]
+- ScenarioEditScreen에서 WorkerSet 편집 UI 구현
+- Scenario에 Worker 추가 기능 구현
+- Scenario에서 Worker 제거 기능 구현
+- Worker 순서 위/아래 이동 구현
+- 중복 Worker 추가 방지
+- workerProfileIds 저장 연결
+- Orchestrator/Synthesis 지정 Worker 제거 시 참조 보정 또는 경고 처리
+- 저장 후 Worker Profile 관리 화면의 Scenario 목록/상세에 WorkerSet 변경 반영
+- Scenario 실행, Worker 실행, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ScenarioEditScreen의 WorkerSet 편집 UI 구현
+- Worker 추가 / 제거 / 위로 이동 / 아래로 이동 기능 추가
+- workerProfileIds 저장을 WorkerProfileStore.upsertScenario 흐름에 연결
+- 중복 Worker 추가 방지 및 missing Worker 표시 유지
+- Orchestrator/Synthesis 지정 Worker 제거 시 해당 참조를 null로 보정
+
+[WorkerSet 편집 UI 테스트]
+- Worker 추가 UI: 확인
+- Worker 제거 UI: 확인
+- Worker 위로 이동: 확인
+- Worker 아래로 이동: 확인
+- 중복 Worker 추가 방지: 확인
+- missing Worker 표시: 유지
+
+[저장 연결 테스트]
+- workerProfileIds 저장: 확인
+- Worker 추가 후 저장: 확인
+- Worker 제거 후 저장: 확인
+- Worker 순서 변경 후 저장: 확인
+- 저장 후 Scenario 목록 반영: 확인
+- Scenario 상세 반영: 확인
+- 재진입 후 순서 유지: 확인
+- conversation_scenarios.json 변경 확인: 확인
+- userModified=true: 유지
+- updatedAt 갱신: 유지
+
+[Orchestrator/Synthesis 참조 보정 테스트]
+- Orchestrator 지정 Worker 제거 시 처리: null 보정
+- Synthesis 지정 Worker 제거 시 처리: null 보정
+- 미지정/null 저장 유지: 유지
+- 기존 선택 UI 유지: 유지
+
+[기존 저장 유지 테스트]
+- name 저장 유지: 유지
+- description 저장 유지: 유지
+- enabled 저장 유지: 유지
+- defaultExecutionMode 저장 유지: 유지
+- orchestratorProfileId 저장 유지: 유지
+- synthesisProfileId 저장 유지: 유지
+- userEditable 유지: 유지
+- isDefaultTemplate 유지: 유지
+- createdAt 유지: 유지
+
+[연결 금지 확인]
+- Scenario 실행 미구현: 유지
+- Worker 실행 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- 병렬 실행 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+- WorkerProfile 생성/삭제 없음: 유지
+- Scenario 추가/복제/삭제 미구현: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: WorkerSet 편집 저장만 추가
+- Worker 편집 UI: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- ScenarioEditScreen.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Scenario WorkerSet 편집 UI 구현
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Scenario는 고정 프리셋이 아니라 사용자가 추가/삭제/수정 가능한 WorkerSet이다.
+- Scenario는 WorkerProfile 목록을 workerProfileIds로 참조하며 WorkerProfile 자체를 중복 저장하지 않는다.
+- Orchestrator / Synthesis profile은 Scenario에서 지정 가능한 WorkerProfile 참조다.
+- 이번 단계는 ScenarioEditScreen에서 WorkerSet 편집과 저장만 수행한다.
+- ConversationEngine 연결과 Scenario 실행은 하지 않는다.
+
+목표:
+- ScenarioEditScreen에서 Scenario에 포함할 Worker를 추가/제거할 수 있게 한다.
+- Scenario 내부 Worker 순서를 위/아래 이동으로 조정할 수 있게 한다.
+- workerProfileIds 변경을 WorkerProfileStore.upsertScenario 저장 흐름에 연결한다.
+- 중복 Worker 추가를 방지한다.
+- Orchestrator/Synthesis로 지정된 Worker를 제거할 때 참조를 null로 보정하거나 사용자에게 경고한다.
+- Scenario 실행 / Worker 실행 / ConversationEngine 연결은 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ScenarioEditScreen WorkerSet 편집 UI 구현
+✔ Worker 추가 UI 구현
+✔ Worker 제거 UI 구현
+✔ Worker 순서 위로 이동 구현
+✔ Worker 순서 아래로 이동 구현
+✔ 중복 Worker 추가 방지
+✔ workerProfileIds 저장 연결
+✔ Orchestrator로 지정된 Worker 제거 시 orchestratorProfileId null 보정 또는 경고 처리
+✔ Synthesis로 지정된 Worker 제거 시 synthesisProfileId null 보정 또는 경고 처리
+✔ 저장 시 userModified=true 유지
+✔ 저장 시 updatedAt 갱신
+✔ 저장 후 Scenario 목록/상세에 Worker count 및 WorkerSet 반영
+✔ 기존 name / description / enabled 저장 흐름 유지
+✔ 기존 defaultExecutionMode 저장 흐름 유지
+✔ 기존 orchestratorProfileId / synthesisProfileId 저장 흐름 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ Scenario 실행 구현
+❌ Worker 실행 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ WorkerProfile 자체 복제 구현
+❌ WorkerProfile 삭제 구현
+❌ Scenario 추가/복제/삭제 실제 구현
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- ScenarioEditScreen.kt
+- WorkerProfileManagementScreen.kt 필요 시
+
+참조 가능 파일:
+
+- WorkerProfileStore.kt
+- WorkerProfileModels.kt
+- CapabilityLayerModels.kt
+
+주의:
+- WorkerProfileStore.upsertScenario 기존 흐름을 사용한다.
+- conversation_scenarios.json 저장은 기존 Store 구현 흐름을 따른다.
+- worker_profiles.json은 이번 단계에서 변경하지 않는다.
+- Worker 추가/제거는 Scenario.workerProfileIds만 변경한다.
+- WorkerProfile 자체를 생성/삭제/수정하지 않는다.
+
+--------------------------------------------------
+3. Worker 추가 UI 정책
+--------------------------------------------------
+
+추가 후보:
+- 전체 WorkerProfile 목록
+- enabled=true Worker 우선 표시
+- 이미 Scenario에 포함된 Worker는 추가 불가 또는 비활성 표시
+
+표시 항목:
+- displayName
+- roleLabel
+- enabled 상태
+- providerId/modelId 요약 가능
+
+정책:
+- Worker 추가 시 workerProfileIds 끝에 추가한다.
+- 중복 ID 추가 금지.
+- 비활성 Worker 추가는 허용하되 경고 표시하거나 후속 고급 옵션으로 둔다.
+- 구현 부담이 크면 enabled Worker만 우선 후보로 표시한다.
+
+주의:
+- WorkerProfile 자체 복제 금지
+- WorkerProfile 생성 금지
+- WorkerProfile 수정 금지
+
+--------------------------------------------------
+4. Worker 제거 UI 정책
+--------------------------------------------------
+
+정책:
+- 제거는 Scenario.workerProfileIds에서만 제거한다.
+- WorkerProfile 자체는 삭제하지 않는다.
+- 제거 전 확인 Dialog는 가능하면 추가한다.
+- 구현 부담이 크면 즉시 제거하되 저장 전 dirty 상태로만 유지한다.
+
+Orchestrator/Synthesis 참조 보정:
+- 제거 대상 workerId == orchestratorProfileId이면 orchestratorProfileId=null
+- 제거 대상 workerId == synthesisProfileId이면 synthesisProfileId=null
+- 가능하면 사용자에게 “핵심 Worker 지정이 해제됩니다” 안내 표시
+
+주의:
+- 자동 WorkerProfile 삭제 금지
+- Scenario 실행 연결 금지
+
+--------------------------------------------------
+5. Worker 순서 조정 정책
+--------------------------------------------------
+
+정책:
+- workerProfileIds 순서를 Scenario 내부 WorkerSet 순서로 해석한다.
+- 위로 이동 버튼
+- 아래로 이동 버튼
+- 첫 번째 Worker는 위로 이동 비활성
+- 마지막 Worker는 아래로 이동 비활성
+
+주의:
+- drag-and-drop 구현 금지 또는 후속 단계로 분리
+- WorkerProfile.executionOrder는 변경하지 않는다.
+- 이번 단계에서는 Scenario 내부 workerProfileIds 순서만 저장한다.
+
+--------------------------------------------------
+6. 저장 필드 정책
+--------------------------------------------------
+
+저장 대상:
+
+- name
+- description
+- enabled
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- workerProfileIds
+- userModified=true
+- updatedAt=현재 시각
+
+보존 대상:
+
+- scenarioId
+- userEditable
+- isDefaultTemplate
+- createdAt
+
+주의:
+- 기본 Scenario라도 사용자가 저장하면 userModified=true
+- isDefaultTemplate은 유지한다.
+- WorkerProfile 자체는 변경하지 않는다.
+
+--------------------------------------------------
+7. orphan / missing Worker 표시 정책
+--------------------------------------------------
+
+상황:
+- workerProfileIds 중 Store에서 찾을 수 없는 ID가 있음
+
+이번 단계 정책:
+- 자동 삭제 금지
+- missing Worker 행으로 표시
+- 사용자가 제거할 수 있게 한다
+- 저장 시 제거하지 않으면 기존 orphan ID를 보존한다
+
+문구 후보:
+- “참조 Worker를 찾을 수 없습니다.”
+- “이 Worker 참조는 유지되지만 실행 후보에서는 제한될 수 있습니다.”
+
+--------------------------------------------------
+8. 저장 후 화면 반영 정책
+--------------------------------------------------
+
+필수:
+- 저장 후 Scenario 목록의 포함 Worker 수 반영
+- Scenario 상세 접힘 영역의 WorkerSet 반영
+- 재진입 시 workerProfileIds 순서 유지
+- conversation_scenarios.json에 변경 내용 반영
+
+권장:
+- 기존 흐름처럼 저장 후 관리 화면으로 복귀하고 목록 reload
+
+--------------------------------------------------
+9. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 편집 UI
+- Worker 기본 정보 저장
+- System Instruction 저장
+- Provider/Model 선택 저장
+- capability override 저장
+- InputPolicy/OutputPolicy 저장
+- Scenario name/description/enabled 저장
+- Scenario defaultExecutionMode 저장
+- Scenario Orchestrator/Synthesis 저장
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+10. 테스트 기준
+--------------------------------------------------
+
+A. WorkerSet 편집 UI
+- Worker 추가 UI:
+- Worker 제거 UI:
+- Worker 위로 이동:
+- Worker 아래로 이동:
+- 중복 Worker 추가 방지:
+- missing Worker 표시:
+
+B. 저장 연결
+- workerProfileIds 저장:
+- Worker 추가 후 저장:
+- Worker 제거 후 저장:
+- Worker 순서 변경 후 저장:
+- 저장 후 Scenario 목록 반영:
+- Scenario 상세 반영:
+- 재진입 후 순서 유지:
+- conversation_scenarios.json 변경 확인:
+- userModified=true:
+- updatedAt 갱신:
+
+C. Orchestrator/Synthesis 참조 보정
+- Orchestrator 지정 Worker 제거 시 처리:
+- Synthesis 지정 Worker 제거 시 처리:
+- 미지정/null 저장 유지:
+- 기존 선택 UI 유지:
+
+D. 기존 저장 유지
+- name 저장 유지:
+- description 저장 유지:
+- enabled 저장 유지:
+- defaultExecutionMode 저장 유지:
+- orchestratorProfileId 저장 유지:
+- synthesisProfileId 저장 유지:
+- userEditable 유지:
+- isDefaultTemplate 유지:
+- createdAt 유지:
+
+E. 연결 금지 확인
+- Scenario 실행 미구현:
+- Worker 실행 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- 병렬 실행 미구현:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+- WorkerProfile 생성/삭제 없음:
+- Scenario 추가/복제/삭제 미구현:
+
+F. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Worker 편집 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+11. 금지 사항
+--------------------------------------------------
+
+❌ Scenario 실행 구현 금지
+❌ Worker 실행 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ WorkerProfile 생성/삭제/수정 구현 금지
+❌ Scenario 추가/복제/삭제 실제 구현 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- ScenarioEditScreen에서 Worker 추가/제거 가능
+- Worker 순서 위/아래 이동 가능
+- workerProfileIds가 저장됨
+- 중복 Worker 추가 방지
+- Orchestrator/Synthesis 지정 Worker 제거 시 참조 보정 또는 경고 처리
+- 저장 후 Scenario 목록과 재진입 시 변경 내용 유지
+- Scenario 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Scenario 추가/복제/비활성화/삭제 UI 구현 또는 Worker 실행계획 preview 연결 설계
+
+==============================
 [2026-05-04 23:20] Scenario Orchestrator/Synthesis profile 지정 저장 연결
 ==============================
 
