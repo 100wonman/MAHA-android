@@ -1,4 +1,87 @@
 ==============================
+[2026-05-04 19:30] WorkerProfileStore Kotlin skeleton 추가
+==============================
+
+[작업]
+- WorkerProfileStore.kt skeleton 추가
+- worker_profiles.json / conversation_scenarios.json 후속 저장소 구현을 위한 load/save 함수 후보 추가
+- WorkerProfile / ConversationScenario CRUD skeleton 추가
+- 기본 Worker 템플릿 및 기본 Scenario 생성 skeleton 추가
+- Provider/Model orphan 참조 검증 skeleton 추가
+- schemaVersion 상수 추가
+- 실제 JSON 저장/로드, SAF, UI, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileStore.kt 신규 추가
+- WorkerProfile / Scenario load-save skeleton 추가
+- WorkerProfile / Scenario CRUD skeleton 추가
+- 기본 Worker / Scenario 템플릿 생성 skeleton 추가
+- orphan Provider/Model 검증 skeleton 추가
+
+[파일 추가 테스트]
+- WorkerProfileStore.kt: 추가
+- package/import: com.maha.app, 외부 import 없음
+- 외부 의존성: 없음
+- WorkerProfileModels.kt 참조: 사용
+
+[Store skeleton 테스트]
+- schemaVersion: SCHEMA_VERSION=1
+- loadWorkerProfiles: in-memory envelope 반환, 실제 파일 IO 없음
+- saveWorkerProfiles: in-memory envelope 갱신, 실제 파일 IO 없음
+- loadConversationScenarios: in-memory envelope 반환, 실제 파일 IO 없음
+- saveConversationScenarios: in-memory envelope 갱신, 실제 파일 IO 없음
+
+[CRUD skeleton 테스트]
+- WorkerProfile CRUD: get/upsert/delete/list 함수 skeleton 추가
+- Scenario CRUD: get/upsert/delete/list/default 함수 skeleton 추가
+- 기본 Worker 템플릿: Orchestrator/Main/Synthesis/Research/Reviewer/RAG/Memory/Web Search/Tool/Code Check/Comparison 후보 생성
+- 기본 Scenario: 기본 단일 대화/조사 요약/코드 검토/글쓰기 리뷰/RAG 중심/비교 병렬 분석 후보 생성
+- orphan 검증: Provider/Model/Scenario 참조 검증 함수 skeleton 추가
+
+[연결 금지 확인]
+- 실제 JSON 파일 생성 없음: 유지
+- JsonStore 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Worker 관리 UI 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileStore.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+
+
+[다음 작업]
+Worker Profile 저장/로드 실제 구현 설계 또는 Worker Profile 관리 UI 설계
+
+==============================
 [2026-05-04 19:20] Worker Profile 저장소 skeleton 설계
 ==============================
 
