@@ -279,19 +279,40 @@ private fun WorkerProfilePreviewCard(worker: ConversationWorkerProfile) {
 
             if (expanded) {
                 Spacer(modifier = Modifier.height(2.dp))
+                WorkerProfileReadOnlyPlaceholder(text = "Worker 상세 placeholder입니다. 실제 편집/저장은 후속 구현 예정입니다.")
+
+                WorkerProfileDetailTitle(title = "기본 정보")
                 WorkerProfileKeyValue("역할 설명", worker.roleDescription.ifBlank { "역할 설명 없음" })
-                WorkerProfileKeyValue("System Instruction", worker.systemInstruction.previewText(260))
+                WorkerProfileKeyValue("활성 상태", if (worker.enabled) "활성" else "비활성")
+                WorkerProfileKeyValue("기본 템플릿", if (worker.isDefaultTemplate) "예" else "아니오")
+                WorkerProfileKeyValue("사용자 수정본", if (worker.userModified) "예" else "아니오")
+
+                WorkerProfileDetailTitle(title = "System Instruction")
+                WorkerProfileKeyValue("전체 보기 placeholder", worker.systemInstruction.previewText(1200))
+                WorkerProfileReadOnlyPlaceholder(text = "System Instruction 편집 기능은 아직 연결되지 않았습니다.")
+
+                WorkerProfileDetailTitle(title = "Provider / Model 참조")
+                WorkerProfileKeyValue("providerId", worker.providerId ?: "Provider 미지정")
+                WorkerProfileKeyValue("modelId", worker.modelId ?: "Model 미지정")
+
+                WorkerProfileDetailTitle(title = "실행 계획 필드")
+                WorkerProfileKeyValue("executionOrder", worker.executionOrder.toString())
+                WorkerProfileKeyValue("canRunInParallel", worker.canRunInParallel.toString())
                 WorkerProfileKeyValue("dependsOnWorkerIds", worker.dependsOnWorkerIds.joinToString().ifBlank { "없음" })
-                WorkerProfileKeyValue("expectedOutputType", worker.outputPolicy.expectedOutputType.name)
+
+                WorkerProfileDetailTitle(title = "Capability / Policy")
+                WorkerProfileKeyValue("capabilityOverrides", worker.capabilityOverrides.toReadableSummary())
                 WorkerProfileKeyValue("inputPolicy", worker.inputPolicy.toReadableSummary())
                 WorkerProfileKeyValue("outputPolicy", worker.outputPolicy.toReadableSummary())
-                WorkerProfileKeyValue("capabilityOverrides", worker.capabilityOverrides.toReadableSummary())
+                WorkerProfileKeyValue("expectedOutputType", worker.outputPolicy.expectedOutputType.name)
+
                 WorkerProfileTagRow(
                     values = listOf(
-                        if (worker.userModified) "사용자 수정본" else "원본",
-                        "편집 후속 구현 예정"
+                        "read-only",
+                        "편집 기능 후속 구현 예정"
                     )
                 )
+                WorkerProfileCollapseButton(onClick = { expanded = false })
             }
         }
     }
@@ -346,14 +367,61 @@ private fun ConversationScenarioPreviewCard(scenario: ConversationScenarioProfil
             )
 
             if (expanded) {
+                WorkerProfileReadOnlyPlaceholder(text = "Scenario 상세 placeholder입니다. 실제 WorkerSet 편집/저장은 후속 구현 예정입니다.")
+
+                WorkerProfileDetailTitle(title = "Scenario 기본 정보")
                 WorkerProfileKeyValue("설명", scenario.description.ifBlank { "설명 없음" })
-                WorkerProfileKeyValue("Orchestrator", scenario.orchestratorProfileId ?: "Orchestrator 미지정")
-                WorkerProfileKeyValue("Synthesis", scenario.synthesisProfileId ?: "Synthesis 미지정")
                 WorkerProfileKeyValue("scenarioId", scenario.scenarioId)
-                WorkerProfileKeyValue("workerProfileIds", scenario.workerProfileIds.joinToString().ifBlank { "없음" })
+                WorkerProfileKeyValue("defaultExecutionMode", scenario.defaultExecutionMode.name)
+                WorkerProfileKeyValue("enabled", scenario.enabled.toString())
                 WorkerProfileKeyValue("userEditable", scenario.userEditable.toString())
-                WorkerProfileTagRow(values = listOf("Scenario 편집 후속 구현 예정"))
+                WorkerProfileKeyValue("isDefaultTemplate", scenario.isDefaultTemplate.toString())
+                WorkerProfileKeyValue("userModified", scenario.userModified.toString())
+
+                WorkerProfileDetailTitle(title = "WorkerSet 참조")
+                WorkerProfileKeyValue("workerProfileIds", scenario.workerProfileIds.joinToString().ifBlank { "없음" })
+                WorkerProfileKeyValue("orchestratorProfileId", scenario.orchestratorProfileId ?: "Orchestrator 미지정")
+                WorkerProfileKeyValue("synthesisProfileId", scenario.synthesisProfileId ?: "Synthesis 미지정")
+
+                WorkerProfileTagRow(values = listOf("read-only", "Scenario 편집 후속 구현 예정"))
+                WorkerProfileCollapseButton(onClick = { expanded = false })
             }
+        }
+    }
+}
+
+
+@Composable
+private fun WorkerProfileDetailTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFFBFD7FF),
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}
+
+@Composable
+private fun WorkerProfileReadOnlyPlaceholder(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFFE6D0B8),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun WorkerProfileCollapseButton(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        TextButton(onClick = onClick) {
+            Text(text = "접기", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
         }
     }
 }

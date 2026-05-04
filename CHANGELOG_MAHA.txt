@@ -1,4 +1,344 @@
 ==============================
+[2026-05-04 20:15] Worker Profile 상세/편집 placeholder 보강
+==============================
+
+[작업]
+- Worker Profile 관리 화면의 Worker 상세 placeholder 보강
+- Scenario 상세 placeholder 보강
+- System Instruction / capability override / inputPolicy / outputPolicy 상세 표시 보강
+- Worker / Scenario 상세 접힘 영역 하단에 “접기” 버튼 추가
+- read-only / 후속 구현 예정 안내 유지
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 제외
+- 기존 Provider 호출 / RAG / Web Search / SAF / 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- Worker 상세 placeholder를 기본 정보/System Instruction/Provider-Model/실행 계획/Capability-Policy 섹션으로 보강
+- Scenario 상세 placeholder를 기본 정보/WorkerSet 참조 섹션으로 보강
+- Worker 상세 영역 하단에 “접기” 버튼 추가
+- Scenario 상세 영역 하단에 “접기” 버튼 추가
+- read-only / 후속 구현 예정 안내 유지
+
+[Worker 상세 placeholder 테스트]
+- roleDescription: 확인
+- systemInstruction: 확인
+- providerId/modelId: 확인
+- capabilityOverrides: 확인
+- inputPolicy/outputPolicy: 확인
+- dependsOnWorkerIds: 확인
+- 하단 접기 버튼: 확인
+
+[Scenario 상세 placeholder 테스트]
+- description: 확인
+- workerProfileIds: 확인
+- defaultExecutionMode: 확인
+- orchestrator/synthesis profile: 확인
+- userEditable/userModified: 확인
+- 하단 접기 버튼: 확인
+
+[모바일 가시성 유지 테스트]
+- Worker / Scenario 탭: 유지
+- 기본 카드 요약 유지: 유지
+- 상세 접힘 접근: 유지
+- 상세 하단 접기: 추가
+- 상하 스크롤 부담 증가 없음: 확인
+
+[연결 금지 확인]
+- 실제 저장/로드 없음: 유지
+- worker_profiles.json 생성 없음: 유지
+- conversation_scenarios.json 생성 없음: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- 대화모드 설정 메인: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 상세/편집 placeholder 보강
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- 현재 단계는 read-only / placeholder UI 보강이다.
+- 실제 저장/로드, 편집 저장, ConversationEngine 연결은 하지 않는다.
+
+목표:
+- Worker Profile 관리 화면의 상세 placeholder를 보강한다.
+- Worker 상세, Scenario 상세, System Instruction 보기, capability/policy 상세를 더 명확히 표시한다.
+- 긴 상세 접힘 영역 하단에 “접기” 버튼을 추가한다.
+- 실제 편집/저장 기능은 아직 구현하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ Worker 상세 placeholder 보강
+✔ Scenario 상세 placeholder 보강
+✔ System Instruction 전체 보기 placeholder 보강
+✔ capability override 상세 표시 보강
+✔ InputPolicy / OutputPolicy 상세 표시 보강
+✔ Provider/Model 상세 참조 표시 보강
+✔ 상세 접힘 영역 하단에 “접기” 버튼 추가
+✔ “편집 기능은 후속 구현 예정” 안내 유지
+✔ read-only 정책 유지
+✔ 실제 저장/로드와 미연결 유지
+✔ ConversationEngine과 미연결 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ 실제 WorkerProfile 저장/로드 구현
+❌ worker_profiles.json 실제 생성
+❌ conversation_scenarios.json 실제 생성
+❌ Worker 편집 저장 구현
+❌ System Instruction 편집 저장 구현
+❌ Provider/Model 선택 저장 구현
+❌ Scenario 편집 저장 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. Worker 상세 placeholder 정책
+--------------------------------------------------
+
+Worker 카드 상세 접힘 영역에 표시할 항목:
+
+- roleDescription
+- systemInstruction 전체 또는 긴 preview
+- providerId
+- modelId
+- capabilityOverrides 요약
+- inputPolicy 요약
+- outputPolicy 요약
+- dependsOnWorkerIds
+- isDefaultTemplate
+- userModified
+- enabled
+- executionOrder
+- canRunInParallel
+
+하단 액션 후보:
+
+- “접기”
+- “편집 기능은 후속 구현 예정”
+
+주의:
+- 실제 편집 화면 진입 금지
+- 실제 저장 금지
+- 긴 systemInstruction은 자동 줄바꿈
+- 너무 긴 값은 읽기 가능하게 표시하되 화면 전체를 과도하게 밀지 않도록 한다
+
+--------------------------------------------------
+3. Scenario 상세 placeholder 정책
+--------------------------------------------------
+
+Scenario 카드 상세 접힘 영역에 표시할 항목:
+
+- description
+- workerProfileIds 요약
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- enabled
+- userEditable
+- isDefaultTemplate
+- userModified
+
+하단 액션 후보:
+
+- “접기”
+- “Scenario 편집 기능은 후속 구현 예정”
+
+주의:
+- Worker 순서 변경 구현 금지
+- Scenario 편집 저장 금지
+- 실제 실행 연결 금지
+
+--------------------------------------------------
+4. 접기 버튼 정책
+--------------------------------------------------
+
+현재 문제:
+- 상세 영역이 길면 다시 상단까지 스크롤해서 접어야 한다.
+
+보정:
+- Worker 상세 영역 하단에 “접기” 버튼 추가
+- Scenario 상세 영역 하단에 “접기” 버튼 추가
+- 버튼 클릭 시 해당 상세 영역을 닫는다
+
+주의:
+- 상태 관리는 화면 내부 UI state로만 처리한다.
+- 저장 상태에 반영하지 않는다.
+- 실제 WorkerProfile 데이터 변경 금지.
+
+--------------------------------------------------
+5. read-only 안내 정책
+--------------------------------------------------
+
+화면 또는 상세 영역에 다음 의미가 유지되어야 한다.
+
+문구 후보:
+- “현재 화면은 Worker Profile 구조 확인용 preview입니다.”
+- “편집/저장 기능은 후속 구현 예정입니다.”
+- “이 화면은 실제 대화 실행 흐름에 연결되어 있지 않습니다.”
+
+주의:
+- 안내 문구가 너무 길어 모바일 가시성을 해치면 접힘 또는 짧은 안내로 유지한다.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화모드 설정 메인 Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- WorkerProfileStore in-memory skeleton 데이터 표시
+- 모바일 가시성 보정
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. Worker 상세 placeholder
+- roleDescription:
+- systemInstruction:
+- providerId/modelId:
+- capabilityOverrides:
+- inputPolicy/outputPolicy:
+- dependsOnWorkerIds:
+- 하단 접기 버튼:
+
+B. Scenario 상세 placeholder
+- description:
+- workerProfileIds:
+- defaultExecutionMode:
+- orchestrator/synthesis profile:
+- userEditable/userModified:
+- 하단 접기 버튼:
+
+C. 모바일 가시성 유지
+- Worker / Scenario 탭:
+- 기본 카드 요약 유지:
+- 상세 접힘 접근:
+- 상세 하단 접기:
+- 상하 스크롤 부담 증가 없음:
+
+D. 연결 금지 확인
+- 실제 저장/로드 없음:
+- worker_profiles.json 생성 없음:
+- conversation_scenarios.json 생성 없음:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+E. 기존 기능 영향
+- 대화모드 설정 메인:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ 실제 저장/로드 구현 금지
+❌ JSON 파일 생성 금지
+❌ JsonStore 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ Worker 편집 저장 구현 금지
+❌ System Instruction 편집 저장 구현 금지
+❌ Provider/Model 선택 저장 구현 금지
+❌ Scenario 편집 저장 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- Worker 상세 placeholder가 더 명확히 표시됨
+- Scenario 상세 placeholder가 더 명확히 표시됨
+- 긴 상세 접힘 영역 하단에 접기 버튼 추가
+- read-only / 후속 구현 예정 정책 유지
+- 실제 저장/로드 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+WorkerProfileStore 실제 저장/로드 구현 설계 또는 Worker Profile 편집 UI 설계
+
+==============================
 [2026-05-04 20:05] Worker Profile 관리 UI 모바일 가시성 보정
 ==============================
 
