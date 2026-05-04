@@ -1,4 +1,436 @@
+==============================
+[2026-05-04 02:20] 가변 Worker Profile 및 System Instruction 설계
+==============================
 
+[작업]
+- MAHA_CORE_INTENT_v1.2 기준으로 가변 Worker Profile 구조 설계
+- Worker 개수와 역할을 고정하지 않는 원칙 정의
+- 사용자 편집 가능 System Instruction 정책 정의
+- Worker별 Provider/Model 선택 구조 정의
+- Worker별 capability override / inputPolicy / outputPolicy 후보 정의
+- executionOrder / canRunInParallel / dependsOnWorkerIds 구조 정의
+- ConversationScenarioProfile / WorkerSet 구조 설계
+- WorkerProfile / WorkerPlan / WorkerRunResult 관계 정의
+- 실제 Kotlin 구현 및 저장 schema 변경은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- MAHA_CORE_INTENT_v1.2 기준으로 가변 Worker Profile 설계 문서 작성
+- Worker를 고정 개체가 아닌 사용자 편집 가능한 Profile로 정의
+- Worker별 System Instruction / Provider / Model / capability override 구조 설계
+- ConversationScenarioProfile / WorkerSet 구조 설계
+- WorkerProfile / WorkerPlan / WorkerRunResult 관계 정의
+
+[설계 산출물]
+- 문서명: MAHA_VARIABLE_WORKER_PROFILE_v1.md
+- 작성 위치: /mnt/data/MAHA_VARIABLE_WORKER_PROFILE_v1.md
+- 주요 섹션: 목적, 설계 전제, 고정 Worker 구조 금지 원칙, 기본 Worker 템플릿, ConversationWorkerProfile, System Instruction 정책, Worker별 Provider/Model 선택, capability override, InputPolicy/OutputPolicy, 실행 순서/병렬/의존성, ConversationScenarioProfile, OrchestratorPlan/WorkerPlan 관계, 저장 schema 변경 여부, 후속 구현 단계
+
+[Worker Profile 설계]
+- workerProfileId: Worker 이름 변경과 무관하게 유지되는 안정 고유 ID
+- displayName/roleLabel: 사용자가 보는 이름과 사용자 정의 가능한 역할 라벨
+- systemInstruction: Worker 행동 기준이며 반드시 사용자 편집 가능
+- providerId/modelId: Worker별 Provider/Model 선택 가능
+- capabilityOverrides: Model capability와 별개인 Worker 단위 사용자 의도
+
+[System Instruction 설계]
+- 사용자 편집 가능: 필수 원칙
+- 기본 템플릿: Orchestrator, Main, Synthesis, Research, Reviewer, RAG, Web Search, Tool, Code Check 등 후보
+- 사용자 설정 우선: 실제 실행 기준은 기본 템플릿이 아니라 사용자 수정본
+- 리셋 가능성: 후속 UI에서 기본값 복원 기능 후보
+
+[Scenario / WorkerSet 설계]
+- ConversationScenarioProfile: WorkerProfile 묶음
+- workerProfileIds: Scenario가 참조하는 WorkerProfile ID 목록
+- defaultExecutionMode: SINGLE / SEQUENTIAL / PARALLEL / MIXED 기본 실행 방식 후보
+- orchestrator/synthesis profile: orchestratorProfileId / synthesisProfileId 후보
+- userEditable: 기본 Scenario도 사용자 편집 가능 구조 지향
+
+[Plan 관계 설계]
+- WorkerProfile: 저장된 사용자 설정
+- WorkerPlan: 특정 요청에 대해 Orchestrator가 생성한 실행 계획
+- WorkerRunResult: 실제 Worker 실행 결과
+- OrchestratorPlan 관계: Scenario와 WorkerProfile을 참고해 WorkerPlan을 생성
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- 빌드 영향: 없음
+- Provider 호출: 변경 없음
+- RAG: 변경 없음
+- Web Search: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_VARIABLE_WORKER_PROFILE_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+가변 Worker Profile 및 System Instruction 설계
+
+상위 목적 기준:
+- 첨부한 MAHA_CORE_INTENT_v1.2를 먼저 읽고 작업한다.
+- 이번 작업은 MAHA 대화모드가 고정된 Orchestrator/Main/Synthesis 구조로 굳지 않도록 하기 위한 설계 작업이다.
+- Orchestrator, Main Worker, Synthesis Worker, RAG Worker, Tool Worker 등은 고정 개체가 아니라 기본 역할 템플릿으로 본다.
+- 실제 Worker 구성은 사용자가 추가/삭제/수정할 수 있어야 한다.
+- 각 Worker의 System Instruction, Provider, Model, capability override, 실행 순서, 병렬 가능 여부는 사용자 편집 가능해야 한다.
+
+목표:
+- 대화모드의 가변 Worker Profile 구조를 설계한다.
+- Worker별 사용자 편집 가능 System Instruction 구조를 설계한다.
+- Worker별 Provider/Model 선택 구조를 설계한다.
+- Worker Profile을 묶는 Conversation Scenario / Worker Set 개념을 설계한다.
+- 이번 단계에서는 실제 Kotlin 구현이나 저장 schema 변경을 하지 않는다.
+
+--------------------------------------------------
+1. 설계 범위
+--------------------------------------------------
+
+이번 단계에서 설계:
+
+✔ ConversationWorkerProfile 구조 설계
+✔ WorkerProfileId / displayName / roleLabel / roleDescription 정의
+✔ Worker별 systemInstruction 사용자 편집 가능 원칙 정의
+✔ Worker별 providerId / modelId 선택 구조 정의
+✔ Worker별 capabilityOverrides 구조 정의
+✔ Worker별 inputPolicy / outputPolicy 구조 정의
+✔ executionOrder / canRunInParallel / dependsOnWorkerIds 구조 정의
+✔ enabled / createdAt / updatedAt 필드 후보 정의
+✔ 기본 Worker 템플릿과 사용자 Worker Profile의 관계 정의
+✔ ConversationScenarioProfile 또는 WorkerSet 구조 설계
+✔ Scenario별 Worker 조합 저장 구조 정의
+✔ OrchestratorPlan / WorkerPlan과 WorkerProfile의 관계 정의
+✔ 기존 Capability Layer 모델과의 연결 방향 정의
+
+이번 단계에서 금지:
+
+❌ 실제 Kotlin 코드 구현
+❌ 저장 schema 변경
+❌ Provider 호출 로직 변경
+❌ ConversationEngine 연결
+❌ ConversationViewModel 연결
+❌ Worker 관리 UI 구현
+❌ System Instruction 편집 UI 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 산출물
+--------------------------------------------------
+
+신규 문서 후보:
+
+- MAHA_VARIABLE_WORKER_PROFILE_v1.md
+
+문서에 반드시 포함:
+
+1. 목적
+2. 설계 전제
+3. 고정 Worker 구조 금지 원칙
+4. 기본 Worker 템플릿 정의
+5. ConversationWorkerProfile 모델 후보
+6. SystemInstruction 정책
+7. Worker별 Provider/Model 선택 정책
+8. Capability override 정책
+9. InputPolicy / OutputPolicy 후보
+10. 실행 순서 / 병렬 가능성 / 의존성 설계
+11. ConversationScenarioProfile / WorkerSet 설계
+12. OrchestratorPlan / WorkerPlan과의 관계
+13. 저장 schema 변경 여부
+14. 후속 구현 단계
+
+주의:
+- 이 문서는 구현 코드가 아니라 후속 구현 기준 문서다.
+- MAHA_CORE_INTENT_v1.2의 가변 Worker 원칙을 기준으로 작성한다.
+- 기존 정적 Worker 구조를 전제로 쓰지 않는다.
+
+--------------------------------------------------
+3. ConversationWorkerProfile 설계 기준
+--------------------------------------------------
+
+ConversationWorkerProfile 후보 필드:
+
+- workerProfileId
+- displayName
+- roleLabel
+- roleDescription
+- systemInstruction
+- providerId
+- modelId
+- capabilityOverrides
+- inputPolicy
+- outputPolicy
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- enabled
+- createdAt
+- updatedAt
+
+정책:
+- workerProfileId는 안정적인 고유 ID다.
+- displayName은 사용자가 보는 이름이다.
+- roleLabel은 Orchestrator / Researcher / Reviewer 등 역할 라벨이다.
+- roleLabel은 enum 고정값만 허용하지 말고 사용자 정의 문자열 가능성을 열어둔다.
+- systemInstruction은 반드시 사용자 편집 가능해야 한다.
+- providerId / modelId는 Worker별로 다를 수 있다.
+- enabled=false Worker는 Scenario에 포함되어도 실행 후보에서 제외할 수 있다.
+
+주의:
+- Orchestrator / Main / Synthesis는 기본 템플릿일 뿐 고정 개체가 아니다.
+- Worker 개수는 고정하지 않는다.
+- 후속 구현에서 기본 템플릿은 제공하되 사용자 설정을 우선해야 한다.
+
+--------------------------------------------------
+4. System Instruction 정책
+--------------------------------------------------
+
+원칙:
+- System Instruction은 앱 내부 하드코딩 고정 문구가 되면 안 된다.
+- 앱은 기본 instruction template을 제공할 수 있다.
+- 사용자는 각 Worker의 System Instruction을 수정할 수 있어야 한다.
+- 수정된 System Instruction은 해당 WorkerProfile의 사용자 설정값으로 취급한다.
+
+기본 템플릿 후보:
+- Orchestrator 기본 instruction
+- Main Worker 기본 instruction
+- Synthesis Worker 기본 instruction
+- Research Worker 기본 instruction
+- Reviewer Worker 기본 instruction
+- RAG Worker 기본 instruction
+- Code Check Worker 기본 instruction
+- Tool Worker 기본 instruction
+
+주의:
+- 기본 템플릿은 시작점이다.
+- 실제 실행 기준은 사용자 편집본이다.
+- 후속 구현에서 “기본값으로 리셋” 기능을 둘 수 있다.
+
+--------------------------------------------------
+5. Worker별 Provider/Model 선택 정책
+--------------------------------------------------
+
+정책:
+- 각 Worker는 providerId와 modelId를 가질 수 있다.
+- Worker별로 서로 다른 Provider/Model을 사용할 수 있어야 한다.
+- 예:
+  - Orchestrator: 빠른 경량 모델
+  - Research Worker: 검색/RAG 적합 모델
+  - Code Check Worker: 코드 특화 모델
+  - Synthesis Worker: 긴 문맥/정리 성능이 좋은 모델
+
+주의:
+- Provider/Model은 MAHA의 목적이 아니라 Worker 실행 엔진이다.
+- Worker별 Provider/Model 선택 가능성을 닫지 않는다.
+- Provider/model capability는 Capability Layer와 연동될 수 있어야 한다.
+
+--------------------------------------------------
+6. Capability override 정책
+--------------------------------------------------
+
+capabilityOverrides 후보:
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+- thinkingSummary
+- ragSearch
+- memoryRecall
+- fileRead
+- fileWrite
+- codeCheck
+- parallelExecution
+
+정책:
+- WorkerProfile은 모델 기본 capability와 별도로 Worker 단위 override를 가질 수 있다.
+- 사용자 override는 “이 Worker에서 이 capability를 쓰고 싶다”는 의사 표시다.
+- override가 켜졌다고 실제 실행 가능을 의미하지 않는다.
+- 실제 실행 가능 여부는 CapabilityResolver / CapabilityLayer가 판단한다.
+
+주의:
+- ModelProfile capability와 WorkerProfile override를 혼동하지 않는다.
+- 후속 구현에서는 Model capability + Worker override + Provider policy를 종합해야 한다.
+
+--------------------------------------------------
+7. InputPolicy / OutputPolicy 설계 기준
+--------------------------------------------------
+
+InputPolicy 후보:
+- userInputOnly
+- previousWorkerOutput
+- selectedWorkerOutputs
+- ragContextAllowed
+- memoryContextAllowed
+- webSearchContextAllowed
+- maxInputChars
+- includeRunHistory
+
+OutputPolicy 후보:
+- expectedOutputType
+- requireJson
+- requireMarkdownTable
+- requireCodeBlock
+- allowPlainText
+- maxOutputChars
+- passToNextWorker
+- exposeToUser
+- saveAsMemoryCandidate
+
+정책:
+- Worker가 어떤 입력을 받을 수 있는지 명시한다.
+- Worker 결과가 다음 Worker로 전달될지 여부를 명시한다.
+- 대화모드의 Worker 연결은 이 정책을 기반으로 확장한다.
+
+--------------------------------------------------
+8. 실행 순서 / 병렬 / 의존성 설계
+--------------------------------------------------
+
+필드 후보:
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+
+정책:
+- executionOrder는 순차 실행 후보 순서를 의미한다.
+- canRunInParallel=true인 Worker는 의존성이 없을 때 병렬 실행 후보가 될 수 있다.
+- dependsOnWorkerIds가 있으면 해당 Worker 결과 이후 실행되어야 한다.
+- 병렬 실행 실제 구현은 후속 단계다.
+
+주의:
+- 이번 단계에서는 실행 계획 설계만 한다.
+- 실제 병렬 실행 구현 금지.
+
+--------------------------------------------------
+9. ConversationScenarioProfile / WorkerSet 설계 기준
+--------------------------------------------------
+
+ConversationScenarioProfile 후보 필드:
+
+- scenarioId
+- name
+- description
+- workerProfileIds
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- userEditable
+- createdAt
+- updatedAt
+
+목적:
+- 사용자가 자주 쓰는 Worker 구성을 저장한다.
+- 대화 목적별로 다른 Worker 조합을 사용할 수 있게 한다.
+- 예:
+  - 코딩 검토 세트
+  - 조사/요약 세트
+  - 글쓰기 세트
+  - 개인비서 세트
+  - RAG 중심 세트
+
+정책:
+- Scenario는 WorkerProfile 목록을 참조한다.
+- Scenario는 고정 시스템 프리셋이 아니라 사용자 편집 가능 구조를 지향한다.
+- 기본 Scenario 템플릿은 제공 가능하나 사용자 설정을 우선한다.
+
+--------------------------------------------------
+10. OrchestratorPlan / WorkerPlan과의 관계
+--------------------------------------------------
+
+정책:
+- WorkerProfile은 사용자가 저장한 “구성값”이다.
+- WorkerPlan은 특정 요청에 대해 Orchestrator가 생성한 “실행 계획”이다.
+- WorkerPlan은 WorkerProfile을 참조할 수 있다.
+- WorkerPlan은 WorkerProfile의 systemInstruction / providerId / modelId / capabilityOverrides를 기반으로 생성될 수 있다.
+
+구분:
+- WorkerProfile = 저장된 사용자 설정
+- WorkerPlan = 요청별 실행 계획
+- WorkerRunResult = 실제 실행 결과
+
+주의:
+- 현재 CapabilityLayerModels.kt의 WorkerPlan은 계획 skeleton이다.
+- 후속 설계에서 workerProfileId 참조 필드 추가 여부를 검토한다.
+- 이번 단계에서는 코드 변경 금지.
+
+--------------------------------------------------
+11. 저장 schema 변경 여부
+--------------------------------------------------
+
+이번 단계:
+- 저장 schema 변경 없음
+- Kotlin 코드 구현 없음
+- JSON 저장/복원 구현 없음
+
+후속 구현 시 검토:
+- worker_profiles.json
+- conversation_scenarios.json
+- 기본 템플릿 초기화 정책
+- schemaVersion
+- migration 정책
+- 백업/복원 포함 여부
+
+주의:
+- 후속 구현 전 저장 구조를 먼저 설계해야 한다.
+- 기존 provider_profiles.json / model_profiles.json과 역할을 분리해야 한다.
+
+--------------------------------------------------
+12. 기존 기능 유지
+--------------------------------------------------
+
+이번 단계는 설계문서 작성만 한다.
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- Capability Resolver 진단 UI
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+13. 완료 기준
+--------------------------------------------------
+
+- MAHA_VARIABLE_WORKER_PROFILE_v1.md 작성
+- MAHA_CORE_INTENT_v1.2 방향 반영
+- 가변 Worker Profile 원칙 정의 완료
+- 사용자 편집 가능 System Instruction 원칙 정의 완료
+- Worker별 Provider/Model 선택 구조 정의 완료
+- Worker별 capability override 구조 정의 완료
+- ConversationScenarioProfile / WorkerSet 구조 정의 완료
+- OrchestratorPlan / WorkerPlan과의 관계 정의 완료
+- 실제 코드 변경 없음
+- 저장 schema 변경 없음
+- 빌드 영향 없음 또는 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+가변 Worker Profile 최소 모델/DTO 설계 또는 Worker Profile 저장 schema 설계
 
 ==============================
 [2026-05-04 16:00] Capability Resolver 판단 품질 보정
