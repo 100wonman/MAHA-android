@@ -1,4 +1,467 @@
 ==============================
+[2026-05-04 22:03] InputPolicy / OutputPolicy 편집 저장 UI 구현
+==============================
+
+[작업]
+- WorkerProfileEditScreen의 InputPolicy placeholder를 실제 편집 UI로 보정
+- userInputOnly / previousWorkerOutput / ragContextAllowed / memoryContextAllowed / webSearchContextAllowed / maxInputChars / includeRunHistory 저장
+- WorkerProfileEditScreen의 OutputPolicy placeholder를 실제 편집 UI로 보정
+- expectedOutputType / requireJson / requireMarkdownTable / requireCodeBlock / allowPlainText / maxOutputChars / passToNextWorker / exposeToUser / saveAsMemoryCandidate 저장
+- selectedWorkerOutputs는 placeholder 유지 가능
+- InputPolicy/OutputPolicy는 설정 저장만 수행하고 실제 실행 흐름에는 적용하지 않음
+- Scenario 편집 / ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileEditScreen의 InputPolicy 편집 UI 구현
+- WorkerProfileEditScreen의 OutputPolicy 편집 UI 구현
+- inputPolicy/outputPolicy 저장을 WorkerProfileStore.upsertWorkerProfile 흐름에 연결
+- maxInputChars/maxOutputChars 숫자 보정 처리 추가
+- 기존 기본 정보/System Instruction/Provider-Model/capability override 저장 흐름 유지
+
+[InputPolicy UI 테스트]
+- InputPolicy 섹션: 확인
+- userInputOnly: 확인
+- previousWorkerOutput: 확인
+- selectedWorkerOutputs placeholder: 확인
+- ragContextAllowed: 확인
+- memoryContextAllowed: 확인
+- webSearchContextAllowed: 확인
+- maxInputChars: 확인
+- includeRunHistory: 확인
+- 안내 문구: 추가
+
+[OutputPolicy UI 테스트]
+- OutputPolicy 섹션: 확인
+- expectedOutputType: 확인
+- requireJson: 확인
+- requireMarkdownTable: 확인
+- requireCodeBlock: 확인
+- allowPlainText: 확인
+- maxOutputChars: 확인
+- passToNextWorker: 확인
+- exposeToUser: 확인
+- saveAsMemoryCandidate: 확인
+- 안내 문구: 추가
+
+[저장 연결 테스트]
+- inputPolicy 저장: 확인
+- outputPolicy 저장: 확인
+- 저장 후 관리 화면 반영: 확인
+- 재진입 후 유지: 확인
+- worker_profiles.json 반영: 확인
+- userModified=true: 유지
+- updatedAt 갱신: 유지
+
+[기존 저장 유지 테스트]
+- displayName 저장 유지: 유지
+- roleLabel 저장 유지: 유지
+- roleDescription 저장 유지: 유지
+- systemInstruction 저장 유지: 유지
+- enabled 저장 유지: 유지
+- providerId/modelId 저장 유지: 유지
+- capabilityOverrides 저장 유지: 유지
+
+[오류 처리 테스트]
+- maxInputChars 숫자 처리: 숫자 아님/빈 값은 기존값 사용, 음수는 0 보정
+- maxOutputChars 숫자 처리: 숫자 아님/빈 값은 기존값 사용, 음수는 0 보정
+- 빈 값 처리: 기존값 또는 기본값 사용
+- 음수 처리: 0으로 보정
+- 저장 실패 crash 없음: 기존 runCatching 유지
+
+[연결 금지 확인]
+- Scenario 편집 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Worker 실행 미구현: 유지
+- InputPolicy 실제 실행 적용 없음: 유지
+- OutputPolicy 실제 실행 적용 없음: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: InputPolicy/OutputPolicy 저장만 추가
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+InputPolicy / OutputPolicy 편집 저장 UI 구현
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- InputPolicy / OutputPolicy는 Worker가 어떤 입력을 받고 어떤 출력으로 넘길지 정의하는 사용자 설정값이다.
+- 이번 단계는 WorkerProfileEditScreen에서 InputPolicy / OutputPolicy 편집과 저장만 수행한다.
+- ConversationEngine 연결과 Worker 실행은 하지 않는다.
+
+목표:
+- WorkerProfileEditScreen의 InputPolicy / OutputPolicy placeholder를 실제 편집 UI로 보정한다.
+- WorkerInputPolicy 값을 편집하고 저장한다.
+- WorkerOutputPolicy 값을 편집하고 저장한다.
+- 기존 기본 정보 / System Instruction / Provider-Model / capability override 저장 흐름을 유지한다.
+- Scenario 편집, ConversationEngine 연결, 실제 Worker 실행은 하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ WorkerInputPolicy 편집 UI 구현
+✔ userInputOnly 저장
+✔ previousWorkerOutput 저장
+✔ selectedWorkerOutputs 표시/placeholder 유지
+✔ ragContextAllowed 저장
+✔ memoryContextAllowed 저장
+✔ webSearchContextAllowed 저장
+✔ maxInputChars 저장
+✔ includeRunHistory 저장
+
+✔ WorkerOutputPolicy 편집 UI 구현
+✔ expectedOutputType 저장
+✔ requireJson 저장
+✔ requireMarkdownTable 저장
+✔ requireCodeBlock 저장
+✔ allowPlainText 저장
+✔ maxOutputChars 저장
+✔ passToNextWorker 저장
+✔ exposeToUser 저장
+✔ saveAsMemoryCandidate 저장
+
+✔ 저장 시 inputPolicy/outputPolicy 값 반영
+✔ 저장 시 userModified=true 유지
+✔ 저장 시 updatedAt 갱신
+✔ 기존 저장 필드 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ Scenario 편집 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ 실제 InputPolicy/OutputPolicy를 대화 실행에 적용
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt 필요 시
+
+참조 파일:
+
+- WorkerProfileModels.kt
+- CapabilityLayerModels.kt
+
+주의:
+- WorkerInputPolicy / WorkerOutputPolicy 기존 모델을 사용한다.
+- CapabilityType을 expectedOutputType에 사용한다.
+- 저장은 WorkerProfileStore.upsertWorkerProfile 기존 흐름을 따른다.
+- ConversationEngine에 연결하지 않는다.
+
+--------------------------------------------------
+3. InputPolicy UI 정책
+--------------------------------------------------
+
+편집 대상:
+
+- userInputOnly
+- previousWorkerOutput
+- selectedWorkerOutputs
+- ragContextAllowed
+- memoryContextAllowed
+- webSearchContextAllowed
+- maxInputChars
+- includeRunHistory
+
+UI 정책:
+- InputPolicy 섹션은 접힘 영역 유지
+- Boolean 값은 switch/checkbox 형태
+- maxInputChars는 숫자 입력 또는 간단한 text field
+- selectedWorkerOutputs는 이번 단계에서 read-only/placeholder 가능
+
+문구 후보:
+“InputPolicy는 이 Worker가 어떤 입력과 context를 받을 수 있는지 정의합니다. 실제 입력 전달 적용은 후속 Orchestrator/Execution 연결 단계에서 지원됩니다.”
+
+주의:
+- selectedWorkerOutputs 실제 multi-select 구현은 후속 단계로 미뤄도 됨
+- 저장 값은 WorkerProfile.inputPolicy에 반영한다
+
+--------------------------------------------------
+4. OutputPolicy UI 정책
+--------------------------------------------------
+
+편집 대상:
+
+- expectedOutputType
+- requireJson
+- requireMarkdownTable
+- requireCodeBlock
+- allowPlainText
+- maxOutputChars
+- passToNextWorker
+- exposeToUser
+- saveAsMemoryCandidate
+
+UI 정책:
+- OutputPolicy 섹션은 접힘 영역 유지
+- Boolean 값은 switch/checkbox 형태
+- expectedOutputType은 CapabilityType 선택 UI
+- maxOutputChars는 숫자 입력 또는 간단한 text field
+
+문구 후보:
+“OutputPolicy는 이 Worker 결과를 어떤 형식으로 만들고, 다음 Worker나 사용자에게 어떻게 전달할지 정의합니다. 실제 출력 전달 적용은 후속 실행 연결 단계에서 지원됩니다.”
+
+주의:
+- requireJson / requireMarkdownTable / requireCodeBlock은 출력 의도 설정이다
+- 실제 모델 프롬프트 반영은 후속 단계
+- passToNextWorker/exposeToUser/saveAsMemoryCandidate도 현재는 설정 저장만 수행
+
+--------------------------------------------------
+5. 저장 정책
+--------------------------------------------------
+
+저장 대상:
+
+- 기존 저장 대상 유지:
+  - displayName
+  - roleLabel
+  - roleDescription
+  - systemInstruction
+  - enabled
+  - providerId
+  - modelId
+  - capabilityOverrides
+
+- 신규 저장 대상:
+  - inputPolicy
+  - outputPolicy
+
+- 저장 시:
+  - userModified=true
+  - updatedAt=현재 시각
+
+보존 대상:
+
+- workerProfileId
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- isDefaultTemplate
+- createdAt
+
+주의:
+- InputPolicy/OutputPolicy 저장이 실제 실행 정책 적용으로 이어지면 안 됨
+- 실제 Worker 간 입력/출력 전달 구현 금지
+
+--------------------------------------------------
+6. 숫자 입력 처리 정책
+--------------------------------------------------
+
+대상:
+- maxInputChars
+- maxOutputChars
+
+정책:
+- 빈 값이면 기존값 또는 안전 기본값 유지
+- 숫자가 아니면 저장 차단 또는 기본값 보정
+- 음수는 0 또는 기본값으로 보정
+- 너무 큰 값은 현재 단계에서 강제 제한하지 않아도 됨
+
+권장 기본값:
+- maxInputChars: 기존 모델 기본값 유지
+- maxOutputChars: 기존 모델 기본값 유지
+
+--------------------------------------------------
+7. 저장 후 반영 정책
+--------------------------------------------------
+
+필수:
+- 저장 후 Worker Profile 관리 화면 상세 접힘 영역에서 inputPolicy/outputPolicy 변경 확인 가능
+- 재진입 후 값 유지
+- worker_profiles.json에 inputPolicy/outputPolicy 반영
+
+권장:
+- 기존 흐름처럼 저장 후 관리 화면으로 복귀하고 목록 reload
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 기본 정보 저장
+- System Instruction 저장
+- Provider/Model 선택 저장
+- capability override 저장
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+9. 테스트 기준
+--------------------------------------------------
+
+A. InputPolicy UI
+- InputPolicy 섹션:
+- userInputOnly:
+- previousWorkerOutput:
+- selectedWorkerOutputs placeholder:
+- ragContextAllowed:
+- memoryContextAllowed:
+- webSearchContextAllowed:
+- maxInputChars:
+- includeRunHistory:
+- 안내 문구:
+
+B. OutputPolicy UI
+- OutputPolicy 섹션:
+- expectedOutputType:
+- requireJson:
+- requireMarkdownTable:
+- requireCodeBlock:
+- allowPlainText:
+- maxOutputChars:
+- passToNextWorker:
+- exposeToUser:
+- saveAsMemoryCandidate:
+- 안내 문구:
+
+C. 저장 연결
+- inputPolicy 저장:
+- outputPolicy 저장:
+- 저장 후 관리 화면 반영:
+- 재진입 후 유지:
+- worker_profiles.json 반영:
+- userModified=true:
+- updatedAt 갱신:
+
+D. 기존 저장 유지
+- displayName 저장 유지:
+- roleLabel 저장 유지:
+- roleDescription 저장 유지:
+- systemInstruction 저장 유지:
+- enabled 저장 유지:
+- providerId/modelId 저장 유지:
+- capabilityOverrides 저장 유지:
+
+E. 오류 처리
+- maxInputChars 숫자 처리:
+- maxOutputChars 숫자 처리:
+- 빈 값 처리:
+- 음수 처리:
+- 저장 실패 crash 없음:
+
+F. 연결 금지 확인
+- Scenario 편집 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Worker 실행 미구현:
+- InputPolicy 실제 실행 적용 없음:
+- OutputPolicy 실제 실행 적용 없음:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+G. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+❌ Scenario 편집 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ InputPolicy/OutputPolicy를 실제 실행에 적용 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ Provider/Model schema 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- WorkerProfileEditScreen에서 InputPolicy 편집 가능
+- WorkerProfileEditScreen에서 OutputPolicy 편집 가능
+- inputPolicy/outputPolicy 값이 WorkerProfile에 저장됨
+- 저장 후 관리 화면과 재진입 시 변경 내용 유지
+- 실제 실행 흐름에는 적용하지 않음
+- Scenario/ConversationEngine 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Scenario 편집 UI 설계 또는 Worker 실행계획 preview 연결 설계
+
+==============================
 [2026-05-04 21:48] Worker capability override 편집 저장 UI 구현
 ==============================
 

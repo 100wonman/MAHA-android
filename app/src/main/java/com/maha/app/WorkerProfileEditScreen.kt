@@ -53,6 +53,22 @@ fun WorkerProfileEditScreen(
     var fileWriteOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.fileWrite) }
     var codeCheckOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.codeCheck) }
     var parallelExecutionOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.parallelExecution) }
+    var userInputOnlyPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.userInputOnly) }
+    var previousWorkerOutputPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.previousWorkerOutput) }
+    var ragContextAllowedPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.ragContextAllowed) }
+    var memoryContextAllowedPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.memoryContextAllowed) }
+    var webSearchContextAllowedPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.webSearchContextAllowed) }
+    var maxInputCharsText by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.maxInputChars.toString()) }
+    var includeRunHistoryPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.inputPolicy.includeRunHistory) }
+    var expectedOutputTypePolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.expectedOutputType) }
+    var requireJsonPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.requireJson) }
+    var requireMarkdownTablePolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.requireMarkdownTable) }
+    var requireCodeBlockPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.requireCodeBlock) }
+    var allowPlainTextPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.allowPlainText) }
+    var maxOutputCharsText by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.maxOutputChars.toString()) }
+    var passToNextWorkerPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.passToNextWorker) }
+    var exposeToUserPolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.exposeToUser) }
+    var saveAsMemoryCandidatePolicy by remember(worker.workerProfileId) { mutableStateOf(worker.outputPolicy.saveAsMemoryCandidate) }
     var saveMessage by remember(worker.workerProfileId) { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
@@ -85,6 +101,27 @@ fun WorkerProfileEditScreen(
         codeCheck = codeCheckOverride,
         parallelExecution = parallelExecutionOverride,
     )
+    val inputPolicyPreview = WorkerInputPolicy(
+        userInputOnly = userInputOnlyPolicy,
+        previousWorkerOutput = previousWorkerOutputPolicy,
+        selectedWorkerOutputs = worker.inputPolicy.selectedWorkerOutputs,
+        ragContextAllowed = ragContextAllowedPolicy,
+        memoryContextAllowed = memoryContextAllowedPolicy,
+        webSearchContextAllowed = webSearchContextAllowedPolicy,
+        maxInputChars = parseWorkerPolicyInt(maxInputCharsText, worker.inputPolicy.maxInputChars),
+        includeRunHistory = includeRunHistoryPolicy,
+    )
+    val outputPolicyPreview = WorkerOutputPolicy(
+        expectedOutputType = expectedOutputTypePolicy,
+        requireJson = requireJsonPolicy,
+        requireMarkdownTable = requireMarkdownTablePolicy,
+        requireCodeBlock = requireCodeBlockPolicy,
+        allowPlainText = allowPlainTextPolicy,
+        maxOutputChars = parseWorkerPolicyInt(maxOutputCharsText, worker.outputPolicy.maxOutputChars),
+        passToNextWorker = passToNextWorkerPolicy,
+        exposeToUser = exposeToUserPolicy,
+        saveAsMemoryCandidate = saveAsMemoryCandidatePolicy,
+    )
 
     val dirty = displayName != worker.displayName ||
             roleLabel != worker.roleLabel ||
@@ -93,7 +130,9 @@ fun WorkerProfileEditScreen(
             enabledPreview != worker.enabled ||
             selectedProviderId != worker.providerId ||
             selectedModelId != worker.modelId ||
-            capabilityOverridesPreview != worker.capabilityOverrides
+            capabilityOverridesPreview != worker.capabilityOverrides ||
+            inputPolicyPreview != worker.inputPolicy ||
+            outputPolicyPreview != worker.outputPolicy
 
     Column(
         modifier = modifier,
@@ -268,13 +307,99 @@ fun WorkerProfileEditScreen(
         }
 
         WorkerEditSection(title = "InputPolicy", initiallyExpanded = false) {
-            WorkerEditKeyValue("현재 inputPolicy", worker.inputPolicy.toReadableSummary())
-            WorkerEditNotice("입력 정책 편집 UI는 후속 구현 예정입니다.")
+            WorkerEditNotice("InputPolicy는 이 Worker가 어떤 입력과 context를 받을 수 있는지 정의합니다. 실제 입력 전달 적용은 후속 Orchestrator/Execution 연결 단계에서 지원됩니다.")
+            WorkerBooleanToggle(
+                label = "userInputOnly",
+                value = userInputOnlyPolicy,
+                onValueChange = { userInputOnlyPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "previousWorkerOutput",
+                value = previousWorkerOutputPolicy,
+                onValueChange = { previousWorkerOutputPolicy = it }
+            )
+            WorkerEditKeyValue(
+                label = "selectedWorkerOutputs",
+                value = worker.inputPolicy.selectedWorkerOutputs.joinToString().ifBlank { "후속 multi-select 구현 예정" }
+            )
+            WorkerBooleanToggle(
+                label = "ragContextAllowed",
+                value = ragContextAllowedPolicy,
+                onValueChange = { ragContextAllowedPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "memoryContextAllowed",
+                value = memoryContextAllowedPolicy,
+                onValueChange = { memoryContextAllowedPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "webSearchContextAllowed",
+                value = webSearchContextAllowedPolicy,
+                onValueChange = { webSearchContextAllowedPolicy = it }
+            )
+            WorkerPolicyIntField(
+                label = "maxInputChars",
+                value = maxInputCharsText,
+                onValueChange = { maxInputCharsText = it },
+                fallbackValue = worker.inputPolicy.maxInputChars
+            )
+            WorkerBooleanToggle(
+                label = "includeRunHistory",
+                value = includeRunHistoryPolicy,
+                onValueChange = { includeRunHistoryPolicy = it }
+            )
+            WorkerEditKeyValue("저장될 inputPolicy", inputPolicyPreview.toReadableSummary())
         }
 
         WorkerEditSection(title = "OutputPolicy", initiallyExpanded = false) {
-            WorkerEditKeyValue("현재 outputPolicy", worker.outputPolicy.toReadableSummary())
-            WorkerEditNotice("출력 정책 편집 UI는 후속 구현 예정입니다.")
+            WorkerEditNotice("OutputPolicy는 이 Worker 결과를 어떤 형식으로 만들고, 다음 Worker나 사용자에게 어떻게 전달할지 정의합니다. 실제 출력 전달 적용은 후속 실행 연결 단계에서 지원됩니다.")
+            WorkerCapabilityTypeSelector(
+                label = "expectedOutputType",
+                value = expectedOutputTypePolicy,
+                onValueChange = { expectedOutputTypePolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "requireJson",
+                value = requireJsonPolicy,
+                onValueChange = { requireJsonPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "requireMarkdownTable",
+                value = requireMarkdownTablePolicy,
+                onValueChange = { requireMarkdownTablePolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "requireCodeBlock",
+                value = requireCodeBlockPolicy,
+                onValueChange = { requireCodeBlockPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "allowPlainText",
+                value = allowPlainTextPolicy,
+                onValueChange = { allowPlainTextPolicy = it }
+            )
+            WorkerPolicyIntField(
+                label = "maxOutputChars",
+                value = maxOutputCharsText,
+                onValueChange = { maxOutputCharsText = it },
+                fallbackValue = worker.outputPolicy.maxOutputChars
+            )
+            WorkerBooleanToggle(
+                label = "passToNextWorker",
+                value = passToNextWorkerPolicy,
+                onValueChange = { passToNextWorkerPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "exposeToUser",
+                value = exposeToUserPolicy,
+                onValueChange = { exposeToUserPolicy = it }
+            )
+            WorkerBooleanToggle(
+                label = "saveAsMemoryCandidate",
+                value = saveAsMemoryCandidatePolicy,
+                onValueChange = { saveAsMemoryCandidatePolicy = it }
+            )
+            WorkerEditKeyValue("저장될 outputPolicy", outputPolicyPreview.toReadableSummary())
         }
 
         WorkerEditSection(title = "실행 계획", initiallyExpanded = false) {
@@ -301,6 +426,8 @@ fun WorkerProfileEditScreen(
                         providerId = selectedProviderId,
                         modelId = selectedModelId,
                         capabilityOverrides = capabilityOverridesPreview,
+                        inputPolicy = inputPolicyPreview,
+                        outputPolicy = outputPolicyPreview,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -605,6 +732,137 @@ private fun CapabilityLayerStatus.previousCapabilityLayerStatus(): CapabilityLay
 }
 
 @Composable
+private fun WorkerBooleanToggle(
+    label: String,
+    value: Boolean,
+    onValueChange: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        WorkerEditKeyValue(label, value.toString())
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(
+                onClick = { onValueChange(false) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = if (!value) "✓ false" else "false",
+                    color = if (!value) Color.White else Color(0xFFBFD7FF),
+                    fontWeight = if (!value) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+            TextButton(
+                onClick = { onValueChange(true) },
+                modifier = Modifier
+                    .weight(1f)
+                    .background(if (value) Color(0xFF33445C) else Color.Transparent, MaterialTheme.shapes.medium)
+            ) {
+                Text(
+                    text = if (value) "✓ true" else "true",
+                    color = if (value) Color.White else Color(0xFFBFD7FF),
+                    fontWeight = if (value) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkerPolicyIntField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    fallbackValue: Int,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        WorkerEditTextField(
+            label = label,
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true
+        )
+        val parsed = value.trim().toIntOrNull()
+        val message = when {
+            value.isBlank() -> "빈 값이면 기존값 또는 기본값 ${fallbackValue.coerceAtLeast(0)}을 사용합니다."
+            parsed == null -> "숫자가 아니면 기존값 또는 기본값 ${fallbackValue.coerceAtLeast(0)}을 사용합니다."
+            parsed < 0 -> "음수는 0으로 보정됩니다."
+            else -> "저장될 값: $parsed"
+        }
+        Text(text = message, color = Color(0xFFB8BCC6))
+    }
+}
+
+@Composable
+private fun WorkerCapabilityTypeSelector(
+    label: String,
+    value: CapabilityType,
+    onValueChange: (CapabilityType) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        WorkerEditKeyValue(label, value.name)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(
+                onClick = { onValueChange(value.previousCapabilityType()) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(text = "이전", color = Color(0xFFBFD7FF))
+            }
+            TextButton(
+                onClick = { onValueChange(value.nextCapabilityType()) },
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
+            ) {
+                Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(
+            text = "선택 가능한 값: ${CapabilityType.values().joinToString { it.name }}",
+            color = Color(0xFFB8BCC6)
+        )
+    }
+}
+
+private fun CapabilityType.nextCapabilityType(): CapabilityType {
+    val values = CapabilityType.values()
+    val nextIndex = (ordinal + 1) % values.size
+    return values[nextIndex]
+}
+
+private fun CapabilityType.previousCapabilityType(): CapabilityType {
+    val values = CapabilityType.values()
+    val previousIndex = if (ordinal == 0) values.lastIndex else ordinal - 1
+    return values[previousIndex]
+}
+
+private fun parseWorkerPolicyInt(value: String, fallback: Int): Int {
+    val parsed = value.trim().toIntOrNull()
+    return when {
+        value.isBlank() -> fallback.coerceAtLeast(0)
+        parsed == null -> fallback.coerceAtLeast(0)
+        parsed < 0 -> 0
+        else -> parsed
+    }
+}
+
+@Composable
 private fun WorkerEditPlaceholderRow(
     label: String,
     value: String,
@@ -694,7 +952,7 @@ private fun WorkerEditActionBar(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled, providerId, modelId, capabilityOverrides. input/output policy와 실행 계획은 기존 값을 보존합니다.",
+                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled, providerId, modelId, capabilityOverrides, inputPolicy, outputPolicy. 실행 계획은 기존 값을 보존합니다.",
                 color = Color(0xFFB8BCC6)
             )
         }
