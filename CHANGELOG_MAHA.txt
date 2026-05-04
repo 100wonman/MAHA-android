@@ -1,4 +1,448 @@
 ==============================
+[2026-05-04 16:40] Worker Profile 저장 schema 설계
+==============================
+
+[작업]
+- worker_profiles.json 저장 schema 설계
+- conversation_scenarios.json 저장 schema 설계
+- ConversationWorkerProfile / ConversationScenarioProfile 저장 필드 정의
+- schemaVersion 및 migration 정책 초안 작성
+- 기본 Worker 템플릿 초기화 정책 정의
+- 사용자 수정본 우선 및 앱 업데이트 덮어쓰기 방지 정책 정의
+- ProviderProfile / ModelProfile 참조 및 orphan 처리 정책 정의
+- Worker별 System Instruction / capabilityOverrides 저장 정책 정의
+- SAF 백업/복원 포함 정책 정의
+- 실제 Kotlin 구현 및 저장 schema 적용은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- worker_profiles.json 저장 역할과 최상위 schema 설계
+- conversation_scenarios.json 저장 역할과 최상위 schema 설계
+- WorkerProfile의 System Instruction / Provider / Model / capability override 저장 정책 정의
+- 기본 Worker 템플릿과 사용자 수정본 우선 정책 정의
+- 백업/복원 및 migration 정책 초안 작성
+
+[설계 산출물]
+- 문서명: MAHA_WORKER_PROFILE_STORAGE_SCHEMA_v1.md
+- 작성 위치: /mnt/data/MAHA_WORKER_PROFILE_STORAGE_SCHEMA_v1.md
+- 주요 섹션: 목적, 설계 전제, 저장 파일 목록, worker_profiles.json schema, conversation_scenarios.json schema, 기본 Worker 템플릿 초기화 정책, Provider/Model 참조 정책, capability override 저장 정책, System Instruction 저장 정책, 백업/복원 정책, migration 정책, 후속 구현 단계
+
+[worker_profiles.json 설계]
+- 최상위 구조: schemaVersion, updatedAt, workerProfiles
+- WorkerProfile 필드: workerProfileId, displayName, roleLabel, roleDescription, systemInstruction, providerId, modelId, capabilityOverrides, inputPolicy, outputPolicy, executionOrder, canRunInParallel, dependsOnWorkerIds, enabled, isDefaultTemplate, userModified, createdAt, updatedAt
+- System Instruction 저장: WorkerProfile에 저장, 사용자 수정본은 앱 업데이트로 덮어쓰기 금지
+- capabilityOverrides: Worker 단위 override로 저장, 실제 실행 가능 여부는 Capability Layer가 판단
+- Provider/Model 참조: providerId/modelId만 저장, API Key/baseUrl/rawModelName 복사 금지
+
+[conversation_scenarios.json 설계]
+- 최상위 구조: schemaVersion, updatedAt, scenarios
+- Scenario 필드: scenarioId, name, description, workerProfileIds, defaultExecutionMode, orchestratorProfileId, synthesisProfileId, userEditable, isDefaultTemplate, userModified, enabled, createdAt, updatedAt
+- workerProfileIds: Scenario가 참조하는 WorkerProfile ID 목록
+- defaultExecutionMode: SINGLE / SEQUENTIAL / PARALLEL / MIXED
+- orchestrator/synthesis 참조: orchestratorProfileId / synthesisProfileId 후보
+
+[기본 템플릿 / 사용자 수정본 정책]
+- 기본 Worker 템플릿: Orchestrator, Main, Synthesis, Research, Reviewer, RAG, Memory, Web Search, Tool, Code Check, Comparison 후보
+- 사용자 수정본 우선: userModified=true인 WorkerProfile/Scenario는 앱 업데이트로 덮어쓰기 금지
+- 기본값 복원: 후속 UI에서 명시적 복원 기능 후보
+- 앱 업데이트 덮어쓰기 방지: 기존 사용자 설정 보존 우선
+
+[백업/복원 및 migration 설계]
+- SAF 포함: worker_profiles.json, conversation_scenarios.json 포함 권장
+- orphan Provider/Model 처리: 자동 삭제하지 않고 제한 상태와 재지정 안내 표시
+- schemaVersion: worker_profiles.json=1, conversation_scenarios.json=1
+- 필수 필드 누락 처리: 기본값 보정 또는 안전 실패, 자동 삭제보다 보존 우선
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- 빌드 영향: 없음
+- Provider 호출: 변경 없음
+- RAG: 변경 없음
+- Web Search: 변경 없음
+- Capability Resolver 진단 UI: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_WORKER_PROFILE_STORAGE_SCHEMA_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+Worker Profile 저장 schema 설계
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계에서는 실제 Kotlin 구현이나 저장소 코드를 변경하지 않는다.
+
+목표:
+- 가변 Worker Profile과 Conversation Scenario를 저장하기 위한 schema를 설계한다.
+- worker_profiles.json과 conversation_scenarios.json의 역할을 정의한다.
+- 기본 Worker 템플릿과 사용자 수정본의 관계를 정의한다.
+- 기존 provider_profiles.json / model_profiles.json과 역할을 분리한다.
+- 백업/복원 포함 정책을 설계한다.
+- 이번 단계에서는 실제 저장/로드 구현을 하지 않는다.
+
+--------------------------------------------------
+1. 설계 범위
+--------------------------------------------------
+
+이번 단계에서 설계:
+
+✔ worker_profiles.json 역할 정의
+✔ conversation_scenarios.json 역할 정의
+✔ schemaVersion 정책 정의
+✔ ConversationWorkerProfile 저장 필드 정의
+✔ ConversationScenarioProfile 저장 필드 정의
+✔ 기본 Worker 템플릿 초기화 정책 정의
+✔ 사용자 수정본 우선 정책 정의
+✔ WorkerProfile과 ProviderProfile / ModelProfile 참조 관계 정의
+✔ WorkerProfile과 Capability override 저장 정책 정의
+✔ System Instruction 저장 정책 정의
+✔ Scenario와 WorkerProfile 연결 정책 정의
+✔ 백업/복원 포함 여부 정의
+✔ migration 정책 초안 정의
+
+이번 단계에서 금지:
+
+❌ 실제 Kotlin 코드 구현
+❌ 저장/로드 코드 구현
+❌ JsonStore 구현 변경
+❌ ProviderSettingsStore 변경
+❌ model_profiles.json 변경
+❌ provider_profiles.json 변경
+❌ ConversationEngine 연결
+❌ ConversationViewModel 연결
+❌ Worker 관리 UI 구현
+❌ System Instruction 편집 UI 구현
+❌ 저장 schema 실제 적용
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 산출물
+--------------------------------------------------
+
+신규 문서 후보:
+
+- MAHA_WORKER_PROFILE_STORAGE_SCHEMA_v1.md
+
+문서에 반드시 포함:
+
+1. 목적
+2. 설계 전제
+3. 저장 파일 목록
+4. worker_profiles.json schema
+5. conversation_scenarios.json schema
+6. schemaVersion 정책
+7. 기본 Worker 템플릿 초기화 정책
+8. 사용자 수정본 우선 정책
+9. ProviderProfile / ModelProfile 참조 정책
+10. Capability override 저장 정책
+11. System Instruction 저장 정책
+12. Scenario / WorkerSet 저장 정책
+13. 백업/복원 정책
+14. migration 정책
+15. 후속 구현 단계
+
+주의:
+- 문서는 후속 구현 기준이다.
+- 실제 JSON 파일 생성은 하지 않는다.
+- 실제 저장 schema를 앱에 적용하지 않는다.
+
+--------------------------------------------------
+3. worker_profiles.json 설계 기준
+--------------------------------------------------
+
+파일명 후보:
+
+- worker_profiles.json
+
+역할:
+- 사용자가 구성한 ConversationWorkerProfile 목록 저장
+- Worker별 System Instruction 저장
+- Worker별 Provider/Model 참조 저장
+- Worker별 capability override 저장
+- Worker별 실행 순서/병렬 가능 여부/의존성 저장
+
+최상위 구조 후보:
+
+{
+  "schemaVersion": 1,
+  "updatedAt": 0,
+  "workerProfiles": []
+}
+
+ConversationWorkerProfile 후보 필드:
+
+- workerProfileId
+- displayName
+- roleLabel
+- roleDescription
+- systemInstruction
+- providerId
+- modelId
+- capabilityOverrides
+- inputPolicy
+- outputPolicy
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- enabled
+- isDefaultTemplate
+- userModified
+- createdAt
+- updatedAt
+
+주의:
+- providerId / modelId는 복사본이 아니라 참조 ID다.
+- Provider/Model 삭제 시 orphan 참조 처리 정책이 필요하다.
+- systemInstruction은 사용자 수정본을 저장한다.
+- 기본 템플릿과 사용자 수정본을 구분해야 한다.
+
+--------------------------------------------------
+4. conversation_scenarios.json 설계 기준
+--------------------------------------------------
+
+파일명 후보:
+
+- conversation_scenarios.json
+
+역할:
+- WorkerProfile 묶음 저장
+- 대화 목적별 Worker Set 저장
+- 기본 실행 방식 저장
+- Orchestrator/Synthesis Worker 지정 저장
+
+최상위 구조 후보:
+
+{
+  "schemaVersion": 1,
+  "updatedAt": 0,
+  "scenarios": []
+}
+
+ConversationScenarioProfile 후보 필드:
+
+- scenarioId
+- name
+- description
+- workerProfileIds
+- defaultExecutionMode
+- orchestratorProfileId
+- synthesisProfileId
+- userEditable
+- isDefaultTemplate
+- userModified
+- enabled
+- createdAt
+- updatedAt
+
+주의:
+- Scenario는 WorkerProfile을 참조한다.
+- WorkerProfile 자체를 중복 저장하지 않는다.
+- 기본 Scenario도 사용자가 복사/수정 가능해야 한다.
+- 기본 Scenario 수정본과 앱 기본 템플릿을 구분해야 한다.
+
+--------------------------------------------------
+5. 기본 Worker 템플릿 초기화 정책
+--------------------------------------------------
+
+기본 템플릿 후보:
+
+- Orchestrator
+- Main Worker
+- Synthesis Worker
+- Research Worker
+- Reviewer Worker
+- RAG Worker
+- Memory Worker
+- Web Search Worker
+- Tool Worker
+- Code Check Worker
+- Comparison Worker
+
+정책:
+- 최초 실행 또는 worker_profiles.json이 없을 때 기본 템플릿을 생성할 수 있다.
+- 기본 템플릿은 사용자 편집 가능해야 한다.
+- 기본 템플릿의 systemInstruction도 사용자가 수정할 수 있어야 한다.
+- 사용자가 수정한 템플릿은 앱 업데이트로 덮어쓰지 않는다.
+- “기본값으로 복원” 기능은 후속 UI 후보로 둔다.
+
+주의:
+- 기본 템플릿은 시작점이다.
+- 실제 실행 기준은 사용자 설정값이다.
+
+--------------------------------------------------
+6. ProviderProfile / ModelProfile 참조 정책
+--------------------------------------------------
+
+정책:
+- WorkerProfile은 providerId와 modelId만 참조한다.
+- Provider/Model 상세 정보는 provider_profiles.json / model_profiles.json에 남긴다.
+- WorkerProfile 안에 API Key, baseUrl, rawModelName 전체 복사본을 저장하지 않는다.
+
+orphan 참조 처리 후보:
+
+- providerId가 사라진 경우:
+  - WorkerProfile은 유지
+  - 실행 후보에서는 제한 표시
+  - userMessage: “이 Worker가 참조하는 Provider를 찾을 수 없습니다.”
+
+- modelId가 사라진 경우:
+  - WorkerProfile은 유지
+  - 실행 후보에서는 제한 표시
+  - userMessage: “이 Worker가 참조하는 Model을 찾을 수 없습니다.”
+
+주의:
+- WorkerProfile을 자동 삭제하지 않는다.
+- 사용자가 복구/재지정할 수 있어야 한다.
+
+--------------------------------------------------
+7. Capability override 저장 정책
+--------------------------------------------------
+
+capabilityOverrides 후보 구조:
+
+{
+  "functionCalling": "UNKNOWN",
+  "webSearch": "UNKNOWN",
+  "codeExecution": "UNKNOWN",
+  "structuredOutput": "UNKNOWN",
+  "thinkingSummary": "UNKNOWN",
+  "ragSearch": "UNKNOWN",
+  "memoryRecall": "UNKNOWN",
+  "fileRead": "UNKNOWN",
+  "fileWrite": "UNKNOWN",
+  "codeCheck": "UNKNOWN",
+  "parallelExecution": "UNKNOWN"
+}
+
+정책:
+- Worker override는 Model capability와 별도다.
+- 사용자가 해당 Worker에서 쓰고 싶은 capability 의도를 저장한다.
+- override가 USER_ENABLED여도 실제 실행 가능을 의미하지 않는다.
+- 실제 실행 가능 여부는 Capability Layer가 Provider/Model/MAHA-native 구현 상태와 함께 판단한다.
+
+주의:
+- 기존 ModelProfile capability V2와 충돌하지 않게 역할을 분리한다.
+
+--------------------------------------------------
+8. System Instruction 저장 정책
+--------------------------------------------------
+
+정책:
+- systemInstruction은 WorkerProfile에 저장한다.
+- 기본 템플릿 instruction과 사용자 수정 instruction을 구분한다.
+- 사용자 수정 instruction은 앱 업데이트로 덮어쓰지 않는다.
+- 긴 instruction 저장을 고려한다.
+- 백업/복원 대상에 포함한다.
+
+필드 후보:
+- systemInstruction
+- defaultSystemInstructionVersion
+- userModified
+- updatedAt
+
+주의:
+- System Instruction에 API Key 등 민감정보를 넣지 않도록 UI에서 안내할 필요가 있다.
+- 이번 단계에서는 UI 구현 금지.
+
+--------------------------------------------------
+9. 백업/복원 정책
+--------------------------------------------------
+
+백업 대상 후보:
+
+- worker_profiles.json
+- conversation_scenarios.json
+
+정책:
+- SAF 백업/복원 대상에 포함해야 한다.
+- Provider/Model과 함께 복원될 때 참조 무결성을 확인해야 한다.
+- Provider/Model이 없는 상태로 WorkerProfile만 복원될 수 있으므로 orphan 처리 정책이 필요하다.
+- 복원 실패 시 전체 앱이 깨지지 않아야 한다.
+
+주의:
+- 이번 단계에서는 SAF 코드 변경 금지.
+- 정책만 문서화한다.
+
+--------------------------------------------------
+10. migration 정책 초안
+--------------------------------------------------
+
+schemaVersion:
+- worker_profiles.json schemaVersion = 1
+- conversation_scenarios.json schemaVersion = 1
+
+migration 후보:
+- schemaVersion 누락 시 v1로 간주하거나 안전 실패 처리
+- 알 수 없는 필드는 무시
+- 필수 필드 누락 시 기본값 보정
+- providerId/modelId orphan은 삭제하지 않고 제한 상태로 표시
+- systemInstruction 누락 시 기본 템플릿 instruction 또는 빈 문자열 사용
+
+주의:
+- 자동 삭제보다 보존 우선
+- 사용자가 직접 복구할 수 있게 해야 한다.
+
+--------------------------------------------------
+11. 기존 기능 유지
+--------------------------------------------------
+
+이번 단계는 설계문서 작성만 한다.
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- Capability Resolver 진단 UI
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+12. 완료 기준
+--------------------------------------------------
+
+- MAHA_WORKER_PROFILE_STORAGE_SCHEMA_v1.md 작성
+- worker_profiles.json schema 설계 완료
+- conversation_scenarios.json schema 설계 완료
+- schemaVersion / migration 정책 초안 작성
+- 기본 Worker 템플릿 초기화 정책 정의
+- 사용자 수정본 우선 정책 정의
+- Provider/Model 참조 및 orphan 처리 정책 정의
+- 백업/복원 포함 정책 정의
+- 실제 코드 변경 없음
+- 실제 저장 schema 적용 없음
+- 빌드 영향 없음 또는 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Worker Profile 최소 Kotlin 모델 skeleton 추가 또는 Worker Profile 저장소 skeleton 설계
+
+==============================
 [2026-05-04 02:20] 가변 Worker Profile 및 System Instruction 설계
 ==============================
 
