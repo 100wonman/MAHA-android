@@ -32,13 +32,25 @@ fun WorkerProfileManagementScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val workerEnvelope = remember(context) {
-        WorkerProfileStore.initialize(context)
-        WorkerProfileStore.loadWorkerProfiles(forceReload = true)
+    var workerEnvelope by remember(context) {
+        mutableStateOf(
+            run {
+                WorkerProfileStore.initialize(context)
+                WorkerProfileStore.loadWorkerProfiles(forceReload = true)
+            }
+        )
     }
-    val scenarioEnvelope = remember(context) {
-        WorkerProfileStore.initialize(context)
-        WorkerProfileStore.loadConversationScenarios(forceReload = true)
+    var scenarioEnvelope by remember(context) {
+        mutableStateOf(
+            run {
+                WorkerProfileStore.initialize(context)
+                WorkerProfileStore.loadConversationScenarios(forceReload = true)
+            }
+        )
+    }
+    val reloadWorkerProfileStore = {
+        workerEnvelope = WorkerProfileStore.loadWorkerProfiles(forceReload = true)
+        scenarioEnvelope = WorkerProfileStore.loadConversationScenarios(forceReload = true)
     }
     val workers = workerEnvelope.workerProfiles.sortedWith(
         compareBy<ConversationWorkerProfile> { it.executionOrder }
@@ -53,6 +65,10 @@ fun WorkerProfileManagementScreen(
         WorkerProfileEditScreen(
             worker = currentEditingWorker,
             onCancel = { editingWorker = null },
+            onSaved = {
+                reloadWorkerProfileStore()
+                editingWorker = null
+            },
             modifier = modifier
         )
         return

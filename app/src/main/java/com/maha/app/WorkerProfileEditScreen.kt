@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 fun WorkerProfileEditScreen(
     worker: ConversationWorkerProfile,
     onCancel: () -> Unit,
+    onSaved: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var displayName by remember(worker.workerProfileId) { mutableStateOf(worker.displayName) }
@@ -52,7 +53,7 @@ fun WorkerProfileEditScreen(
     ) {
         WorkerEditHeaderCard(
             title = "Worker Profile 편집",
-            subtitle = "현재 화면은 편집 UI skeleton입니다. 실제 저장 연결과 대화 실행 연결은 후속 단계에서 지원됩니다.",
+            subtitle = "기본 정보와 System Instruction 저장만 연결됩니다. Provider/Model, capability, policy, 실행 연결은 아직 제외됩니다.",
             dirty = dirty,
             onBack = onCancel
         )
@@ -146,7 +147,32 @@ fun WorkerProfileEditScreen(
 
         WorkerEditActionBar(
             saveMessage = saveMessage,
-            onSave = { saveMessage = "저장 연결은 후속 구현 예정입니다. worker_profiles.json은 변경하지 않습니다." },
+            dirty = dirty,
+            onSave = {
+                val normalizedDisplayName = displayName.trim()
+                if (normalizedDisplayName.isBlank()) {
+                    saveMessage = "displayName은 비워둘 수 없습니다."
+                } else {
+                    val updatedProfile = worker.copy(
+                        displayName = normalizedDisplayName,
+                        roleLabel = roleLabel.trim(),
+                        roleDescription = roleDescription,
+                        systemInstruction = systemInstruction,
+                        enabled = enabledPreview,
+                        userModified = true,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+
+                    runCatching {
+                        WorkerProfileStore.upsertWorkerProfile(updatedProfile)
+                    }.onSuccess {
+                        saveMessage = "저장 완료"
+                        onSaved()
+                    }.onFailure { error ->
+                        saveMessage = "저장 실패: ${error.message ?: "알 수 없는 오류"}"
+                    }
+                }
+            },
             onCancel = onCancel
         )
     }
@@ -306,6 +332,7 @@ private fun WorkerEditNotice(text: String) {
 @Composable
 private fun WorkerEditActionBar(
     saveMessage: String?,
+    dirty: Boolean,
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -341,7 +368,7 @@ private fun WorkerEditActionBar(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "저장 버튼은 UI skeleton입니다. 실제 WorkerProfileStore.upsertWorkerProfile 연결은 후속 단계에서 진행합니다.",
+                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled. Provider/Model, capability, policy, 실행 계획은 기존 값을 보존합니다.",
                 color = Color(0xFFB8BCC6)
             )
         }

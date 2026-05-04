@@ -1,4 +1,384 @@
 ==============================
+[2026-05-04 21:20] Worker Profile 편집 저장 연결
+==============================
+
+[작업]
+- WorkerProfileEditScreen 저장 버튼을 WorkerProfileStore.upsertWorkerProfile에 연결
+- displayName / roleLabel / roleDescription / systemInstruction / enabled 저장
+- 저장 시 userModified=true 및 updatedAt 갱신
+- 저장 후 Worker Profile 관리 화면에 변경 내용 반영
+- providerId/modelId, capabilityOverrides, inputPolicy/outputPolicy 등 기존 필드는 보존
+- Provider/Model 선택 저장, capability/policy 저장 UI, Scenario 편집, ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileEditScreen 저장 버튼을 WorkerProfileStore.upsertWorkerProfile에 연결
+- displayName / roleLabel / roleDescription / systemInstruction / enabled 저장 구현
+- 저장 시 userModified=true 및 updatedAt 갱신
+- 저장 후 Worker Profile 관리 화면으로 복귀하고 목록 reload
+- providerId/modelId/capabilityOverrides/inputPolicy/outputPolicy 등 기존 필드 보존
+
+[저장 연결 테스트]
+- 저장 버튼 upsert 연결: 확인
+- displayName 저장: 확인
+- roleLabel 저장: 확인
+- roleDescription 저장: 확인
+- systemInstruction 저장: 확인
+- enabled 저장: 확인
+- userModified=true: 확인
+- updatedAt 갱신: 확인
+
+[저장 후 반영 테스트]
+- 관리 화면 목록 반영: 확인
+- 상세 접힘 반영: 확인
+- 재진입 후 유지: 확인
+- worker_profiles.json 변경 확인: 확인
+- 취소 시 미저장: 확인
+
+[보존 필드 테스트]
+- providerId/modelId 유지: 유지
+- capabilityOverrides 유지: 유지
+- inputPolicy/outputPolicy 유지: 유지
+- executionOrder 유지: 유지
+- canRunInParallel 유지: 유지
+- dependsOnWorkerIds 유지: 유지
+- isDefaultTemplate 유지: 유지
+- createdAt 유지: 유지
+
+[오류 처리 테스트]
+- 저장 실패 crash 없음: runCatching 처리
+- 빈 displayName 처리: 저장 차단
+- 긴 systemInstruction 저장: 확인 필요
+- 줄바꿈 보존: 확인 필요
+- dirty 상태: 유지
+
+[연결 금지 확인]
+- Provider/Model 선택 저장 미구현: 유지
+- capability override 저장 UI 미구현: 유지
+- InputPolicy/OutputPolicy 저장 UI 미구현: 유지
+- Scenario 편집 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: 저장 후 reload만 추가
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker Profile 편집 저장 연결
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- System Instruction은 Worker별 사용자 편집 가능 설정값이다.
+- Provider/Model은 Worker가 사용하는 실행 엔진이며 Worker별로 선택 가능해야 한다.
+- 이번 단계는 Worker 기본 정보와 System Instruction 저장 연결까지만 수행한다.
+
+목표:
+- WorkerProfileEditScreen의 저장 버튼을 WorkerProfileStore.upsertWorkerProfile에 연결한다.
+- displayName / roleLabel / roleDescription / systemInstruction / enabled 값을 실제 저장한다.
+- 저장 후 Worker Profile 관리 화면에 변경 내용이 반영되도록 한다.
+- Provider/Model 선택, capability override, InputPolicy/OutputPolicy 저장은 이번 단계에서 제외하거나 기존 값 유지한다.
+- ConversationEngine / Provider 호출 / RAG / Web Search / Worker 실행에는 연결하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ WorkerProfileEditScreen 저장 버튼 실제 연결
+✔ displayName 저장
+✔ roleLabel 저장
+✔ roleDescription 저장
+✔ systemInstruction 저장
+✔ enabled 저장
+✔ 저장 시 userModified=true 설정
+✔ 저장 시 updatedAt 갱신
+✔ 기존 providerId/modelId 값 유지
+✔ 기존 capabilityOverrides 값 유지
+✔ 기존 inputPolicy/outputPolicy 값 유지
+✔ 저장 성공 후 관리 화면 복귀 또는 저장 완료 상태 표시
+✔ 저장 후 Worker Profile 관리 화면 목록/상세에 반영
+✔ 취소 시 저장하지 않고 복귀
+✔ 변경사항 감지 dirty 상태 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ Provider/Model 선택 저장 구현
+❌ capability override 저장 UI 구현
+❌ InputPolicy / OutputPolicy 저장 UI 구현
+❌ Scenario 편집 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt 필요 시
+- WorkerProfileStore.kt 필요 시 최소 보정
+
+주의:
+- WorkerProfileStore의 기존 upsertWorkerProfile 함수를 우선 사용한다.
+- 저장소 구조를 크게 바꾸지 않는다.
+- worker_profiles.json 저장은 기존 WorkerProfileStore 구현 흐름을 따른다.
+- conversation_scenarios.json은 이번 단계에서 변경하지 않는다.
+
+--------------------------------------------------
+3. 저장 필드 정책
+--------------------------------------------------
+
+저장 대상:
+
+- displayName
+- roleLabel
+- roleDescription
+- systemInstruction
+- enabled
+- userModified=true
+- updatedAt=현재 시각
+
+보존 대상:
+
+- workerProfileId
+- providerId
+- modelId
+- capabilityOverrides
+- inputPolicy
+- outputPolicy
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- isDefaultTemplate
+- createdAt
+
+주의:
+- Provider/Model 선택 UI는 아직 placeholder이므로 기존 값 보존
+- capability/policy UI는 아직 placeholder이므로 기존 값 보존
+- 기본 템플릿이라도 사용자가 저장하면 userModified=true
+- isDefaultTemplate은 유지한다
+
+--------------------------------------------------
+4. 저장 / 취소 UX 정책
+--------------------------------------------------
+
+저장:
+- 저장 버튼 클릭 시 WorkerProfileStore.upsertWorkerProfile 호출
+- 성공 시 저장 완료 안내 표시 또는 관리 화면으로 복귀
+- 저장 후 목록에서 변경 내용 확인 가능해야 함
+- 저장 실패 시 crash 없이 오류 문구 표시
+
+취소:
+- 변경사항이 없으면 바로 복귀
+- 변경사항이 있으면 폐기 확인 Dialog 가능
+- 구현 부담이 있으면 최소한 저장 없이 복귀 유지
+
+dirty 상태:
+- 원본 snapshot과 현재 입력값 비교
+- 변경사항이 있으면 dirty 표시
+- 저장 후 dirty=false
+
+주의:
+- 자동 저장 금지
+- 명시적 저장 유지
+
+--------------------------------------------------
+5. System Instruction 저장 정책
+--------------------------------------------------
+
+정책:
+- systemInstruction은 WorkerProfile에 저장한다.
+- 긴 텍스트 저장 가능해야 한다.
+- 줄바꿈 보존
+- 민감정보 안내 문구 유지
+- 저장 후 다시 진입했을 때 수정 내용이 보여야 한다.
+
+주의:
+- API Key/비밀번호를 자동 감지하거나 차단하는 기능은 이번 단계에서 구현하지 않는다.
+- 안내 문구만 유지한다.
+
+--------------------------------------------------
+6. 저장 후 화면 반영 정책
+--------------------------------------------------
+
+필수:
+- 저장 후 Worker Profile 관리 화면의 Worker 카드에 변경된 displayName/roleLabel 반영
+- 상세 접힘 영역의 roleDescription/systemInstruction 반영
+- 앱 재진입 또는 화면 재진입 시 worker_profiles.json에서 변경 내용 로드 가능
+
+허용:
+- 저장 후 관리 화면으로 복귀
+- 또는 현재 편집 화면에 저장 완료 메시지 표시 후 사용자가 뒤로가기
+
+권장:
+- 저장 후 관리 화면으로 복귀하고 목록 갱신
+
+--------------------------------------------------
+7. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 상세 placeholder
+- 상세 하단 접기 버튼
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+8. 테스트 기준
+--------------------------------------------------
+
+A. 저장 연결
+- 저장 버튼 upsert 연결:
+- displayName 저장:
+- roleLabel 저장:
+- roleDescription 저장:
+- systemInstruction 저장:
+- enabled 저장:
+- userModified=true:
+- updatedAt 갱신:
+
+B. 저장 후 반영
+- 관리 화면 목록 반영:
+- 상세 접힘 반영:
+- 재진입 후 유지:
+- worker_profiles.json 변경 확인:
+- 취소 시 미저장:
+
+C. 보존 필드
+- providerId/modelId 유지:
+- capabilityOverrides 유지:
+- inputPolicy/outputPolicy 유지:
+- executionOrder 유지:
+- canRunInParallel 유지:
+- dependsOnWorkerIds 유지:
+- isDefaultTemplate 유지:
+- createdAt 유지:
+
+D. 오류 처리
+- 저장 실패 crash 없음:
+- 빈 displayName 처리:
+- 긴 systemInstruction 저장:
+- 줄바꿈 보존:
+- dirty 상태:
+
+E. 연결 금지 확인
+- Provider/Model 선택 저장 미구현:
+- capability override 저장 UI 미구현:
+- InputPolicy/OutputPolicy 저장 UI 미구현:
+- Scenario 편집 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+F. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+9. 금지 사항
+--------------------------------------------------
+
+❌ Provider/Model 선택 저장 구현 금지
+❌ capability override 저장 UI 구현 금지
+❌ InputPolicy/OutputPolicy 저장 UI 구현 금지
+❌ Scenario 편집 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- WorkerProfileEditScreen 저장 버튼이 WorkerProfileStore.upsertWorkerProfile에 연결됨
+- 기본 정보와 System Instruction이 실제 저장됨
+- 저장 후 관리 화면과 재진입 시 변경 내용 유지
+- 기존 Provider/Model/capability/policy 필드는 보존
+- ConversationEngine 및 실행 흐름 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Provider/Model 선택 저장 UI 구현 또는 capability override 편집 저장 설계
+
+==============================
 [2026-05-04 21:00] Worker Profile 편집 UI skeleton 추가
 ==============================
 
