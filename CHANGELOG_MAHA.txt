@@ -1,4 +1,471 @@
 ==============================
+[2026-05-04 21:48] Worker capability override 편집 저장 UI 구현
+==============================
+
+[작업]
+- WorkerProfileEditScreen의 capability override placeholder를 실제 편집 UI로 보정
+- CapabilityLayerStatus 선택 UI 추가
+- functionCalling / webSearch / codeExecution / structuredOutput / thinkingSummary 저장
+- ragSearch / memoryRecall / fileRead / fileWrite / codeCheck / parallelExecution 저장
+- Worker override는 실제 실행 가능 보장이 아니라 사용자 의도 설정이라는 안내 유지
+- System Instruction 줄바꿈 저장/재진입 확인
+- InputPolicy / OutputPolicy / Scenario 편집 / ConversationEngine 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- WorkerProfileEditScreen의 Capability Override 섹션을 실제 선택 UI로 보정
+- CapabilityLayerStatus 이전/다음 선택 방식 추가
+- functionCalling/webSearch/codeExecution/structuredOutput/thinkingSummary/ragSearch/memoryRecall/fileRead/fileWrite/codeCheck/parallelExecution 저장 연결
+- 저장 시 capabilityOverrides, userModified=true, updatedAt 반영
+- Provider/Model capability와 Worker override가 다르다는 안내 문구 유지
+
+[capability override UI 테스트]
+- capability override 섹션: 확인
+- CapabilityLayerStatus 선택: 확인
+- functionCalling: 확인
+- webSearch: 확인
+- codeExecution: 확인
+- structuredOutput: 확인
+- thinkingSummary: 확인
+- ragSearch: 확인
+- memoryRecall: 확인
+- fileRead/fileWrite: 확인
+- codeCheck: 확인
+- parallelExecution: 확인
+- 안내 문구: 유지
+
+[저장 연결 테스트]
+- functionCalling 저장: 확인
+- webSearch 저장: 확인
+- codeExecution 저장: 확인
+- structuredOutput 저장: 확인
+- thinkingSummary 저장: 확인
+- ragSearch 저장: 확인
+- memoryRecall 저장: 확인
+- fileRead/fileWrite 저장: 확인
+- codeCheck 저장: 확인
+- parallelExecution 저장: 확인
+- 저장 후 관리 화면 반영: 확인
+- 재진입 후 유지: 확인
+- worker_profiles.json 반영: 확인
+
+[기존 저장 유지 테스트]
+- displayName 저장 유지: 유지
+- roleLabel 저장 유지: 유지
+- roleDescription 저장 유지: 유지
+- systemInstruction 저장 유지: 유지
+- enabled 저장 유지: 유지
+- providerId/modelId 저장 유지: 유지
+- inputPolicy/outputPolicy 유지: 유지
+
+[System Instruction 확인 테스트]
+- 줄바꿈 보존: 유지
+- 재진입 후 줄바꿈 유지: 확인
+
+[연결 금지 확인]
+- InputPolicy 저장 UI 미구현: 유지
+- OutputPolicy 저장 UI 미구현: 유지
+- Scenario 편집 미구현: 유지
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Worker 실행 미구현: 유지
+- Provider 호출 변경 없음: 유지
+- RAG/Web Search 변경 없음: 유지
+- SAF 코드 변경 없음: 유지
+
+[기존 기능 영향]
+- Worker Profile 관리 UI: capability override 선택 저장만 추가
+- Capability Resolver 진단 UI: 변경 없음
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Worker capability override 편집 저장 UI 구현
+
+상위 목적 기준:
+- MAHA_CORE_INTENT_v1.2 기준을 유지한다.
+- Worker는 고정 개체가 아니라 사용자가 추가/삭제/수정 가능한 Profile이다.
+- capability override는 Worker별 사용자 의도 설정이다.
+- override가 USER_ENABLED 또는 AVAILABLE이어도 실제 실행 가능을 의미하지 않는다.
+- 실제 실행 가능 여부는 Provider/Model 상태와 MAHA 구현 상태를 Capability Layer가 판단한다.
+- 이번 단계는 WorkerProfileEditScreen에서 capability override 편집/저장만 수행한다.
+- ConversationEngine 연결과 Worker 실행은 하지 않는다.
+
+목표:
+- WorkerProfileEditScreen의 capability override placeholder를 실제 편집 UI로 보정한다.
+- functionCalling / webSearch / codeExecution / structuredOutput / thinkingSummary / ragSearch / memoryRecall / fileRead / fileWrite / codeCheck / parallelExecution 값을 편집하고 저장한다.
+- CapabilityLayerStatus 값을 사용한다.
+- Provider/Model capability와 Worker override가 다르다는 안내를 유지한다.
+- InputPolicy / OutputPolicy 저장은 이번 단계에서 제외한다.
+- ConversationEngine / Provider 호출 / RAG / Web Search / Worker 실행에는 연결하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ WorkerProfileEditScreen capability override 편집 UI 구현
+✔ CapabilityLayerStatus 선택 UI 구현
+✔ functionCalling 저장
+✔ webSearch 저장
+✔ codeExecution 저장
+✔ structuredOutput 저장
+✔ thinkingSummary 저장
+✔ ragSearch 저장
+✔ memoryRecall 저장
+✔ fileRead 저장
+✔ fileWrite 저장
+✔ codeCheck 저장
+✔ parallelExecution 저장
+✔ 저장 시 capabilityOverrides 값 반영
+✔ 저장 시 userModified=true 유지
+✔ 저장 시 updatedAt 갱신
+✔ Provider/Model capability와 다르다는 안내 문구 유지
+✔ System Instruction 재진입 후 줄바꿈 유지 재확인
+✔ 기존 기본 정보/System Instruction/Provider/Model 저장 흐름 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ InputPolicy 저장 UI 구현
+❌ OutputPolicy 저장 UI 구현
+❌ Scenario 편집 구현
+❌ ConversationEngine 연결
+❌ ConversationViewModel 대화 흐름 연결
+❌ Worker 실행 구현
+❌ 병렬 실행 구현
+❌ Tool 실행 구현
+❌ Provider 호출 로직 변경
+❌ 실제 capability 실행 가능 처리
+❌ RAG 구조 변경
+❌ Web Search 구조 변경
+❌ SAF 백업/복원 코드 변경
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일 후보
+--------------------------------------------------
+
+대상 파일:
+
+- WorkerProfileEditScreen.kt
+- WorkerProfileManagementScreen.kt 필요 시
+
+참조 파일:
+
+- WorkerProfileModels.kt
+- CapabilityLayerModels.kt
+
+주의:
+- CapabilityLayerStatus를 사용한다.
+- 기존 ProviderSettingsModels.kt의 CapabilityStatus와 혼동하지 않는다.
+- ModelProfile capability V2 저장 구조를 변경하지 않는다.
+- Worker override는 WorkerProfile.capabilityOverrides에만 저장한다.
+
+--------------------------------------------------
+3. capability override 편집 UI 정책
+--------------------------------------------------
+
+편집 대상:
+
+- functionCalling
+- webSearch
+- codeExecution
+- structuredOutput
+- thinkingSummary
+- ragSearch
+- memoryRecall
+- fileRead
+- fileWrite
+- codeCheck
+- parallelExecution
+
+상태 후보:
+
+- UNKNOWN
+- AVAILABLE
+- LIMITED
+- NOT_AVAILABLE
+- NOT_IMPLEMENTED
+- NEED_USER_PERMISSION
+- NEED_API_KEY
+- PROVIDER_NATIVE_ONLY
+- MAHA_NATIVE_AVAILABLE
+- USER_ENABLED
+
+UI 방식 후보:
+
+- dropdown
+- segmented selector
+- compact row selector
+- Dialog selector
+
+권장:
+- 모바일 가시성을 위해 capability override 섹션은 접힘 유지
+- 각 항목은 label + 현재 상태 + 선택 UI로 표시
+- 너무 길면 고급 설정처럼 접힘 영역에 둔다
+
+주의:
+- 상태값이 많아 화면이 길어질 수 있으므로 compact 표시를 우선한다.
+- 기본값은 기존 WorkerProfile.capabilityOverrides 값을 사용한다.
+
+--------------------------------------------------
+4. 안내 문구 정책
+--------------------------------------------------
+
+capability override 섹션에 반드시 다음 의미를 표시한다.
+
+문구 후보:
+
+“이 설정은 이 Worker가 사용하길 원하는 capability입니다. 실제 실행 가능 여부는 Provider/Model capability, API Key, MAHA 구현 상태를 Capability Layer가 함께 판단합니다.”
+
+또는 짧게:
+
+“Worker override는 실행 의도입니다. 실제 실행 가능 보장은 아닙니다.”
+
+주의:
+- Provider/Model capability와 혼동하지 않게 한다.
+- USER_ENABLED를 실제 실행 가능으로 표시하지 않는다.
+- Tool/Web Search 실행을 실제로 켜지 않는다.
+
+--------------------------------------------------
+5. 저장 정책
+--------------------------------------------------
+
+저장 대상:
+
+- 기존 저장 대상 유지:
+  - displayName
+  - roleLabel
+  - roleDescription
+  - systemInstruction
+  - enabled
+  - providerId
+  - modelId
+
+- 신규 저장 대상:
+  - capabilityOverrides.functionCalling
+  - capabilityOverrides.webSearch
+  - capabilityOverrides.codeExecution
+  - capabilityOverrides.structuredOutput
+  - capabilityOverrides.thinkingSummary
+  - capabilityOverrides.ragSearch
+  - capabilityOverrides.memoryRecall
+  - capabilityOverrides.fileRead
+  - capabilityOverrides.fileWrite
+  - capabilityOverrides.codeCheck
+  - capabilityOverrides.parallelExecution
+
+- 저장 시:
+  - userModified=true
+  - updatedAt=현재 시각
+
+보존 대상:
+
+- workerProfileId
+- inputPolicy
+- outputPolicy
+- executionOrder
+- canRunInParallel
+- dependsOnWorkerIds
+- isDefaultTemplate
+- createdAt
+
+주의:
+- InputPolicy/OutputPolicy는 이번 단계에서 기존 값 보존
+- capability override 저장이 실제 기능 실행으로 이어지면 안 됨
+
+--------------------------------------------------
+6. 저장 후 반영 정책
+--------------------------------------------------
+
+필수:
+- 저장 후 Worker Profile 관리 화면의 상세 접힘 영역에서 capability override 변경 확인 가능
+- 재진입 후 capability override 값 유지
+- worker_profiles.json에 capabilityOverrides 값 반영
+
+허용:
+- 저장 후 관리 화면으로 복귀
+- 또는 저장 완료 메시지 표시 후 현재 화면 유지
+
+권장:
+- 기존 흐름처럼 저장 후 관리 화면으로 복귀하고 목록 reload
+
+--------------------------------------------------
+7. System Instruction 확인 보정
+--------------------------------------------------
+
+직전 확인 보류 항목을 이번 단계에서 재확인한다.
+
+확인:
+- systemInstruction 줄바꿈 저장
+- 저장 후 재진입 시 줄바꿈 유지
+
+주의:
+- 별도 기능 확장 금지
+- 기존 multiline 저장 흐름 확인 중심
+
+--------------------------------------------------
+8. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- Worker Profile 관리 진입 카드
+- Worker / Scenario 탭 구조
+- Worker 목록 표시
+- Scenario 목록 표시
+- Worker 기본 정보 저장
+- System Instruction 저장
+- Provider/Model 선택 저장
+- WorkerProfileStore 저장/로드
+- Capability Resolver 진단 UI
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- Provider 관리
+- Model 관리
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+9. 테스트 기준
+--------------------------------------------------
+
+A. capability override UI
+- capability override 섹션:
+- CapabilityLayerStatus 선택:
+- functionCalling:
+- webSearch:
+- codeExecution:
+- structuredOutput:
+- thinkingSummary:
+- ragSearch:
+- memoryRecall:
+- fileRead/fileWrite:
+- codeCheck:
+- parallelExecution:
+- 안내 문구:
+
+B. 저장 연결
+- functionCalling 저장:
+- webSearch 저장:
+- codeExecution 저장:
+- structuredOutput 저장:
+- thinkingSummary 저장:
+- ragSearch 저장:
+- memoryRecall 저장:
+- fileRead/fileWrite 저장:
+- codeCheck 저장:
+- parallelExecution 저장:
+- 저장 후 관리 화면 반영:
+- 재진입 후 유지:
+- worker_profiles.json 반영:
+
+C. 기존 저장 유지
+- displayName 저장 유지:
+- roleLabel 저장 유지:
+- roleDescription 저장 유지:
+- systemInstruction 저장 유지:
+- enabled 저장 유지:
+- providerId/modelId 저장 유지:
+- inputPolicy/outputPolicy 유지:
+
+D. System Instruction 확인
+- 줄바꿈 보존:
+- 재진입 후 줄바꿈 유지:
+
+E. 연결 금지 확인
+- InputPolicy 저장 UI 미구현:
+- OutputPolicy 저장 UI 미구현:
+- Scenario 편집 미구현:
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- Worker 실행 미구현:
+- Provider 호출 변경 없음:
+- RAG/Web Search 변경 없음:
+- SAF 코드 변경 없음:
+
+F. 기존 기능 영향
+- Worker Profile 관리 UI:
+- Capability Resolver 진단 UI:
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+10. 금지 사항
+--------------------------------------------------
+
+❌ InputPolicy 저장 UI 구현 금지
+❌ OutputPolicy 저장 UI 구현 금지
+❌ Scenario 편집 구현 금지
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ Worker 실행 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ capability override를 실제 실행 가능 선언으로 처리 금지
+❌ Provider 호출 변경 금지
+❌ Web Search 변경 금지
+❌ RAG 구조 변경 금지
+❌ Provider/Model schema 변경 금지
+❌ SAF 백업/복원 코드 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- WorkerProfileEditScreen에서 capability override 편집 가능
+- CapabilityLayerStatus 값이 WorkerProfile.capabilityOverrides에 저장됨
+- 저장 후 관리 화면과 재진입 시 변경 내용 유지
+- Provider/Model capability와 Worker override의 차이를 안내
+- System Instruction 줄바꿈 보존 재확인
+- InputPolicy/OutputPolicy/Scenario/ConversationEngine 미연결 유지
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+InputPolicy / OutputPolicy 편집 저장 UI 구현 또는 Scenario 편집 UI 설계
+
+==============================
 [2026-05-04 21:30] Worker Profile Provider/Model 선택 저장 UI 구현
 ==============================
 

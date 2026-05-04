@@ -42,6 +42,17 @@ fun WorkerProfileEditScreen(
     var enabledPreview by remember(worker.workerProfileId) { mutableStateOf(worker.enabled) }
     var selectedProviderId by remember(worker.workerProfileId) { mutableStateOf(worker.providerId) }
     var selectedModelId by remember(worker.workerProfileId) { mutableStateOf(worker.modelId) }
+    var functionCallingOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.functionCalling) }
+    var webSearchOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.webSearch) }
+    var codeExecutionOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.codeExecution) }
+    var structuredOutputOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.structuredOutput) }
+    var thinkingSummaryOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.thinkingSummary) }
+    var ragSearchOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.ragSearch) }
+    var memoryRecallOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.memoryRecall) }
+    var fileReadOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.fileRead) }
+    var fileWriteOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.fileWrite) }
+    var codeCheckOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.codeCheck) }
+    var parallelExecutionOverride by remember(worker.workerProfileId) { mutableStateOf(worker.capabilityOverrides.parallelExecution) }
     var saveMessage by remember(worker.workerProfileId) { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
@@ -61,6 +72,19 @@ fun WorkerProfileEditScreen(
             modelProfiles.filter { it.providerId == providerId }
         } ?: modelProfiles
     }
+    val capabilityOverridesPreview = WorkerCapabilityOverrides(
+        functionCalling = functionCallingOverride,
+        webSearch = webSearchOverride,
+        codeExecution = codeExecutionOverride,
+        structuredOutput = structuredOutputOverride,
+        thinkingSummary = thinkingSummaryOverride,
+        ragSearch = ragSearchOverride,
+        memoryRecall = memoryRecallOverride,
+        fileRead = fileReadOverride,
+        fileWrite = fileWriteOverride,
+        codeCheck = codeCheckOverride,
+        parallelExecution = parallelExecutionOverride,
+    )
 
     val dirty = displayName != worker.displayName ||
             roleLabel != worker.roleLabel ||
@@ -68,7 +92,8 @@ fun WorkerProfileEditScreen(
             systemInstruction != worker.systemInstruction ||
             enabledPreview != worker.enabled ||
             selectedProviderId != worker.providerId ||
-            selectedModelId != worker.modelId
+            selectedModelId != worker.modelId ||
+            capabilityOverridesPreview != worker.capabilityOverrides
 
     Column(
         modifier = modifier,
@@ -76,7 +101,7 @@ fun WorkerProfileEditScreen(
     ) {
         WorkerEditHeaderCard(
             title = "Worker Profile 편집",
-            subtitle = "기본 정보, System Instruction, Provider/Model 참조 저장만 연결됩니다. capability, policy, 실행 연결은 아직 제외됩니다.",
+            subtitle = "기본 정보, System Instruction, Provider/Model, capability override 저장만 연결됩니다. policy, 실행 연결은 아직 제외됩니다.",
             dirty = dirty,
             onBack = onCancel
         )
@@ -183,8 +208,63 @@ fun WorkerProfileEditScreen(
         }
 
         WorkerEditSection(title = "Capability Override", initiallyExpanded = false) {
-            WorkerEditKeyValue("현재 capabilityOverrides", worker.capabilityOverrides.toReadableSummary())
-            WorkerEditNotice("이 설정은 Worker가 사용하길 원하는 capability입니다. 실제 실행 가능 여부는 Provider/Model 상태와 MAHA 구현 상태를 함께 판단합니다.")
+            WorkerEditNotice("Worker override는 실행 의도입니다. USER_ENABLED 또는 AVAILABLE이어도 실제 실행 가능 보장은 아니며, Provider/Model capability, API Key, MAHA 구현 상태를 Capability Layer가 함께 판단합니다.")
+            WorkerCapabilityStatusSelector(
+                label = "functionCalling",
+                value = functionCallingOverride,
+                onValueChange = { functionCallingOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "webSearch",
+                value = webSearchOverride,
+                onValueChange = { webSearchOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "codeExecution",
+                value = codeExecutionOverride,
+                onValueChange = { codeExecutionOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "structuredOutput",
+                value = structuredOutputOverride,
+                onValueChange = { structuredOutputOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "thinkingSummary",
+                value = thinkingSummaryOverride,
+                onValueChange = { thinkingSummaryOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "ragSearch",
+                value = ragSearchOverride,
+                onValueChange = { ragSearchOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "memoryRecall",
+                value = memoryRecallOverride,
+                onValueChange = { memoryRecallOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "fileRead",
+                value = fileReadOverride,
+                onValueChange = { fileReadOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "fileWrite",
+                value = fileWriteOverride,
+                onValueChange = { fileWriteOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "codeCheck",
+                value = codeCheckOverride,
+                onValueChange = { codeCheckOverride = it }
+            )
+            WorkerCapabilityStatusSelector(
+                label = "parallelExecution",
+                value = parallelExecutionOverride,
+                onValueChange = { parallelExecutionOverride = it }
+            )
+            WorkerEditKeyValue("저장될 capabilityOverrides", capabilityOverridesPreview.toReadableSummary())
         }
 
         WorkerEditSection(title = "InputPolicy", initiallyExpanded = false) {
@@ -220,6 +300,7 @@ fun WorkerProfileEditScreen(
                         enabled = enabledPreview,
                         providerId = selectedProviderId,
                         modelId = selectedModelId,
+                        capabilityOverrides = capabilityOverridesPreview,
                         userModified = true,
                         updatedAt = System.currentTimeMillis(),
                     )
@@ -470,6 +551,59 @@ private fun WorkerSelectionButton(
     }
 }
 
+
+@Composable
+private fun WorkerCapabilityStatusSelector(
+    label: String,
+    value: CapabilityLayerStatus,
+    onValueChange: (CapabilityLayerStatus) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        WorkerEditKeyValue(label, value.name)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(
+                onClick = { onValueChange(value.previousCapabilityLayerStatus()) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(text = "이전", color = Color(0xFFBFD7FF))
+            }
+            TextButton(
+                onClick = { onValueChange(value.nextCapabilityLayerStatus()) },
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
+            ) {
+                Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(
+            text = "선택 가능한 값: ${CapabilityLayerStatus.values().joinToString { it.name }}",
+            color = Color(0xFFB8BCC6)
+        )
+    }
+}
+
+private fun CapabilityLayerStatus.nextCapabilityLayerStatus(): CapabilityLayerStatus {
+    val values = CapabilityLayerStatus.values()
+    val nextIndex = (ordinal + 1) % values.size
+    return values[nextIndex]
+}
+
+private fun CapabilityLayerStatus.previousCapabilityLayerStatus(): CapabilityLayerStatus {
+    val values = CapabilityLayerStatus.values()
+    val previousIndex = if (ordinal == 0) values.lastIndex else ordinal - 1
+    return values[previousIndex]
+}
+
 @Composable
 private fun WorkerEditPlaceholderRow(
     label: String,
@@ -560,7 +694,7 @@ private fun WorkerEditActionBar(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled, providerId, modelId. capability, policy, 실행 계획은 기존 값을 보존합니다.",
+                text = "저장 대상: displayName, roleLabel, roleDescription, systemInstruction, enabled, providerId, modelId, capabilityOverrides. input/output policy와 실행 계획은 기존 값을 보존합니다.",
                 color = Color(0xFFB8BCC6)
             )
         }
