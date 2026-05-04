@@ -328,6 +328,148 @@ object CapabilityResolver {
         )
     }
 
+
+    fun buildPlanForScenario(
+        userInput: String,
+        scenario: ConversationScenarioProfile,
+        workerProfiles: List<ConversationWorkerProfile>,
+        requestId: String = "scenario_preview_${System.currentTimeMillis()}"
+    ): OrchestratorPlan {
+        val requirements = inferRequirements(userInput)
+        val resolutions = resolveRequirements(requirements = requirements)
+        val userInputExecutionMode = recommendExecutionMode(requirements)
+        val workersById = workerProfiles.associateBy { it.workerProfileId }
+        val orderedScenarioWorkerIds = scenario.workerProfileIds
+        val orderedScenarioWorkers = orderedScenarioWorkerIds.mapNotNull { workersById[it] }
+        val scenarioLimitations = mutableListOf<LimitationReason>()
+
+        scenarioLimitations.add(
+            previewOnlyLimitation(
+                technicalMessage = "buildPlanForScenario preview only. actualProviderCall=false; workerExecution=false; previewOnly=true; ragExecuted=false; webSearchExecuted=false; toolExecuted=false; scenarioId=${scenario.scenarioId}; scenarioDefaultExecutionMode=${scenario.defaultExecutionMode.name}; userInputRecommendedExecutionMode=${userInputExecutionMode.name}"
+            )
+        )
+
+        if (!scenario.enabled) {
+            scenarioLimitations.add(
+                scenarioLimitation(
+                    reasonCode = "SCENARIO_DISABLED",
+                    userMessage = "선택한 Scenario가 비활성 상태입니다.",
+                    technicalMessage = "scenarioId=${scenario.scenarioId}",
+                    recoverable = true
+                )
+            )
+        }
+
+        if (orderedScenarioWorkerIds.isEmpty()) {
+            scenarioLimitations.add(
+                scenarioLimitation(
+                    reasonCode = "SCENARIO_HAS_NO_WORKERS",
+                    userMessage = "Scenario에 포함된 Worker가 없습니다.",
+                    technicalMessage = "scenarioId=${scenario.scenarioId}",
+                    recoverable = true
+                )
+            )
+        }
+
+        orderedScenarioWorkerIds.forEach { workerId ->
+            if (!workersById.containsKey(workerId)) {
+                scenarioLimitations.add(
+                    workerLimitation(
+                        reasonCode = "WORKER_PROFILE_NOT_FOUND",
+                        userMessage = "Scenario가 참조하는 Worker를 찾을 수 없습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; missingWorkerProfileId=$workerId",
+                        recoverable = true
+                    )
+                )
+            }
+        }
+
+        orderedScenarioWorkers.forEach { worker ->
+            scenarioLimitations.addAll(profileLimitationsFor(worker))
+        }
+
+        scenario.orchestratorProfileId?.let { orchestratorId ->
+            if (!workersById.containsKey(orchestratorId)) {
+                scenarioLimitations.add(
+                    workerLimitation(
+                        reasonCode = "ORCHESTRATOR_WORKER_NOT_FOUND",
+                        userMessage = "Scenario가 지정한 Orchestrator Worker를 찾을 수 없습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; orchestratorProfileId=$orchestratorId",
+                        recoverable = true
+                    )
+                )
+            } else if (orchestratorId !in orderedScenarioWorkerIds) {
+                scenarioLimitations.add(
+                    workerLimitation(
+                        reasonCode = "ORCHESTRATOR_NOT_IN_SCENARIO_WORKER_SET",
+                        userMessage = "Orchestrator로 지정된 Worker가 현재 Scenario WorkerSet에 포함되어 있지 않습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; orchestratorProfileId=$orchestratorId",
+                        recoverable = true
+                    )
+                )
+            }
+        }
+
+        scenario.synthesisProfileId?.let { synthesisId ->
+            if (!workersById.containsKey(synthesisId)) {
+                scenarioLimitations.add(
+                    workerLimitation(
+                        reasonCode = "SYNTHESIS_WORKER_NOT_FOUND",
+                        userMessage = "Scenario가 지정한 Synthesis Worker를 찾을 수 없습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; synthesisProfileId=$synthesisId",
+                        recoverable = true
+                    )
+                )
+            } else if (synthesisId !in orderedScenarioWorkerIds) {
+                scenarioLimitations.add(
+                    workerLimitation(
+                        reasonCode = "SYNTHESIS_NOT_IN_SCENARIO_WORKER_SET",
+                        userMessage = "Synthesis로 지정된 Worker가 현재 Scenario WorkerSet에 포함되어 있지 않습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; synthesisProfileId=$synthesisId",
+                        recoverable = true
+                    )
+                )
+            }
+        }
+
+        val scenarioWorkerPlans = buildScenarioWorkerPlans(
+            scenario = scenario,
+            orderedScenarioWorkerIds = orderedScenarioWorkerIds,
+            workersById = workersById,
+            requirements = requirements
+        )
+
+        val executionMode = recommendScenarioPreviewExecutionMode(
+            scenario = scenario,
+            requirements = requirements,
+            userInputExecutionMode = userInputExecutionMode,
+            scenarioWorkers = orderedScenarioWorkers
+        )
+
+        val capabilityLimitations = resolutions.mapNotNull { it.limitationReason }
+        val allLimitations = (scenarioLimitations + capabilityLimitations).dedupeLimitations()
+        val planStatus = inferScenarioPreviewGoalStatus(
+            scenario = scenario,
+            scenarioWorkerPlans = scenarioWorkerPlans,
+            limitations = allLimitations
+        )
+
+        return OrchestratorPlan(
+            planId = "scenario_plan_${System.currentTimeMillis()}",
+            requestId = requestId,
+            userInputPreview = userInput.trim().take(160),
+            requestedCapabilities = requirements,
+            resolvedCapabilities = resolutions,
+            executionMode = executionMode,
+            userGoalStatus = planStatus,
+            limitationReasons = allLimitations,
+            workerPlans = scenarioWorkerPlans,
+            providerNativeUsed = resolutions.any { it.source == CapabilitySource.PROVIDER_NATIVE },
+            mahaNativeUsed = resolutions.any { it.source == CapabilitySource.MAHA_NATIVE },
+            createdAt = System.currentTimeMillis()
+        )
+    }
+
     private fun buildWorkerPlans(
         requirements: List<CapabilityRequirement>,
         resolutions: List<CapabilityResolution>,
@@ -726,6 +868,281 @@ object CapabilityResolver {
         capabilityType: CapabilityType
     ): LimitationReason? {
         return resolutions.firstOrNull { it.requirement.capabilityType == capabilityType }?.limitationReason
+    }
+
+
+    private fun buildScenarioWorkerPlans(
+        scenario: ConversationScenarioProfile,
+        orderedScenarioWorkerIds: List<String>,
+        workersById: Map<String, ConversationWorkerProfile>,
+        requirements: List<CapabilityRequirement>
+    ): List<WorkerPlan> {
+        if (orderedScenarioWorkerIds.isEmpty()) {
+            return emptyList()
+        }
+
+        return orderedScenarioWorkerIds.mapIndexed { index, workerId ->
+            val worker = workersById[workerId]
+            if (worker == null) {
+                WorkerPlan(
+                    workerId = "missing_worker_$index",
+                    workerRole = WorkerRole.MAIN,
+                    displayName = "Missing Worker: $workerId",
+                    inputSource = "SCENARIO_WORKER_SET",
+                    requiredCapabilities = listOf(CapabilityType.TEXT_GENERATION),
+                    assignedProviderId = null,
+                    assignedModelId = null,
+                    executionOrder = index,
+                    canRunInParallel = false,
+                    dependsOnWorkerIds = emptyList(),
+                    expectedOutputType = CapabilityType.TEXT_GENERATION,
+                    plannedStatus = UserGoalStatus.BLOCKED,
+                    limitationReason = workerLimitation(
+                        reasonCode = "WORKER_PROFILE_NOT_FOUND",
+                        userMessage = "Scenario가 참조하는 Worker를 찾을 수 없습니다.",
+                        technicalMessage = "scenarioId=${scenario.scenarioId}; missingWorkerProfileId=$workerId",
+                        recoverable = true
+                    )
+                )
+            } else {
+                val profileLimitations = profileLimitationsFor(worker)
+                val firstLimitation = profileLimitations.firstOrNull()
+                WorkerPlan(
+                    workerId = worker.workerProfileId.ifBlank { "scenario_worker_$index" },
+                    workerRole = roleForWorkerProfile(worker),
+                    displayName = worker.displayName.ifBlank { worker.workerProfileId.ifBlank { "Scenario Worker ${index + 1}" } },
+                    inputSource = inputSourceFor(worker),
+                    requiredCapabilities = capabilitiesForWorkerProfile(worker, requirements),
+                    assignedProviderId = worker.providerId,
+                    assignedModelId = worker.modelId,
+                    executionOrder = index,
+                    canRunInParallel = worker.canRunInParallel,
+                    dependsOnWorkerIds = worker.dependsOnWorkerIds,
+                    expectedOutputType = worker.outputPolicy.expectedOutputType,
+                    plannedStatus = when {
+                        !worker.enabled -> UserGoalStatus.LIMITED
+                        firstLimitation?.reasonCode == "NEED_PROVIDER" -> UserGoalStatus.LIMITED
+                        firstLimitation?.reasonCode == "NEED_MODEL" -> UserGoalStatus.LIMITED
+                        else -> UserGoalStatus.SUCCESS
+                    },
+                    limitationReason = firstLimitation
+                )
+            }
+        }
+    }
+
+    private fun profileLimitationsFor(worker: ConversationWorkerProfile): List<LimitationReason> {
+        val limitations = mutableListOf<LimitationReason>()
+        val workerLabel = worker.displayName.ifBlank { worker.workerProfileId.ifBlank { "Worker" } }
+
+        if (!worker.enabled) {
+            limitations.add(
+                workerLimitation(
+                    reasonCode = "WORKER_DISABLED",
+                    userMessage = "Scenario에 비활성 Worker가 포함되어 있습니다.",
+                    technicalMessage = "workerProfileId=${worker.workerProfileId}; displayName=$workerLabel",
+                    providerId = worker.providerId,
+                    modelId = worker.modelId,
+                    recoverable = true
+                )
+            )
+        }
+
+        if (worker.providerId.isNullOrBlank()) {
+            limitations.add(
+                workerLimitation(
+                    reasonCode = "NEED_PROVIDER",
+                    userMessage = "Worker에 Provider가 지정되지 않았습니다.",
+                    technicalMessage = "workerProfileId=${worker.workerProfileId}; displayName=$workerLabel",
+                    providerId = null,
+                    modelId = worker.modelId,
+                    recoverable = true
+                )
+            )
+        }
+
+        if (worker.modelId.isNullOrBlank()) {
+            limitations.add(
+                workerLimitation(
+                    reasonCode = "NEED_MODEL",
+                    userMessage = "Worker에 Model이 지정되지 않았습니다.",
+                    technicalMessage = "workerProfileId=${worker.workerProfileId}; displayName=$workerLabel",
+                    providerId = worker.providerId,
+                    modelId = null,
+                    recoverable = true
+                )
+            )
+        }
+
+        return limitations
+    }
+
+    private fun recommendScenarioPreviewExecutionMode(
+        scenario: ConversationScenarioProfile,
+        requirements: List<CapabilityRequirement>,
+        userInputExecutionMode: ExecutionMode,
+        scenarioWorkers: List<ConversationWorkerProfile>
+    ): ExecutionMode {
+        if (scenario.workerProfileIds.isEmpty()) {
+            return scenario.defaultExecutionMode
+        }
+
+        val hasDependencies = scenarioWorkers.any { worker ->
+            worker.dependsOnWorkerIds.isNotEmpty() ||
+                    worker.inputPolicy.previousWorkerOutput ||
+                    worker.inputPolicy.selectedWorkerOutputs.isNotEmpty() ||
+                    worker.outputPolicy.passToNextWorker
+        }
+        val parallelCapableWorkers = scenarioWorkers.count { it.enabled && it.canRunInParallel }
+        val requestedTypes = requirements.map { it.capabilityType }.toSet()
+
+        return when {
+            CapabilityType.PARALLEL_EXECUTION in requestedTypes && CapabilityType.SYNTHESIS in requestedTypes -> ExecutionMode.MIXED
+            CapabilityType.PARALLEL_EXECUTION in requestedTypes -> ExecutionMode.PARALLEL
+            hasDependencies && parallelCapableWorkers > 1 -> ExecutionMode.MIXED
+            hasDependencies -> ExecutionMode.SEQUENTIAL
+            parallelCapableWorkers > 1 -> ExecutionMode.PARALLEL
+            scenario.defaultExecutionMode != ExecutionMode.SINGLE -> scenario.defaultExecutionMode
+            else -> userInputExecutionMode
+        }
+    }
+
+    private fun inferScenarioPreviewGoalStatus(
+        scenario: ConversationScenarioProfile,
+        scenarioWorkerPlans: List<WorkerPlan>,
+        limitations: List<LimitationReason>
+    ): UserGoalStatus {
+        if (!scenario.enabled || scenario.workerProfileIds.isEmpty()) {
+            return UserGoalStatus.BLOCKED
+        }
+        if (scenarioWorkerPlans.any { it.plannedStatus == UserGoalStatus.BLOCKED }) {
+            return UserGoalStatus.BLOCKED
+        }
+        return if (limitations.isEmpty()) UserGoalStatus.SUCCESS else UserGoalStatus.LIMITED
+    }
+
+    private fun roleForWorkerProfile(worker: ConversationWorkerProfile): WorkerRole {
+        val label = "${worker.roleLabel} ${worker.displayName}".lowercase()
+        return when {
+            label.contains("orchestrator") || label.contains("오케스트") -> WorkerRole.ORCHESTRATOR
+            label.contains("synthesis") || label.contains("통합") -> WorkerRole.SYNTHESIS
+            label.contains("reviewer") || label.contains("review") || label.contains("검토") -> WorkerRole.REVIEWER
+            label.contains("rag") -> WorkerRole.RAG
+            label.contains("memory") || label.contains("메모리") || label.contains("기억") -> WorkerRole.MEMORY
+            label.contains("web") || label.contains("search") || label.contains("검색") -> WorkerRole.WEB_SEARCH
+            label.contains("tool") || label.contains("도구") -> WorkerRole.TOOL
+            label.contains("code") || label.contains("코드") -> WorkerRole.CODE_CHECK
+            label.contains("comparison") || label.contains("compare") || label.contains("비교") -> WorkerRole.COMPARISON
+            else -> WorkerRole.MAIN
+        }
+    }
+
+    private fun inputSourceFor(worker: ConversationWorkerProfile): String {
+        return when {
+            worker.inputPolicy.selectedWorkerOutputs.isNotEmpty() -> "SELECTED_WORKER_OUTPUTS"
+            worker.inputPolicy.previousWorkerOutput -> "PREVIOUS_WORKER_OUTPUT"
+            worker.inputPolicy.ragContextAllowed ||
+                    worker.inputPolicy.memoryContextAllowed ||
+                    worker.inputPolicy.webSearchContextAllowed -> "USER_INPUT_WITH_CONTEXT"
+            worker.inputPolicy.includeRunHistory -> "USER_INPUT_WITH_RUN_HISTORY"
+            worker.inputPolicy.userInputOnly -> "USER_INPUT"
+            else -> "SCENARIO_CONTEXT"
+        }
+    }
+
+    private fun capabilitiesForWorkerProfile(
+        worker: ConversationWorkerProfile,
+        requirements: List<CapabilityRequirement>
+    ): List<CapabilityType> {
+        val capabilities = linkedSetOf<CapabilityType>()
+        capabilities.add(CapabilityType.TEXT_GENERATION)
+
+        fun addWhenEnabled(status: CapabilityLayerStatus, capabilityType: CapabilityType) {
+            if (status != CapabilityLayerStatus.UNKNOWN && status != CapabilityLayerStatus.NOT_AVAILABLE) {
+                capabilities.add(capabilityType)
+            }
+        }
+
+        val overrides = worker.capabilityOverrides
+        addWhenEnabled(overrides.functionCalling, CapabilityType.TOOL_CALL_DETECTION)
+        addWhenEnabled(overrides.webSearch, CapabilityType.WEB_SEARCH_PROVIDER_NATIVE)
+        addWhenEnabled(overrides.codeExecution, CapabilityType.CODE_EXECUTION)
+        addWhenEnabled(overrides.structuredOutput, CapabilityType.STRUCTURED_OUTPUT)
+        addWhenEnabled(overrides.ragSearch, CapabilityType.RAG_SEARCH)
+        addWhenEnabled(overrides.memoryRecall, CapabilityType.MEMORY_RECALL)
+        addWhenEnabled(overrides.fileRead, CapabilityType.LOCAL_FILE_READ)
+        addWhenEnabled(overrides.fileWrite, CapabilityType.LOCAL_FILE_WRITE)
+        addWhenEnabled(overrides.codeCheck, CapabilityType.CODE_CHECK)
+        addWhenEnabled(overrides.parallelExecution, CapabilityType.PARALLEL_EXECUTION)
+
+        capabilities.add(worker.outputPolicy.expectedOutputType)
+        capabilities.addAll(outputCapabilitiesFor(requirements))
+        return capabilities.distinct()
+    }
+
+    private fun scenarioLimitation(
+        reasonCode: String,
+        userMessage: String,
+        technicalMessage: String,
+        recoverable: Boolean
+    ): LimitationReason {
+        return LimitationReason(
+            capabilityType = CapabilityType.MIXED_EXECUTION,
+            status = CapabilityLayerStatus.LIMITED,
+            reasonCode = reasonCode,
+            userMessage = userMessage,
+            technicalMessage = technicalMessage,
+            source = CapabilitySource.USER_OVERRIDE,
+            recoverable = recoverable,
+            suggestedAction = "Worker Profile 관리 화면에서 Scenario 설정을 확인하세요."
+        )
+    }
+
+    private fun workerLimitation(
+        reasonCode: String,
+        userMessage: String,
+        technicalMessage: String,
+        providerId: String? = null,
+        modelId: String? = null,
+        recoverable: Boolean
+    ): LimitationReason {
+        return LimitationReason(
+            capabilityType = CapabilityType.TEXT_GENERATION,
+            status = CapabilityLayerStatus.LIMITED,
+            reasonCode = reasonCode,
+            userMessage = userMessage,
+            technicalMessage = technicalMessage,
+            source = CapabilitySource.USER_OVERRIDE,
+            providerId = providerId,
+            modelId = modelId,
+            recoverable = recoverable,
+            suggestedAction = "Worker Profile 또는 Scenario 편집 화면에서 참조를 보정하세요."
+        )
+    }
+
+    private fun previewOnlyLimitation(technicalMessage: String): LimitationReason {
+        return LimitationReason(
+            capabilityType = CapabilityType.MIXED_EXECUTION,
+            status = CapabilityLayerStatus.LIMITED,
+            reasonCode = "PREVIEW_ONLY",
+            userMessage = "이 결과는 실행계획 preview이며 실제 Worker 실행은 수행하지 않습니다.",
+            technicalMessage = technicalMessage,
+            source = CapabilitySource.UNKNOWN,
+            recoverable = false,
+            suggestedAction = "실제 실행 연결은 후속 ConversationEngine / Orchestrator 단계에서 구현합니다."
+        )
+    }
+
+    private fun List<LimitationReason>.dedupeLimitations(): List<LimitationReason> {
+        return distinctBy { limitation ->
+            listOf(
+                limitation.reasonCode,
+                limitation.capabilityType.name,
+                limitation.providerId.orEmpty(),
+                limitation.modelId.orEmpty(),
+                limitation.technicalMessage
+            ).joinToString("|")
+        }
     }
 
     private fun containsAny(text: String, keywords: List<String>): Boolean {
