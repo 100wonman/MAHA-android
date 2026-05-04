@@ -1,4 +1,325 @@
 ==============================
+[2026-05-04 03:20] Capability Resolver skeleton 추가
+==============================
+
+[작업]
+- Capability Layer 모델을 사용하는 CapabilityResolver skeleton 추가
+- 사용자 입력에서 CODE_BLOCK / JSON / TABLE / WEB_SEARCH / MEMORY / FILE / CODE_CHECK / TOOL 관련 capability 추정 구조 추가
+- CapabilityResolution 및 LimitationReason 생성 skeleton 추가
+- ExecutionMode 추천 skeleton 추가
+- OrchestratorPlan / WorkerPlan 생성 skeleton 추가
+- CapabilityLayerStatus 사용으로 기존 CapabilityStatus와 충돌 방지
+- 기존 ConversationEngine / ViewModel / Provider 호출 / 저장 schema 연결은 제외
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- CapabilityResolver.kt 신규 추가
+- 사용자 입력 기반 capability 추정 skeleton 추가
+- CapabilityLayerStatus 기반 resolution skeleton 추가
+- ExecutionMode 추천 skeleton 추가
+- OrchestratorPlan / WorkerPlan 생성 skeleton 추가
+
+[파일 추가 테스트]
+- CapabilityResolver.kt: 추가
+- package/import: com.maha.app, 외부 import 없음
+- 외부 의존성: 없음
+- CapabilityLayerModels.kt 참조: CapabilityLayerStatus 기준 참조
+
+[capability 추정 skeleton 테스트]
+- 코드블록 요청: CODE_BLOCK_OUTPUT 추정
+- JSON 요청: JSON_OUTPUT / STRUCTURED_OUTPUT 추정
+- 테이블 요청: TABLE_OUTPUT / STRUCTURED_OUTPUT 추정
+- 검색/날씨/최신 요청: WEB_SEARCH_PROVIDER_NATIVE / WEB_SEARCH_MAHA_NATIVE 추정
+- 기억/이전 대화 요청: MEMORY_RECALL / CONVERSATION_HISTORY_SEARCH 추정
+- 파일 요청: LOCAL_FILE_READ / LOCAL_FILE_WRITE 추정
+- 코드 검증 요청: CODE_CHECK / SEQUENTIAL_EXECUTION 추정
+- tool 관련 요청: TOOL_CALL_DETECTION / TOOL_EXECUTION 추정
+
+[plan skeleton 테스트]
+- OrchestratorPlan 생성: buildPlan(...) skeleton 추가
+- WorkerPlan 생성: ORCHESTRATOR / MAIN / RAG / MEMORY / WEB_SEARCH / TOOL / CODE_CHECK / SYNTHESIS / REVIEWER 후보 생성
+- ExecutionMode 추천: SINGLE / SEQUENTIAL / PARALLEL / MIXED 추천 skeleton 추가
+- LimitationReason 생성: UNKNOWN / NOT_IMPLEMENTED 등 제한 사유 생성
+- CapabilityLayerStatus 사용: 사용
+- 기존 CapabilityStatus 미사용: 유지
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- 실행정보 UI 미연결: 유지
+- 저장 schema 변경 없음: 유지
+- Provider 호출 변경 없음: 유지
+
+[기존 기능 영향]
+- Google/Gemini 대화: 변경 없음
+- OpenAI-compatible 대화: 변경 없음
+- OpenAI Responses 대화: 변경 없음
+- Gemini Web Search: 변경 없음
+- RAG: 변경 없음
+- Provider 관리: 변경 없음
+- Model 관리: 변경 없음
+- SAF 백업/복원: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- CapabilityResolver.kt
+
+[빌드]
+성공
+
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+Capability Resolver skeleton 추가
+
+목표:
+- CapabilityLayerModels.kt를 기반으로 사용자 요청에서 요구 capability를 추정하는 Resolver skeleton을 추가한다.
+- OrchestratorPlan을 생성할 수 있는 최소 비연결 구조를 준비한다.
+- 기존 ConversationEngine / ViewModel / Provider 호출 / 저장 schema에는 연결하지 않는다.
+- 이번 단계는 “Resolver skeleton 추가 + 빌드 확인”까지만 수행한다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ CapabilityResolver.kt 신규 추가
+✔ 사용자 입력에서 요구 capability를 추정하는 skeleton 함수 추가
+✔ CODE_BLOCK_OUTPUT / JSON_OUTPUT / TABLE_OUTPUT 감지 skeleton 추가
+✔ RAG_SEARCH / WEB_SEARCH_MAHA_NATIVE / WEB_SEARCH_PROVIDER_NATIVE 요구 추정 skeleton 추가
+✔ TOOL_CALL_DETECTION / TOOL_EXECUTION 요구 추정 skeleton 추가
+✔ ExecutionMode 추천 skeleton 추가
+✔ OrchestratorPlan 생성 skeleton 추가
+✔ CapabilityLayerStatus 사용
+✔ 기존 CapabilityStatus와 이름 충돌 재발 방지
+✔ 기존 실행 흐름과 미연결 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ ConversationEngine 연결
+❌ ConversationViewModel 연결
+❌ 실제 대화 전송 흐름에 적용
+❌ Provider 호출 로직 변경
+❌ Web Search 실행 로직 변경
+❌ RAG 실행 로직 변경
+❌ Tool 실행 구현
+❌ 병렬 실행 구현
+❌ 저장 schema 변경
+❌ 실행정보 UI 연결
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 신규 파일 후보
+--------------------------------------------------
+
+신규 파일:
+
+- CapabilityResolver.kt
+
+위치:
+
+- app/src/main/java/com/maha/app/CapabilityResolver.kt
+
+역할:
+- 후속 Orchestrator 구현을 위한 capability 판단 skeleton
+- 현재는 실제 앱 흐름에 연결하지 않음
+- 독립적으로 빌드 가능한 helper/skeleton 구조만 추가
+
+주의:
+- 기존 CapabilityLayerModels.kt의 enum/data class를 사용한다.
+- 상태값은 CapabilityLayerStatus를 사용한다.
+- 기존 ProviderSettingsModels.kt의 CapabilityStatus와 혼동하지 않는다.
+- 외부 라이브러리 추가 금지.
+- JSON serializer 작성 금지.
+
+--------------------------------------------------
+3. Resolver skeleton 함수 후보
+--------------------------------------------------
+
+CapabilityResolver에 포함할 후보 함수:
+
+1. inferRequirements(userInput: String): List<CapabilityRequirement>
+- 사용자 입력 텍스트를 보고 요구 capability를 추정한다.
+- 현재는 keyword 기반 skeleton으로 충분하다.
+
+감지 예:
+- “코드블록”, “code block”, “```” → CODE_BLOCK_OUTPUT
+- “JSON”, “json” → JSON_OUTPUT
+- “표”, “table”, “마크다운 표” → TABLE_OUTPUT
+- “검색”, “최신”, “오늘”, “뉴스”, “날씨” → WEB_SEARCH_MAHA_NATIVE 또는 WEB_SEARCH_PROVIDER_NATIVE
+- “기억”, “이전 대화”, “전에 말한” → MEMORY_RECALL 또는 CONVERSATION_HISTORY_SEARCH
+- “파일”, “저장소”, “읽어”, “수정” → LOCAL_FILE_READ 또는 LOCAL_FILE_WRITE
+- “검증”, “빌드 오류”, “코드 확인” → CODE_CHECK
+- “도구”, “tool”, “function_call” → TOOL_CALL_DETECTION
+
+2. resolveRequirements(...): List<CapabilityResolution>
+- 요구 capability를 현재 가능/제한/미구현 상태로 해석하는 skeleton
+- 실제 Provider/Model 연결은 하지 않음
+- 기본값은 안전하게 UNKNOWN 또는 NOT_IMPLEMENTED 중심
+
+3. recommendExecutionMode(requirements: List<CapabilityRequirement>): ExecutionMode
+- 단순 요청은 SINGLE
+- RAG 후 답변, 코드 생성 후 검증 등은 SEQUENTIAL 후보
+- 여러 비교/여러 자료/여러 관점은 PARALLEL 후보
+- 병렬 후 통합이 필요하면 MIXED 후보
+
+4. buildPlan(...): OrchestratorPlan
+- planId, requestId, userInputPreview, requestedCapabilities, resolvedCapabilities, executionMode, userGoalStatus, limitationReasons, workerPlans 등을 채운 skeleton plan 생성
+- 실제 실행하지 않음
+
+--------------------------------------------------
+4. 기본 정책
+--------------------------------------------------
+
+기본 상태 정책:
+
+- TEXT_GENERATION: AVAILABLE
+- CODE_BLOCK_OUTPUT / JSON_OUTPUT / TABLE_OUTPUT: AVAILABLE
+- RAG_SEARCH: UNKNOWN 또는 NOT_IMPLEMENTED
+- MEMORY_RECALL: NOT_IMPLEMENTED
+- WEB_SEARCH_PROVIDER_NATIVE: UNKNOWN
+- WEB_SEARCH_MAHA_NATIVE: NOT_IMPLEMENTED
+- LOCAL_FILE_READ / LOCAL_FILE_WRITE: NOT_IMPLEMENTED
+- CODE_CHECK: NOT_IMPLEMENTED
+- TOOL_CALL_DETECTION: AVAILABLE 또는 LIMITED
+- TOOL_EXECUTION: NOT_IMPLEMENTED
+- PARALLEL_EXECUTION: NOT_IMPLEMENTED
+
+주의:
+- 이 정책은 실제 실행 가능 선언이 아니라 skeleton 기본값이다.
+- 후속 단계에서 Provider/Model/Profile/RAG/Web Search 상태와 연결한다.
+- 지금은 실제 기능을 켜지 않는다.
+
+--------------------------------------------------
+5. WorkerPlan 생성 skeleton
+--------------------------------------------------
+
+buildPlan에서 최소 WorkerPlan 후보를 만들 수 있다.
+
+예:
+- 항상 ORCHESTRATOR WorkerPlan 포함
+- 기본 MAIN WorkerPlan 포함
+- RAG 요구 시 RAG WorkerPlan 후보 추가
+- Web Search 요구 시 WEB_SEARCH WorkerPlan 후보 추가
+- Code Check 요구 시 CODE_CHECK WorkerPlan 후보 추가
+- 통합 필요 시 SYNTHESIS WorkerPlan 후보 추가
+
+주의:
+- WorkerPlan은 계획일 뿐 실제 실행 기록이 아니다.
+- 실제 Worker 실행 생성 금지.
+- 병렬 실행 실제 구현 금지.
+
+--------------------------------------------------
+6. 기존 기능 유지
+--------------------------------------------------
+
+반드시 유지:
+- 대화 전송
+- Provider 호출
+- Google/Gemini 대화
+- OpenAI-compatible 대화
+- OpenAI Responses 대화
+- Gemini native Web Search
+- RAG
+- 실행정보 UI
+- 코드/JSON/테이블 렌더링
+- Provider 관리
+- Model 관리
+- 모델 목록 조회 3종
+- SAF 백업/복원
+- 작업모드 전체
+
+--------------------------------------------------
+7. 테스트 기준
+--------------------------------------------------
+
+A. 파일 추가
+- CapabilityResolver.kt 추가:
+- package/import 정상:
+- 외부 의존성 없음:
+- CapabilityLayerModels.kt 참조 정상:
+
+B. capability 추정 skeleton
+- 코드블록 요청 감지:
+- JSON 요청 감지:
+- 테이블 요청 감지:
+- 검색/날씨/최신 요청 감지:
+- 기억/이전 대화 요청 감지:
+- 파일 요청 감지:
+- 코드 검증 요청 감지:
+- tool 관련 요청 감지:
+
+C. plan skeleton
+- OrchestratorPlan 생성:
+- WorkerPlan 생성:
+- ExecutionMode 추천:
+- LimitationReason 생성:
+- CapabilityLayerStatus 사용:
+- 기존 CapabilityStatus 미사용:
+
+D. 연결 금지 확인
+- ConversationEngine 미연결:
+- ConversationViewModel 미연결:
+- 실행정보 UI 미연결:
+- 저장 schema 변경 없음:
+- Provider 호출 변경 없음:
+
+E. 기존 기능 영향
+- Google/Gemini 대화:
+- OpenAI-compatible 대화:
+- OpenAI Responses 대화:
+- Gemini Web Search:
+- RAG:
+- Provider 관리:
+- Model 관리:
+- SAF 백업/복원:
+- 작업모드:
+
+--------------------------------------------------
+8. 금지 사항
+--------------------------------------------------
+
+❌ ConversationEngine 연결 금지
+❌ ConversationViewModel 연결 금지
+❌ 실제 실행 로직 구현 금지
+❌ 병렬 실행 구현 금지
+❌ Tool 실행 구현 금지
+❌ Web Search 실행 변경 금지
+❌ RAG 실행 변경 금지
+❌ 저장 schema 변경 금지
+❌ JSON serializer 작성 금지
+❌ Provider 호출 변경 금지
+❌ 작업모드 수정 금지
+
+--------------------------------------------------
+완료 기준:
+- CapabilityResolver.kt 추가
+- 사용자 입력 기반 capability 추정 skeleton 작성
+- OrchestratorPlan / WorkerPlan 생성 skeleton 작성
+- CapabilityLayerStatus 사용
+- 기존 실행 흐름에 미연결 유지
+- 저장 schema 변경 없음
+- 기존 기능 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+Orchestrator 판단 skeleton을 실행정보에 비연결 preview로 표시하거나 Capability Resolver 테스트 UI 설계
+
+==============================
 [2026-05-04 12:22] Capability Layer 최소 Kotlin 모델 skeleton 추가
 ==============================
 
