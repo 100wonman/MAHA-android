@@ -106,8 +106,14 @@ internal object SettingsStyleTokens {
     val disabledChipBackground = neutralSurfaceBase.at(0.035f)
 
 
-    val dialogBackground = cardBackground
-    val dialogBorderColor = cardBorderColor
+    /**
+     * Dialog / Popup surface는 일반 카드와 달리 뒤쪽 설정 화면이 비치지 않도록
+     * 충분히 불투명한 다크 surface를 사용한다.
+     */
+    val dialogBackground = Color(0xFF0B1118)
+    val dialogInnerBackground = Color(0xFF0F1722)
+    val dialogBorderColor = neutralSurfaceBase.at(0.18f)
+    val dialogScrimColor = Color.Black.at(0.66f)
 
     val switchCheckedThumbColor = actionTextColor
     val switchCheckedTrackColor = actionBorderColor

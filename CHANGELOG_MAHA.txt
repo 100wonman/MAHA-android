@@ -1,4 +1,272 @@
 ==============================
+[2026-05-06 05:50] Settings Dialog 불투명도 및 scrim 보정
+==============================
+
+[작업]
+- 대화모드 설정 계열 Dialog / Popup / Confirm Dialog의 투명도 문제 보정
+- Dialog container가 뒤쪽 설정 카드를 비치지 않도록 dark surface 불투명도 조정
+- Dialog scrim / surface / border token을 SettingsStyleTokens 기준으로 정리
+- Provider / Model / Storage / Worker / Scenario / Conversation 설정 Dialog의 다크테마 modal 표현 안정화
+- 직전 Dialog 버튼 / Switch / Radio 다크테마 보정은 유지
+- Dialog 표시/닫기 조건, onClick, onCheckedChange, visible/enabled 조건은 변경하지 않음
+- Provider 호출, ConversationEngine, Worker/Scenario 실행, RAG/Web Search/Tool 실행, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- SettingsStyleTokens.kt의 dialogBackground를 일반 카드 배경 alpha가 아닌 충분히 불투명한 dark surface로 분리
+- dialogBorderColor를 일반 카드보다 약간 명확한 border로 보정
+- dialogInnerBackground / dialogScrimColor token을 추가해 Dialog surface / scrim 정책을 명시
+- AppRoot.kt의 앱 저장소 migration Dialog에 dark container와 Settings 버튼 스타일 적용
+- Dialog 표시 조건, 닫기 조건, onClick, 저장/복원 로직, 실행 계층은 변경하지 않음
+
+[Dialog 시각 테스트]
+- Dialog 뒤 카드 비침: 확인
+- Dialog surface: 확인
+- Dialog scrim: 확인
+- Dialog border: 확인
+- Dialog 다크테마: 확인
+- Dialog 버튼 스타일: 확인
+
+[화면별 Dialog 테스트]
+- Provider Dialog: 확인
+- Provider 모델 목록 Dialog: 확인
+- Model Dialog: 확인
+- 설정 백업/복원 Dialog: 확인
+- Storage/RAG Dialog: 확인
+- Worker/Scenario Dialog: 확인
+- Conversation 설정 Dialog: 확인
+
+[기능 회귀 테스트]
+- Provider 기능: 확인
+- Model 기능: 확인
+- Storage/RAG 기능: 확인
+- Worker/Scenario 기능: 확인
+- 모델 목록 Dialog 검색창: 확인
+- Dialog 우선 닫기: 확인
+- back stack: 확인
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 대화 흐름 변경 없음: 유지
+- Provider 호출 변경 없음: 유지
+- Worker/Scenario 실제 실행 없음: 유지
+- RAG/Web Search/Tool 실행 연결 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 
+
+[변경 파일]
+- SettingsStyleTokens.kt
+- AppRoot.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[보정 모드]
+
+작업명:
+Settings Dialog 불투명도 및 scrim 보정
+
+목표:
+- 직전 Dialog / Popup / Switch 다크테마 적용 후 남은 Dialog 투명도 문제를 보정한다.
+- Dialog container가 완전투명에 가깝게 보여 뒤쪽 설정 카드 내용이 비치는 문제를 해결한다.
+- Dialog / Popup / Confirm Dialog는 다크테마 surface를 유지하되 충분히 불투명하게 표시한다.
+- Dialog 표시 조건, 닫기 조건, 버튼 onClick, 저장/삭제/복원 로직은 변경하지 않는다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+대상 화면:
+- Provider 추가 / 수정 Dialog
+- Provider 삭제 확인 Dialog
+- Provider 모델 목록 Dialog
+- Model 추가 / 수정 Dialog
+- Model 삭제 확인 Dialog
+- 설정 백업 / 복원 Dialog
+- Storage / RAG 관련 Dialog
+- Worker / Scenario 삭제 확인 Dialog
+- Conversation 설정 Dialog 계열
+- 기타 대화모드 설정 계열 Dialog / Popup / Confirm Dialog
+
+대상 파일 후보:
+- SettingsStyleTokens.kt
+- SettingsUiComponents.kt
+- AppRoot.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- StorageManagementScreen.kt
+- WorkerProfileManagementScreen.kt
+- ConversationStorageSettingsDialog.kt
+- ConversationWebSearchQuickSetting.kt
+- ConversationDialogs.kt
+
+이번 단계에서 구현:
+- Dialog container background를 충분히 불투명한 dark surface로 보정
+- Dialog 뒤 설정 카드가 비치지 않도록 scrim / surface alpha 보정
+- SettingsDialogCard 또는 Dialog wrapper의 background / border / elevation 정책 정리
+- AlertDialog / Dialog / Popup 내부 surface가 transparent로 남아 있으면 제거 또는 보정
+- Dialog 내부 버튼 스타일은 직전 SettingsUiComponents 기준 유지
+- Switch / Radio / 선택 컨트롤 보정은 유지하되 추가 변경은 최소화
+- Dialog 내부 정보 카드가 중첩될 경우 기존 중첩카드 정책 유지
+
+이번 단계에서 금지:
+- Dialog 표시 조건 변경
+- Dialog 닫기 조건 변경
+- onClick 변경
+- onCheckedChange 변경
+- visible / enabled 조건 변경
+- ProviderType 분기 변경
+- Provider 호출 로직 변경
+- ProviderAdapter 변경
+- WorkerProfileStore 저장 구조 변경
+- Scenario 저장 구조 변경
+- Storage / RAG 저장 schema 변경
+- ConversationEngine 연결
+- ConversationViewModel 대화 흐름 변경
+- Worker/Scenario 실제 실행 연결
+- RAG/Web Search/Tool 실행 연결
+- 작업모드 수정
+
+--------------------------------------------------
+2. Dialog 불투명도 보정 기준
+--------------------------------------------------
+
+현재 문제:
+- Dialog container가 완전투명에 가까워 뒤쪽 설정 카드 내용이 보인다.
+- Dialog와 배경 설정 화면의 시각적 분리가 약하다.
+- 다크테마는 적용되었지만 modal surface로서의 가시성이 부족하다.
+
+보정:
+- Dialog surface는 SettingsStyleTokens 기준 dark surface를 사용한다.
+- Dialog surface alpha는 완전 불투명 또는 충분히 불투명하게 설정한다.
+- Scrim은 기존 설정 화면을 적절히 어둡게 덮어야 한다.
+- Dialog 내부 본문이 transparent background를 상속받지 않게 한다.
+- Dialog border는 기존 settings card border보다 약간 명확하게 유지한다.
+- 경고/위험 Dialog는 배경색 채움이 아니라 border / chip / text 중심으로 표시한다.
+
+권장:
+- dialogBackground 또는 dialogSurface token을 명시적으로 사용
+- dialogScrimColor token 추가 가능
+- Dialog wrapper가 있다면 모든 설정 Dialog가 동일 wrapper를 사용하게 보정
+- AlertDialog 기본 containerColor가 밝게 튀거나 투명하면 명시적으로 dark token 지정
+
+--------------------------------------------------
+3. 우선 확인 대상
+--------------------------------------------------
+
+Provider / Model:
+- Provider 추가 / 수정 Dialog
+- Provider 삭제 확인 Dialog
+- Provider 모델 목록 Dialog
+- Model 추가 / 수정 Dialog
+- Model 삭제 확인 Dialog
+
+Settings / Backup:
+- 설정 백업 목록 Dialog
+- 설정 복원 확인 Dialog
+- 백업 / 복원 결과 Dialog가 있으면 포함
+
+Storage / RAG:
+- Storage 관련 확인 Dialog
+- 세션 삭제 / 백업 / 복원 / 인덱싱 관련 Dialog
+- RAG 검색 테스트 관련 Popup/Dialog가 있으면 포함
+
+Worker / Scenario:
+- Worker / Scenario 삭제 확인 Dialog
+- 저장 취소 확인 Dialog가 있으면 포함
+
+Conversation:
+- ConversationStorageSettingsDialog
+- ConversationSettingsDialog
+- ConversationMessageEditDialog
+- 기타 설정 계열 Dialog
+
+--------------------------------------------------
+4. 기능 보존 기준
+--------------------------------------------------
+
+반드시 유지:
+- Provider 추가 / 수정 / 삭제
+- API Key 저장 / 삭제
+- 모델 목록 Dialog 검색창
+- 모델 목록 검색어 필터링
+- 조회 결과에서 Model Profile 추가
+- Model 추가 / 수정 / 삭제
+- 기본 모델 지정
+- 즐겨찾기 추가 / 해제
+- Storage 백업 / 복원 / 인덱싱 / 삭제
+- RAG 검색 테스트
+- Worker / Scenario 삭제 확인
+- Worker / Scenario 편집 저장 / 취소
+- Conversation 설정 Dialog 표시 / 닫기
+- Dialog 우선 닫기
+- settings back stack
+
+--------------------------------------------------
+5. 테스트 기준
+--------------------------------------------------
+
+Dialog 시각:
+- Dialog 뒤 설정 카드 비침 제거:
+- Dialog surface 불투명도:
+- Dialog scrim:
+- Dialog border:
+- Dialog 다크테마:
+- Dialog 내부 버튼 스타일:
+- 경고/위험 Dialog 표시:
+
+화면별 Dialog:
+- Provider Dialog:
+- Provider 모델 목록 Dialog:
+- Model Dialog:
+- 설정 백업/복원 Dialog:
+- Storage/RAG Dialog:
+- Worker/Scenario Dialog:
+- Conversation 설정 Dialog:
+
+기능 회귀:
+- Provider 기능:
+- Model 기능:
+- Storage/RAG 기능:
+- Worker/Scenario 기능:
+- 모델 목록 Dialog 검색창:
+- Dialog 우선 닫기:
+- back stack:
+
+연결 금지:
+- ConversationEngine 미연결:
+- Provider 호출 변경 없음:
+- Worker/Scenario 실제 실행 없음:
+- RAG/Web Search/Tool 실행 연결 없음:
+- 저장 schema 변경 없음:
+- 작업모드 변경 없음:
+
+--------------------------------------------------
+6. 완료 기준
+--------------------------------------------------
+
+- Dialog / Popup / Confirm Dialog가 뒤쪽 설정 카드를 비치지 않게 표시됨
+- Dialog surface와 scrim이 다크테마 기준으로 안정화됨
+- Dialog 내부 버튼 / Switch / Radio 보정은 유지됨
+- Dialog 기능 회귀 없음
+- 저장 schema와 실행 로직 변경 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+대화모드 설정 UX 안정화 마감 기록 또는 잔여 Dialog/Popup 실기기 미세 보정
+
+==============================
 [2026-05-06 07:40] 대화모드 설정 Dialog / Popup / Switch 다크테마 적용
 ==============================
 

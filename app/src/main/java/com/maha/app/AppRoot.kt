@@ -859,6 +859,9 @@ fun AppRoot() {
 
             if (isAppStorageMigrationDialogOpen) {
                 AlertDialog(
+                    containerColor = SettingsStyleTokens.dialogBackground,
+                    titleContentColor = SettingsStyleTokens.titleTextColor,
+                    textContentColor = SettingsStyleTokens.bodyTextColor,
                     onDismissRequest = {
                         isAppStorageMigrationDialogOpen = false
                     },
@@ -871,7 +874,8 @@ fun AppRoot() {
                         )
                     },
                     confirmButton = {
-                        TextButton(
+                        SettingsPrimaryButton(
+                            text = "가져오기",
                             onClick = {
                                 val result = conversationViewModel.migrateAppSpecificSessionsToSaf()
                                 Toast.makeText(
@@ -881,18 +885,15 @@ fun AppRoot() {
                                 ).show()
                                 isAppStorageMigrationDialogOpen = false
                             }
-                        ) {
-                            Text(text = "가져오기")
-                        }
+                        )
                     },
                     dismissButton = {
-                        TextButton(
+                        SettingsSecondaryButton(
+                            text = "취소",
                             onClick = {
                                 isAppStorageMigrationDialogOpen = false
                             }
-                        ) {
-                            Text(text = "취소")
-                        }
+                        )
                     }
                 )
             }
