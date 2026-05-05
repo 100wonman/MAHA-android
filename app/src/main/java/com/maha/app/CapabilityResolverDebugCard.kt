@@ -685,15 +685,15 @@ private fun CapabilityCompactInfoRow(
 
 @Composable
 private fun CapabilityBadge(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier
-            .background(Color(0xFF24344A), RoundedCornerShape(999.dp))
-            .padding(horizontal = 9.dp, vertical = 4.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = Color(0xFFD7DEE8),
-        fontWeight = FontWeight.SemiBold
-    )
+    val tone = when {
+        text.contains("실행 없음") || text.contains("Preview", ignoreCase = true) -> SettingsChipTone.WARNING
+        text.contains("SUCCESS") || text.contains("AVAILABLE") -> SettingsChipTone.SUCCESS
+        text.contains("BLOCKED") || text.contains("ERROR") || text.contains("없음") -> SettingsChipTone.DANGER
+        text.contains("LIMITED") || text.contains("미지정") || text.contains("비활성") -> SettingsChipTone.WARNING
+        text.contains("SELECT") || text.contains("SCENARIO", ignoreCase = true) -> SettingsChipTone.INFO
+        else -> SettingsChipTone.NEUTRAL
+    }
+    SettingsStatusChip(text = text, tone = tone)
 }
 
 private fun compactReasonLabel(reasonCode: String): String {

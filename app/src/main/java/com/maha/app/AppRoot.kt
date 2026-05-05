@@ -65,12 +65,23 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+
+private const val CONVERSATION_SETTINGS_ROOT_PAGE = "__conversation_settings_root__"
+
+private fun conversationSettingsStackKey(page: String?): String {
+    return page ?: CONVERSATION_SETTINGS_ROOT_PAGE
+}
+
+private fun conversationSettingsPageFromStackKey(key: String): String? {
+    return key.takeUnless { it == CONVERSATION_SETTINGS_ROOT_PAGE }
+}
 
 private fun responsiveSettingsDrawerWidth(maxWidth: Dp): Dp {
     val rawWidth = when {
@@ -118,6 +129,9 @@ fun AppRoot() {
     var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var selectedConversationSettingsPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var conversationSettingsBackStack by rememberSaveable {
+        mutableStateOf(listOf(CONVERSATION_SETTINGS_ROOT_PAGE))
+    }
     var isAppStorageMigrationDialogOpen by rememberSaveable { mutableStateOf(false) }
     var editingMessageId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingText by rememberSaveable { mutableStateOf("") }
@@ -197,6 +211,43 @@ fun AppRoot() {
         }
 
         isConversationListScreenOpen = true
+    }
+
+    fun resetConversationSettingsNavigation(page: String? = null) {
+        selectedConversationSettingsPage = page
+        conversationSettingsBackStack = listOf(conversationSettingsStackKey(page))
+    }
+
+    fun navigateConversationSettingsPage(page: String?) {
+        val targetKey = conversationSettingsStackKey(page)
+        if (conversationSettingsBackStack.lastOrNull() == targetKey) {
+            selectedConversationSettingsPage = page
+            return
+        }
+
+        conversationSettingsBackStack = conversationSettingsBackStack + targetKey
+        selectedConversationSettingsPage = page
+    }
+
+    fun popConversationSettingsPage(): Boolean {
+        if (conversationSettingsBackStack.size <= 1) {
+            selectedConversationSettingsPage = conversationSettingsPageFromStackKey(
+                conversationSettingsBackStack.lastOrNull() ?: CONVERSATION_SETTINGS_ROOT_PAGE
+            )
+            return false
+        }
+
+        val nextStack = conversationSettingsBackStack.dropLast(1)
+        conversationSettingsBackStack = nextStack
+        selectedConversationSettingsPage = conversationSettingsPageFromStackKey(
+            nextStack.lastOrNull() ?: CONVERSATION_SETTINGS_ROOT_PAGE
+        )
+        return true
+    }
+
+    fun closeConversationSettingsDrawer() {
+        resetConversationSettingsNavigation()
+        scope.launch { conversationDrawerState.close() }
     }
 
     LaunchedEffect(Unit) {
@@ -333,32 +384,34 @@ fun AppRoot() {
         }
 
         when {
-            conversationDrawerState.isOpen && selectedConversationSettingsPage == "storage" -> {
-                selectedConversationSettingsPage = "rag"
+            showConversationSettingsDialog -> {
+                showConversationSettingsDialog = false
             }
 
-            conversationDrawerState.isOpen && selectedConversationSettingsPage == "providerManagement" -> {
-                selectedConversationSettingsPage = "modelApi"
+            isAppStorageMigrationDialogOpen -> {
+                isAppStorageMigrationDialogOpen = false
             }
 
-            conversationDrawerState.isOpen && selectedConversationSettingsPage == "modelManagement" -> {
-                selectedConversationSettingsPage = "modelApi"
+            pendingRunPrecheck != null -> {
+                pendingRunPrecheck = null
             }
 
-            conversationDrawerState.isOpen && selectedConversationSettingsPage != null -> {
-                selectedConversationSettingsPage = null
+            isRecommendationDialogOpen -> {
+                isRecommendationDialogOpen = false
+            }
+
+            isApplyFallbackModelDialogOpen -> {
+                isApplyFallbackModelDialogOpen = false
             }
 
             conversationDrawerState.isOpen -> {
-                scope.launch { conversationDrawerState.close() }
-                selectedConversationSettingsPage = null
+                if (!popConversationSettingsPage()) {
+                    closeConversationSettingsDrawer()
+                }
             }
             selectedConversationSessionId != null -> leaveConversationRoomToSessionList()
             isConversationListScreenOpen -> isConversationListScreenOpen = false
             isWorkModeOpen && selectedAgentId == null && selectedRunId == null && !isScenarioScreenOpen && !isSettingsScreenOpen && !isModelCatalogScreenOpen && !isExecutionLogScreenOpen -> isWorkModeOpen = false
-            pendingRunPrecheck != null -> pendingRunPrecheck = null
-            isRecommendationDialogOpen -> isRecommendationDialogOpen = false
-            isApplyFallbackModelDialogOpen -> isApplyFallbackModelDialogOpen = false
             selectedRunId != null -> selectedRunId = null
             selectedAgentId != null -> selectedAgentId = null
 
@@ -584,7 +637,7 @@ fun AppRoot() {
                         canMigrateAppSpecificSessions = conversationViewModel.storageStatusText == "SAF 연결됨",
                         lastMigrationResultText = conversationViewModel.lastMigrationResultText,
                         onPageSelected = { page ->
-                            selectedConversationSettingsPage = page
+                            navigateConversationSettingsPage(page)
                         },
                         onSelectStorageFolderClick = {
                             storageFolderLauncher.launch(null)
@@ -604,12 +657,8 @@ fun AppRoot() {
                             }
                         },
                             onBackClick = {
-                                when (selectedConversationSettingsPage) {
-                                    "storage" -> selectedConversationSettingsPage = "rag"
-                                    "providerManagement" -> selectedConversationSettingsPage = "modelApi"
-                                    "modelManagement" -> selectedConversationSettingsPage = "modelApi"
-                                    null -> scope.launch { conversationDrawerState.close() }
-                                    else -> selectedConversationSettingsPage = null
+                                if (!popConversationSettingsPage()) {
+                                    closeConversationSettingsDrawer()
                                 }
                             }
                         )
@@ -875,7 +924,7 @@ fun AppRoot() {
                                 showConversationSettingsDialog = true
                             },
                             onOpenGlobalSettings = {
-                                selectedConversationSettingsPage = null
+                                resetConversationSettingsNavigation()
                                 scope.launch {
                                     workDrawerState.close()
                                     conversationDrawerState.open()
@@ -911,7 +960,7 @@ fun AppRoot() {
                         searchQuery = conversationViewModel.sessionSearchQuery,
                         onSearchQueryChange = conversationViewModel::updateSessionSearchQuery,
                         onOpenGlobalSettings = {
-                            selectedConversationSettingsPage = null
+                            resetConversationSettingsNavigation()
                             scope.launch {
                                 workDrawerState.close()
                                 conversationDrawerState.open()
@@ -1728,6 +1777,16 @@ private fun ConversationGlobalSettingsScreen(
     var isSettingsBackupRunning by remember { mutableStateOf(false) }
     var showSettingsRestoreDialog by remember { mutableStateOf(false) }
     var pendingSettingsRestoreEntry by remember { mutableStateOf<SettingsBackupEntry?>(null) }
+    var expandedModelApiManagementPanel by rememberSaveable { mutableStateOf<String?>(null) }
+    var modelApiDetailTab by rememberSaveable { mutableStateOf("provider") }
+
+    BackHandler(enabled = pendingSettingsRestoreEntry != null) {
+        pendingSettingsRestoreEntry = null
+    }
+
+    BackHandler(enabled = showSettingsRestoreDialog) {
+        showSettingsRestoreDialog = false
+    }
 
     fun reloadModelApiSettingsUi() {
         settingsScope.launch {
@@ -1741,13 +1800,26 @@ private fun ConversationGlobalSettingsScreen(
     }
 
     LaunchedEffect(selectedPage) {
-        if (selectedPage == null || selectedPage == "modelApi") {
+        if (selectedPage != "modelApi") {
+            expandedModelApiManagementPanel = null
+        }
+
+        if (selectedPage == null || selectedPage == "modelApi" || selectedPage == "modelApiDetails") {
             modelApiSettingsSummary = withContext(Dispatchers.IO) {
                 loadModelApiSettingsSummary(context)
             }
             settingsBackupEntries = withContext(Dispatchers.IO) {
                 settingsBackupManager.listSettingsBackupsFromSaf()
             }
+        }
+    }
+
+    LaunchedEffect(selectedPage, modelApiDetailTab) {
+        while (selectedPage == "modelApiDetails") {
+            modelApiSettingsSummary = withContext(Dispatchers.IO) {
+                loadModelApiSettingsSummary(context)
+            }
+            delay(1200L)
         }
     }
 
@@ -1809,6 +1881,52 @@ private fun ConversationGlobalSettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     onSessionDeleted = onDeleteAppSpecificSession
                 )
+            }
+            return@Box
+        }
+
+        if (selectedPage == "modelApiDetails") {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 24.dp,
+                    top = 24.dp,
+                    end = 24.dp,
+                    bottom = 120.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Text(
+                        text = "프로바이더 / 모델 상세 설정",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                item {
+                    ModelApiDetailStatusCard(
+                        summary = modelApiSettingsSummary,
+                        selectedTab = modelApiDetailTab,
+                        onProviderSelected = { modelApiDetailTab = "provider" },
+                        onModelSelected = { modelApiDetailTab = "model" }
+                    )
+                }
+
+                item {
+                    if (modelApiDetailTab == "provider") {
+                        ProviderManagementScreen(
+                            modifier = Modifier.fillMaxWidth(),
+                            useInternalScroll = false
+                        )
+                    } else {
+                        ModelManagementScreen(
+                            modifier = Modifier.fillMaxWidth(),
+                            useInternalScroll = false
+                        )
+                    }
+                }
             }
             return@Box
         }
@@ -1876,9 +1994,11 @@ private fun ConversationGlobalSettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            item {
-                TextButton(onClick = onBackClick) {
-                    Text(text = "←", color = Color.White)
+            if (selectedPage != "modelApi") {
+                item {
+                    TextButton(onClick = onBackClick) {
+                        Text(text = "←", color = Color.White)
+                    }
                 }
             }
 
@@ -1894,7 +2014,7 @@ private fun ConversationGlobalSettingsScreen(
 
                 item {
                     Text(
-                        text = "전역 설정 메인",
+                        text = "기본 설정",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFFB8BCC6)
                     )
@@ -1902,59 +2022,25 @@ private fun ConversationGlobalSettingsScreen(
 
                 item {
                     ConversationGlobalSettingsCard(
-                        title = "일반 설정",
-                        subtitle = "테마, 폰트, 색상 설정",
-                        onClick = { onPageSelected("general") }
-                    )
-                }
-
-                item {
-                    ConversationGlobalSettingsCard(
-                        title = "대화 설정",
-                        subtitle = "모드, 검색, Worker 기본값",
-                        onClick = { onPageSelected("conversation") }
-                    )
-                }
-
-                item {
-                    ConversationGlobalSettingsCard(
-                        title = "출력 블록 설정",
-                        subtitle = "블록 표시, 복사, 접기 정책",
-                        onClick = { onPageSelected("output") }
-                    )
-                }
-
-                item {
-                    ConversationGlobalSettingsCard(
-                        title = "메모리 / RAG",
-                        subtitle = "후속 단계에서 연결 예정",
-                        onClick = { onPageSelected("rag") }
-                    )
-                }
-
-
-                item {
-                    ConversationGlobalSettingsCard(
-                        title = "모델 / API 설정",
-                        subtitle = "대화모드 Provider, API Key, 모델 설정",
+                        title = "프로바이더 / 모델 / API 설정",
+                        subtitle = "Provider ${modelApiSettingsSummary.providerTotalCount}개 · Model ${modelApiSettingsSummary.modelTotalCount}개 · 기본: ${modelApiSettingsSummary.defaultModelDisplayName ?: "없음"}",
                         onClick = { onPageSelected("modelApi") }
                     )
                 }
 
                 item {
                     ConversationGlobalSettingsCard(
-                        title = "Capability Resolver 진단",
-                        subtitle = "사용자 요청의 capability와 Worker 계획을 미리 분석합니다. 실제 대화 실행에는 연결되지 않습니다.",
-                        onClick = { onPageSelected("capabilityResolverDebug") }
+                        title = "메모리 / RAG / 저장소",
+                        subtitle = "상태: $storageStatusText · 앱 저장소 세션 ${appSpecificSessionCount}개",
+                        onClick = { onPageSelected("rag") }
                     )
                 }
 
-
                 item {
                     ConversationGlobalSettingsCard(
-                        title = "Worker Profile 관리",
-                        subtitle = "가변 Worker Profile과 Scenario 구성을 미리 확인합니다. 실제 저장/편집은 후속 구현입니다.",
-                        onClick = { onPageSelected("workerProfileManagement") }
+                        title = "고급 하네스 설정",
+                        subtitle = "Worker, Scenario, Capability 진단, 실행계획 Preview를 한 곳에서 관리합니다.",
+                        onClick = { onPageSelected("harness") }
                     )
                 }
             } else {
@@ -1965,7 +2051,9 @@ private fun ConversationGlobalSettingsScreen(
                             "general" -> "일반 설정"
                             "output" -> "출력 블록 설정"
                             "rag" -> "메모리 / RAG"
-                            "modelApi" -> "모델 / API 설정"
+                            "modelApi" -> "프로바이더 / 모델 / API 설정"
+                            "modelApiDetails" -> "프로바이더 / 모델 상세 설정"
+                            "harness" -> "고급 하네스 설정"
                             "capabilityResolverDebug" -> "Capability Resolver 진단"
                             "workerProfileManagement" -> "Worker Profile 관리"
                             "providerManagement" -> "Provider 관리"
@@ -1978,20 +2066,26 @@ private fun ConversationGlobalSettingsScreen(
                     )
                 }
 
-                item {
-                    Text(
-                        text = when (selectedPage) {
-                            "modelApi" -> "현재 Provider / Model / Web Search 상태"
-                            "capabilityResolverDebug" -> "대화 실행과 분리된 capability 분석 진단 도구"
-                            "workerProfileManagement" -> "대화 실행과 분리된 Worker Profile / Scenario preview"
-                            else -> "상세 설정 placeholder"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFFB8BCC6)
-                    )
+                val pageSubtitle = when (selectedPage) {
+                    "modelApi" -> ""
+                    "modelApiDetails" -> ""
+                    "harness" -> "Worker / Scenario / Capability / Preview 고급 영역"
+                    "capabilityResolverDebug" -> "대화 실행과 분리된 capability 분석 진단 도구"
+                    "workerProfileManagement" -> "대화 실행과 분리된 Worker Profile / Scenario preview"
+                    else -> "상세 설정"
                 }
 
-                if (selectedPage != "modelApi" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
+                if (pageSubtitle.isNotBlank()) {
+                    item {
+                        Text(
+                            text = pageSubtitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color(0xFFB8BCC6)
+                        )
+                    }
+                }
+
+                if (selectedPage != "modelApi" && selectedPage != "modelApiDetails" && selectedPage != "harness" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
                     item {
                         Card(
                             colors = CardDefaults.cardColors(
@@ -2019,11 +2113,36 @@ private fun ConversationGlobalSettingsScreen(
                                 )
 
                                 Text(
-                                    text = "이번 단계에서는 2단 슬라이딩 구조 확인용 placeholder입니다. 실제 설정 적용은 다음 단계에서 연결합니다.",
+                                    text = "이 설정은 후속 단계에서 연결합니다.",
                                     color = Color(0xFFD0D3DA)
                                 )
                             }
                         }
+                    }
+                }
+
+                if (selectedPage == "harness") {
+                    item {
+                        HarnessSettingsEntryCard(
+                            title = "Worker Profile / Scenario 관리",
+                            subtitle = "Worker Profile, Scenario, WorkerSet 편집과 저장을 관리합니다.",
+                            onClick = { onPageSelected("workerProfileManagement") }
+                        )
+                    }
+
+                    item {
+                        HarnessSettingsEntryCard(
+                            title = "Capability Resolver / Scenario Preview",
+                            subtitle = "요청 capability와 Scenario 기반 실행계획 preview를 진단합니다. 실제 실행은 하지 않습니다.",
+                            onClick = { onPageSelected("capabilityResolverDebug") }
+                        )
+                    }
+
+                    item {
+                        CompactNoticeCard(
+                            title = "고급 하네스 영역",
+                            message = "이 영역은 Worker, Scenario, Capability, Policy 확인용입니다. 일반 대화 실행 흐름에는 아직 연결하지 않습니다."
+                        )
                     }
                 }
 
@@ -2051,8 +2170,9 @@ private fun ConversationGlobalSettingsScreen(
                     }
 
                     item {
-                        ModelApiWarningCards(
-                            summary = modelApiSettingsSummary
+                        ModelApiDetailNavCard(
+                            summary = modelApiSettingsSummary,
+                            onClick = { onPageSelected("modelApiDetails") }
                         )
                     }
 
@@ -2080,24 +2200,6 @@ private fun ConversationGlobalSettingsScreen(
                                     showSettingsRestoreDialog = true
                                 }
                             }
-                        )
-                    }
-
-                    item {
-                        ModelApiNavigationCard(
-                            title = "Provider 관리",
-                            subtitle = "대화모드 Provider 추가, 수정, 삭제, 활성 상태 관리",
-                            summaryText = "Provider ${modelApiSettingsSummary.providerTotalCount}개 · 활성 ${modelApiSettingsSummary.activeProviderCount}개 · Key 설정 ${modelApiSettingsSummary.apiKeyConfiguredProviderCount}개 · Base URL 미설정 ${modelApiSettingsSummary.baseUrlMissingProviderCount}개",
-                            onClick = { onPageSelected("providerManagement") }
-                        )
-                    }
-
-                    item {
-                        ModelApiNavigationCard(
-                            title = "Model 관리",
-                            subtitle = "대화모드 모델 추가, 수정, 삭제, 즐겨찾기, 기본 모델 설정",
-                            summaryText = "Model ${modelApiSettingsSummary.modelTotalCount}개 · 활성 ${modelApiSettingsSummary.activeModelCount}개 · 즐겨찾기 ${modelApiSettingsSummary.favoriteModelCount}개 · 기본: ${modelApiSettingsSummary.defaultModelDisplayName ?: "없음"}",
-                            onClick = { onPageSelected("modelManagement") }
                         )
                     }
                 }
@@ -2253,60 +2355,8 @@ private fun ProviderType.requiresApiKeyForConversation(): Boolean {
     }
 }
 
-@Composable
-private fun ModelApiSettingsSummaryCard(
-    summary: ModelApiSettingsSummary
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1F2937)
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "모델/API 설정 요약",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = "Provider: 전체 ${summary.providerTotalCount}개 / 활성 ${summary.activeProviderCount}개",
-                color = Color(0xFFD0D3DA)
-            )
-
-            Text(
-                text = "API Key: 설정됨 ${summary.apiKeyConfiguredProviderCount}개",
-                color = Color(0xFFD0D3DA)
-            )
-
-            Text(
-                text = "Model: 전체 ${summary.modelTotalCount}개 / 활성 ${summary.activeModelCount}개",
-                color = Color(0xFFD0D3DA)
-            )
-
-            Text(
-                text = "기본 모델: ${summary.defaultModelDisplayName ?: "없음"}",
-                color = Color(0xFFD0D3DA)
-            )
-
-            Text(
-                text = "Web Search 가능 후보: ${summary.webSearchCandidateModelCount}개",
-                color = Color(0xFFD0D3DA)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ModelApiWarningCards(
-    summary: ModelApiSettingsSummary
-) {
-    val warnings = buildList {
+private fun buildModelApiWarningTexts(summary: ModelApiSettingsSummary): List<String> {
+    return buildList {
         if (summary.defaultModelDisplayName == null) {
             add("기본 대화 모델이 지정되지 않았습니다.")
         }
@@ -2317,39 +2367,195 @@ private fun ModelApiWarningCards(
             add("API Key가 필요한 Provider 중 미설정 항목이 있습니다. (${summary.apiKeyMissingRequiredProviderCount}개)")
         }
         if (summary.providerlessModelCount > 0) {
-            add("삭제되었거나 연결되지 않은 Provider를 참조하는 모델이 있습니다. (${summary.providerlessModelCount}개)")
+            add("연결되지 않은 Provider를 참조하는 Model이 있습니다. (${summary.providerlessModelCount}개)")
+        }
+    }
+}
+
+@Composable
+private fun ModelApiSettingsSummaryCard(
+    summary: ModelApiSettingsSummary
+) {
+    val warnings = buildModelApiWarningTexts(summary)
+    val chips = buildList {
+        add("Provider ${summary.providerTotalCount}개" to SettingsChipTone.INFO)
+        add("활성 ${summary.activeProviderCount}개" to SettingsChipTone.SUCCESS)
+        add("Model ${summary.modelTotalCount}개" to SettingsChipTone.INFO)
+        add("활성 ${summary.activeModelCount}개" to SettingsChipTone.SUCCESS)
+        if (warnings.isNotEmpty()) {
+            add("경고 ${warnings.size}개" to SettingsChipTone.WARNING)
         }
     }
 
-    if (warnings.isEmpty()) {
-        return
+    SettingsSectionCard(
+        title = "프로바이더 / 모델 / API 설정 요약",
+        chips = chips
+    ) {
+        CompactSettingSummaryRow(
+            label = "API Key",
+            value = "설정됨 ${summary.apiKeyConfiguredProviderCount}개 / 필요 미설정 ${summary.apiKeyMissingRequiredProviderCount}개"
+        )
+        CompactSettingSummaryRow(
+            label = "기본 모델",
+            value = summary.defaultModelDisplayName ?: "없음"
+        )
+        CompactSettingSummaryRow(
+            label = "Provider",
+            value = "전체 ${summary.providerTotalCount}개 / 활성 ${summary.activeProviderCount}개 / Base URL 미설정 ${summary.baseUrlMissingProviderCount}개"
+        )
+        CompactSettingSummaryRow(
+            label = "Model",
+            value = "전체 ${summary.modelTotalCount}개 / 활성 ${summary.activeModelCount}개 / 즐겨찾기 ${summary.favoriteModelCount}개"
+        )
+        if (warnings.isNotEmpty()) {
+            SettingsChipRow(
+                values = warnings.map { it to SettingsChipTone.WARNING }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelApiWarningCards(
+    summary: ModelApiSettingsSummary
+) {
+    val warnings = buildModelApiWarningTexts(summary)
+    if (warnings.isEmpty()) return
+
+    SettingsSectionCard(
+        title = "설정 경고",
+        chips = warnings.map { it to SettingsChipTone.WARNING },
+        tone = SettingsChipTone.WARNING
+    )
+}
+
+@Composable
+private fun ModelApiDetailNavCard(
+    summary: ModelApiSettingsSummary,
+    onClick: () -> Unit
+) {
+    SettingsNavCard(
+        title = "프로바이더 / 모델 상세 설정",
+        subtitle = "Provider ${summary.providerTotalCount}개 · Model ${summary.modelTotalCount}개 · API Key 설정 ${summary.apiKeyConfiguredProviderCount}개",
+        chips = listOf(
+            "상세 설정" to SettingsChipTone.INFO,
+            "API Key 원문 미표시" to SettingsChipTone.WARNING
+        ),
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun ModelApiDetailStatusCard(
+    summary: ModelApiSettingsSummary,
+    selectedTab: String,
+    onProviderSelected: () -> Unit,
+    onModelSelected: () -> Unit
+) {
+    val warnings = buildModelApiWarningTexts(summary)
+    val warningText = when {
+        warnings.isEmpty() -> "없음"
+        warnings.size == 1 -> warnings.first()
+        else -> "${warnings.size}개 경고"
     }
 
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF4A2E12)
-        ),
+    SettingsSectionCard(
+        title = "현재 설정 상태",
+        chips = listOf(
+            if (selectedTab == "provider") "Provider" to SettingsChipTone.SELECTED else "Model" to SettingsChipTone.SELECTED,
+            "API Key 원문 미표시" to SettingsChipTone.WARNING
+        )
+    ) {
+        CompactSettingSummaryRow(
+            label = "Provider",
+            value = "전체 ${summary.providerTotalCount} / 활성 ${summary.activeProviderCount}"
+        )
+        CompactSettingSummaryRow(
+            label = "Model",
+            value = "전체 ${summary.modelTotalCount} / 활성 ${summary.activeModelCount}"
+        )
+        CompactSettingSummaryRow(
+            label = "API Key",
+            value = "설정됨 ${summary.apiKeyConfiguredProviderCount} / 필요 미설정 ${summary.apiKeyMissingRequiredProviderCount}"
+        )
+        CompactSettingSummaryRow(
+            label = "기본 모델",
+            value = summary.defaultModelDisplayName ?: "없음"
+        )
+        CompactSettingSummaryRow(
+            label = "경고",
+            value = warningText
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SettingsSecondaryButton(
+                text = "Provider",
+                onClick = onProviderSelected,
+                selected = selectedTab == "provider",
+                modifier = Modifier.weight(1f)
+            )
+            SettingsSecondaryButton(
+                text = "Model",
+                onClick = onModelSelected,
+                selected = selectedTab == "model",
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactSettingSummaryRow(
+    label: String,
+    value: String
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = "설정 경고",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            warnings.forEach { warning ->
-                Text(
-                    text = "- $warning",
-                    color = Color(0xFFFFD9A8)
-                )
-            }
-        }
+        Text(
+            text = label,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            modifier = Modifier.width(88.dp)
+        )
+        Text(
+            text = value,
+            color = Color(0xFFD0D3DA),
+            modifier = Modifier.weight(1f)
+        )
     }
+}
+
+@Composable
+private fun HarnessSettingsEntryCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    SettingsNavCard(
+        title = title,
+        subtitle = subtitle,
+        chips = listOf("고급" to SettingsChipTone.INFO),
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun CompactNoticeCard(
+    title: String,
+    message: String
+) {
+    SettingsSectionCard(
+        title = title,
+        subtitle = message,
+        chips = listOf("preview" to SettingsChipTone.INFO),
+        tone = SettingsChipTone.INFO
+    )
 }
 
 @Composable
@@ -2359,37 +2565,11 @@ private fun ModelApiNavigationCard(
     summaryText: String,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF3A3F49)
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color(0xFFD0D3DA)
-            )
-
-            Text(
-                text = summaryText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF9FB7D9)
-            )
-        }
-    }
+    SettingsNavCard(
+        title = title,
+        subtitle = "$subtitle\n$summaryText",
+        onClick = onClick
+    )
 }
 
 @Composable
@@ -2400,66 +2580,35 @@ private fun ModelApiSettingsBackupCard(
     onBackupClick: () -> Unit,
     onRestoreClick: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF263244)
-        ),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "모델/API 설정 백업·복원",
+        subtitle = "Provider / Model 설정만 백업합니다. API Key는 보안상 백업되지 않습니다.",
+        chips = listOf("백업 ${backupCount}개" to SettingsChipTone.INFO),
+        tone = SettingsChipTone.INFO
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+        if (message.isNotBlank()) {
             Text(
-                text = "모델/API 설정 백업·복원",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = "Provider / Model 설정만 백업합니다.",
+                text = message,
                 color = Color(0xFFD0D3DA)
             )
-
-            Text(
-                text = "API Key는 보안상 백업되지 않습니다. 복원 후 다시 입력해야 합니다.",
-                color = Color(0xFFFFD9A8)
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SettingsPrimaryButton(
+                text = if (isRunning) "처리 중" else "설정 백업",
+                onClick = onBackupClick,
+                enabled = !isRunning,
+                modifier = Modifier.weight(1f)
             )
-
-            Text(
-                text = "감지된 설정 백업: ${backupCount}개",
-                color = Color(0xFF9FB7D9)
+            SettingsSecondaryButton(
+                text = "설정 복원",
+                onClick = onRestoreClick,
+                enabled = !isRunning,
+                modifier = Modifier.weight(1f)
             )
-
-            if (message.isNotBlank()) {
-                Text(
-                    text = message,
-                    color = Color(0xFFD0D3DA)
-                )
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = onBackupClick,
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = if (isRunning) "처리 중" else "설정 백업")
-                }
-
-                TextButton(
-                    onClick = onRestoreClick,
-                    enabled = !isRunning,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "설정 복원")
-                }
-            }
         }
     }
 }
@@ -2564,29 +2713,9 @@ private fun ConversationGlobalSettingsCard(
     subtitle: String,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF3A3F49)
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color(0xFFD0D3DA)
-            )
-        }
-    }
+    SettingsNavCard(
+        title = title,
+        subtitle = subtitle,
+        onClick = onClick
+    )
 }

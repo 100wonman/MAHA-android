@@ -1,5 +1,6 @@
 package com.maha.app
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,18 @@ fun WorkerProfileManagementScreen(
     var editingScenario by remember { mutableStateOf<ConversationScenarioProfile?>(null) }
     var deleteTargetScenario by remember { mutableStateOf<ConversationScenarioProfile?>(null) }
     var scenarioActionMessage by remember { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = deleteTargetScenario != null) {
+        deleteTargetScenario = null
+    }
+
+    BackHandler(enabled = editingWorker != null) {
+        editingWorker = null
+    }
+
+    BackHandler(enabled = editingScenario != null) {
+        editingScenario = null
+    }
 
     val currentEditingWorker = editingWorker
     if (currentEditingWorker != null) {
@@ -246,50 +259,26 @@ private fun WorkerProfileInfoCard(
     scenarioCount: Int,
     schemaVersion: Int,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2C3340)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Worker Profile 관리",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = "대화모드 Worker Profile / Scenario skeleton preview입니다.",
-                color = Color(0xFFD0D3DA),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            WorkerProfileTagRow(
-                values = listOf(
-                    "schema $schemaVersion",
-                    "Worker ${workerCount}개",
-                    "Scenario ${scenarioCount}개",
-                    "실행 미연결"
-                )
-            )
-        }
-    }
+    SettingsSectionCard(
+        title = "Worker Profile 관리",
+        subtitle = "대화모드 Worker Profile / Scenario preview입니다.",
+        chips = listOf(
+            "schema $schemaVersion" to SettingsChipTone.INFO,
+            "Worker ${workerCount}개" to SettingsChipTone.NEUTRAL,
+            "Scenario ${scenarioCount}개" to SettingsChipTone.NEUTRAL,
+            "실행 미연결" to SettingsChipTone.WARNING
+        )
+    )
 }
 
 @Composable
 private fun WorkerProfileReadOnlyNoticeCard() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF332B1F)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Worker 기본 정보, System Instruction, Provider/Model 참조, Capability/Policy, Scenario 기본 정보 저장은 연결되어 있습니다. Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
-            color = Color(0xFFE6D0B8),
-            modifier = Modifier.padding(12.dp)
-        )
-    }
+    SettingsSectionCard(
+        title = "저장/실행 상태",
+        subtitle = "Worker와 Scenario 설정 저장은 지원합니다. Provider 호출/RAG/Web Search/Tool 실행/ConversationEngine 연결은 아직 없습니다.",
+        chips = listOf("저장 가능" to SettingsChipTone.SUCCESS, "실행 미연결" to SettingsChipTone.WARNING),
+        tone = SettingsChipTone.WARNING
+    )
 }
 
 @Composable
@@ -325,25 +314,12 @@ private fun WorkerProfileTabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    TextButton(
+    SettingsSecondaryButton(
+        text = label,
+        selected = selected,
         onClick = onClick,
         modifier = modifier
-            .background(
-                if (selected) Color(0xFF33445C) else Color(0xFF202733),
-                MaterialTheme.shapes.medium
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected) Color(0xFF86B7FF) else Color(0xFF3B4556),
-                shape = MaterialTheme.shapes.medium
-            )
-    ) {
-        Text(
-            text = label,
-            color = if (selected) Color.White else Color(0xFFBFD7FF),
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-        )
-    }
+    )
 }
 
 @Composable
@@ -571,39 +547,14 @@ private fun ScenarioCreateActionCard(
     message: String?,
     onCreateScenario: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF3B4556), MaterialTheme.shapes.medium)
+    SettingsSectionCard(
+        title = "Scenario 관리",
+        subtitle = "새 Scenario 추가, 복제, 비활성화/활성화, 사용자 생성 Scenario 삭제를 지원합니다. WorkerProfile은 삭제하거나 복제하지 않습니다.",
+        chips = listOf("Scenario CRUD" to SettingsChipTone.INFO)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Scenario 관리",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = "새 Scenario 추가, 복제, 비활성화/활성화, 사용자 생성 Scenario 삭제를 지원합니다. WorkerProfile은 삭제하거나 복제하지 않습니다.",
-                color = Color(0xFFD0D3DA)
-            )
-            TextButton(onClick = onCreateScenario) {
-                Text(text = "새 Scenario 추가", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
-            }
-            if (!message.isNullOrBlank()) {
-                Text(
-                    text = message,
-                    color = Color(0xFFE6D0B8),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                )
-            }
+        SettingsPrimaryButton(text = "새 Scenario 추가", onClick = onCreateScenario)
+        if (!message.isNullOrBlank()) {
+            SettingsStatusChip(text = message, tone = SettingsChipTone.WARNING)
         }
     }
 }
@@ -616,34 +567,28 @@ private fun ScenarioCardActionRow(
     onToggleEnabled: () -> Unit,
     onRequestDelete: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            TextButton(onClick = onDuplicate, modifier = Modifier.weight(1f)) {
-                Text(text = "복제", color = Color(0xFFBFD7FF))
-            }
-            TextButton(onClick = onToggleEnabled, modifier = Modifier.weight(1f)) {
-                Text(text = if (enabled) "비활성화" else "활성화", color = Color(0xFFBFD7FF))
-            }
+            SettingsSecondaryButton(text = "복제", onClick = onDuplicate, modifier = Modifier.weight(1f))
+            SettingsSecondaryButton(text = if (enabled) "비활성화" else "활성화", onClick = onToggleEnabled, modifier = Modifier.weight(1f))
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
         ) {
-            TextButton(onClick = onRequestDelete, modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (isDefaultTemplate) "삭제 제한" else "삭제",
-                    color = if (isDefaultTemplate) Color(0xFFE6D0B8) else Color(0xFFFFB4AB)
-                )
+            if (isDefaultTemplate) {
+                SettingsSecondaryButton(text = "삭제 제한", onClick = onRequestDelete, modifier = Modifier.weight(1f))
+            } else {
+                SettingsDangerButton(text = "삭제", onClick = onRequestDelete, modifier = Modifier.weight(1f))
             }
             Text(
                 text = if (isDefaultTemplate) "기본 Scenario는 삭제 대신 비활성화 또는 복제를 권장합니다." else "삭제 시 Scenario만 제거됩니다.",
                 color = Color(0xFFB8BCC6),
-                modifier = Modifier
-                    .weight(2f)
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.weight(2f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -783,26 +728,18 @@ private fun WorkerProfileInlineValue(
 
 @Composable
 private fun WorkerProfileTagRow(values: List<String>) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        values.chunked(2).forEach { rowValues ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                rowValues.forEach { value ->
-                    Text(
-                        text = value,
-                        color = Color(0xFFD6E4FF),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .background(Color(0xFF2B3442), MaterialTheme.shapes.small)
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    )
-                }
+    SettingsChipRow(
+        values = values.map { value ->
+            val tone = when {
+                value.contains("활성") && !value.contains("비활성") -> SettingsChipTone.SUCCESS
+                value.contains("비활성") -> SettingsChipTone.DISABLED
+                value.contains("미연결") || value.contains("preview") -> SettingsChipTone.WARNING
+                value.contains("기본") || value.contains("사용자") -> SettingsChipTone.INFO
+                else -> SettingsChipTone.NEUTRAL
             }
+            value to tone
         }
-    }
+    )
 }
 
 @Composable
@@ -825,17 +762,13 @@ private fun WorkerProfileKeyValue(label: String, value: String) {
 
 @Composable
 private fun WorkerProfileEmptyCard(text: String) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = text,
-            color = Color(0xFFD0D3DA),
-            modifier = Modifier.padding(12.dp)
-        )
-    }
+    SettingsSectionCard(
+        title = "표시할 항목 없음",
+        subtitle = text,
+        chips = listOf("empty" to SettingsChipTone.DISABLED)
+    )
 }
+
 
 
 

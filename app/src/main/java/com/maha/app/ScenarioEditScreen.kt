@@ -245,40 +245,16 @@ private fun ScenarioEditHeaderCard(
     dirty: Boolean,
     onBack: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2C3340)),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "Scenario 편집",
+        subtitle = "Scenario 기본 정보, 실행 방식, 핵심 Worker 지정, WorkerSet 저장만 연결합니다. Scenario 실행 연결은 아직 없습니다.",
+        chips = listOf(
+            (if (dirty) "변경사항 있음" else "변경사항 없음") to if (dirty) SettingsChipTone.WARNING else SettingsChipTone.SUCCESS,
+            "실행 미연결" to SettingsChipTone.WARNING
+        )
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Scenario 편집",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = if (dirty) "변경사항 있음" else "변경사항 없음",
-                        color = if (dirty) Color(0xFFFFD18A) else Color(0xFFB8E6C8)
-                    )
-                }
-                TextButton(onClick = onBack) {
-                    Text(text = "목록", color = Color(0xFFBFD7FF))
-                }
-            }
-            Text(
-                text = "이번 단계는 Scenario 기본 정보, 실행 방식, 핵심 Worker 지정, WorkerSet 저장만 연결합니다. Scenario 실행 연결은 아직 없습니다.",
-                color = Color(0xFFD0D3DA)
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            SettingsSecondaryButton(text = "목록", onClick = onBack)
         }
     }
 }
@@ -290,36 +266,12 @@ private fun ScenarioEditSection(
     content: @Composable () -> Unit,
 ) {
     var expanded by remember(title) { mutableStateOf(initiallyExpanded) }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF3B4556), MaterialTheme.shapes.medium)
+    SettingsExpandableCard(
+        title = title,
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(text = if (expanded) "접기" else "펼치기", color = Color(0xFFBFD7FF))
-                }
-            }
-            if (expanded) {
-                content()
-            }
-        }
+        content()
     }
 }
 
@@ -501,21 +453,12 @@ private fun ScenarioSmallActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    TextButton(
+    SettingsSecondaryButton(
+        text = label,
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.background(
-            if (enabled) Color(0xFF1B222D) else Color(0xFF252A33),
-            MaterialTheme.shapes.small
-        )
-    ) {
-        Text(
-            text = label,
-            color = if (enabled) Color(0xFFBFD7FF) else Color(0xFF7A808A),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -583,19 +526,17 @@ private fun ScenarioSelectableWorkerRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (selected) Color(0xFF33445C) else Color(0xFF1B222D),
-                MaterialTheme.shapes.small
-            )
+    SettingsSectionCard(
+        title = if (selected) "✓ $label" else label,
+        subtitle = description,
+        chips = listOf((if (selected) "선택됨" else "선택 가능") to if (selected) SettingsChipTone.SELECTED else SettingsChipTone.NEUTRAL)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(text = if (selected) "✓ $label" else label, color = Color.White, fontWeight = FontWeight.Bold)
-            Text(text = description, color = Color(0xFFB8BCC6))
-        }
+        SettingsSecondaryButton(
+            text = if (selected) "선택됨" else "선택",
+            selected = selected,
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -657,42 +598,23 @@ private fun ScenarioEditActionBar(
     onSave: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "편집 작업",
+        chips = listOf((if (dirty) "저장 필요" else "변경 없음") to if (dirty) SettingsChipTone.WARNING else SettingsChipTone.SUCCESS)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        if (saveMessage != null) {
+            SettingsStatusChip(text = saveMessage, tone = SettingsChipTone.WARNING)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (saveMessage != null) {
-                Text(text = saveMessage, color = Color(0xFFFFD18A))
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TextButton(
-                    onClick = onSave,
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
-                ) {
-                    Text(
-                        text = if (dirty) "저장" else "변경 없음",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                TextButton(
-                    onClick = onCancel,
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFF2B3442), MaterialTheme.shapes.medium)
-                ) {
-                    Text(text = "취소", color = Color(0xFFBFD7FF))
-                }
-            }
+            SettingsPrimaryButton(
+                text = if (dirty) "저장" else "변경 없음",
+                onClick = onSave,
+                modifier = Modifier.weight(1f)
+            )
+            SettingsSecondaryButton(text = "취소", onClick = onCancel, modifier = Modifier.weight(1f))
         }
     }
 }
