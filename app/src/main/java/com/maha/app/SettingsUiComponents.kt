@@ -90,6 +90,7 @@ fun SettingsSectionCard(
     val colors = SettingsStyleTokens.cardColors(tone)
 
     Card(
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = colors.background),
         border = BorderStroke(SettingsStyleTokens.cardBorderWidth, colors.border),
         modifier = modifier.fillMaxWidth()
@@ -126,9 +127,10 @@ fun SettingsNavCard(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val background = if (enabled) SettingsStyleTokens.navCardBackground else SettingsStyleTokens.disabledBackground
-    val border = if (enabled) SettingsStyleTokens.infoBorderColor else SettingsStyleTokens.subtleBorderColor
+    val background = SettingsStyleTokens.cardBackground
+    val border = if (enabled) SettingsStyleTokens.actionBorderColor else SettingsStyleTokens.subtleBorderColor
     Card(
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = background),
         border = BorderStroke(SettingsStyleTokens.cardBorderWidth, border),
         modifier = modifier
@@ -161,7 +163,7 @@ fun SettingsNavCard(
                 text = "›",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (enabled) SettingsStyleTokens.linkTextColor else SettingsStyleTokens.disabledTextColor
+                color = if (enabled) SettingsStyleTokens.actionTextColor else SettingsStyleTokens.disabledTextColor
             )
         }
     }
@@ -174,14 +176,18 @@ fun SettingsPrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Button(
+    OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
-        colors = ButtonDefaults.buttonColors(
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
+        border = BorderStroke(
+            SettingsStyleTokens.cardBorderWidth,
+            if (enabled) SettingsStyleTokens.actionBorderColor else SettingsStyleTokens.subtleBorderColor
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
             containerColor = SettingsStyleTokens.primaryButtonBackground,
-            contentColor = SettingsStyleTokens.titleTextColor,
-            disabledContainerColor = SettingsStyleTokens.disabledButtonBackground,
+            contentColor = if (enabled) SettingsStyleTokens.actionTextColor else SettingsStyleTokens.disabledTextColor,
             disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {
@@ -201,10 +207,15 @@ fun SettingsSecondaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
         border = BorderStroke(SettingsStyleTokens.cardBorderWidth, if (selected) SettingsStyleTokens.selectedBorderColor else SettingsStyleTokens.cardBorderColor),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = if (selected) SettingsStyleTokens.selectedButtonBackground else SettingsStyleTokens.unselectedButtonBackground,
-            contentColor = if (enabled) SettingsStyleTokens.linkTextColor else SettingsStyleTokens.disabledTextColor,
+            contentColor = when {
+                !enabled -> SettingsStyleTokens.disabledTextColor
+                selected -> SettingsStyleTokens.selectedTextColor
+                else -> SettingsStyleTokens.mutedTextColor
+            },
             disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {
@@ -219,14 +230,18 @@ fun SettingsDangerButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Button(
+    OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
-        colors = ButtonDefaults.buttonColors(
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
+        border = BorderStroke(
+            SettingsStyleTokens.cardBorderWidth,
+            if (enabled) SettingsStyleTokens.dangerBorderColor else SettingsStyleTokens.subtleBorderColor
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
             containerColor = SettingsStyleTokens.dangerButtonBackground,
-            contentColor = SettingsStyleTokens.titleTextColor,
-            disabledContainerColor = SettingsStyleTokens.disabledButtonBackground,
+            contentColor = if (enabled) SettingsStyleTokens.dangerTextColor else SettingsStyleTokens.disabledTextColor,
             disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {

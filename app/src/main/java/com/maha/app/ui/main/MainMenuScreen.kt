@@ -1,5 +1,6 @@
 package com.maha.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +30,7 @@ fun ModeSelectionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(SettingsStyleTokens.screenBackground)
             .padding(WindowInsets.safeDrawing.asPaddingValues())
             .padding(20.dp),
         verticalArrangement = Arrangement.Center
@@ -37,7 +39,7 @@ fun ModeSelectionScreen(
             text = "MAHA",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = SettingsStyleTokens.titleTextColor
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -45,7 +47,7 @@ fun ModeSelectionScreen(
         Text(
             text = "작업모드 또는 대화모드를 선택하세요.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = SettingsStyleTokens.bodyTextColor
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -78,33 +80,37 @@ private fun MainModeCard(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = conversationUnifiedCardShape(),
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
         colors = CardDefaults.cardColors(
-            containerColor = conversationUnifiedCardColor()
+            containerColor = SettingsStyleTokens.cardBackground
+        ),
+        border = BorderStroke(
+            SettingsStyleTokens.cardBorderWidth,
+            SettingsStyleTokens.cardBorderColor
         )
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(SettingsStyleTokens.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(SettingsStyleTokens.cardSpacing)
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = SettingsStyleTokens.titleTextColor
             )
 
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = SettingsStyleTokens.bodyTextColor
             )
 
             Text(
                 text = actionText,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
+                color = SettingsStyleTokens.actionTextColor
             )
         }
     }

@@ -1,4 +1,156 @@
 ==============================
+[2026-05-06 04:20] 프로바이더·모델·API 설정 스타일 정합성 검증 및 미세 보정
+==============================
+
+[작업]
+- 대화모드 설정 메인, 프로바이더/모델/API 설정 1페이지, 프로바이더/모델 상세 설정 2페이지의 스타일 정합성 검증
+- Provider 관리 카드와 Model 관리 카드의 카드/버튼/chip 테두리·배경 농도 미세 보정
+- Provider/Model 하위 가변 카드와 내부 버튼의 공통 SettingsUiComponents token 적용 누락 확인
+- 선택/비선택 상태, chip, 버튼 테두리 표현 통일
+- 모델 목록 Dialog 검색창, Provider/Model 기능 버튼, visible/enabled/onClick 조건 보존
+- Provider 호출 로직, 저장 schema, ConversationEngine, Worker/Scenario 실행, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+(성공 / 실패 / 부분 성공)
+
+--------------------------------------------------
+
+[보정/검증 모드]
+
+작업명:
+프로바이더·모델·API 설정 스타일 정합성 검증 및 미세 보정
+
+목표:
+- 직전 ProviderManagementScreen / ModelManagementScreen 스타일 치환 이후 실제 화면 정합성을 검증한다.
+- 대화모드 설정 메인, 프로바이더/모델/API 설정 1페이지, 프로바이더/모델 상세 설정 2페이지의 카드/버튼/chip 스타일이 같은 체계로 보이게 한다.
+- 기능 버튼 회귀가 다시 발생하지 않도록 visible / enabled / onClick / ProviderType 분기는 절대 변경하지 않는다.
+- 이번 단계는 스타일 정합성 검증과 최소 미세 보정만 수행한다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+대상 화면:
+- 대화모드 설정 메인
+- 프로바이더 / 모델 / API 설정 1페이지
+- 프로바이더 / 모델 상세 설정 2페이지
+- Provider 탭
+- Model 탭
+
+대상 파일 후보:
+- AppRoot.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- SettingsUiComponents.kt
+- SettingsStyleTokens.kt 또는 동등 token 파일
+
+허용:
+- 카드 테두리 색/농도 미세 보정
+- 버튼 테두리 색/농도 미세 보정
+- chip 색/농도 미세 보정
+- 선택/비선택 상태 표시 통일
+- 다크테마 유지 범위의 배경색 통일
+- SettingsUiComponents token 참조 누락 보정
+- 명백한 스타일 불일치만 최소 수정
+
+금지:
+- Provider/Model 기능 로직 변경
+- visible 조건 변경
+- enabled 조건 변경
+- onClick 변경
+- ProviderType when 분기 변경
+- Provider 호출 로직 변경
+- ProviderAdapter 변경
+- Model 저장 로직 변경
+- 저장 schema 변경
+- ConversationEngine 연결
+- Worker/Scenario 실행 연결
+- RAG/Web Search/Tool 실행 연결
+- 작업모드 수정
+- ProviderManagementScreen / ModelManagementScreen 대규모 재치환
+
+--------------------------------------------------
+2. 핵심 요구사항
+--------------------------------------------------
+
+1. 대화모드 설정 메인 카드와 프로바이더/모델/API 설정 카드의 테두리 농도가 서로 튀지 않게 한다.
+2. 프로바이더/모델 상세 2페이지의 1카드 스타일을 기준으로 Provider 관리 카드와 Model 관리 카드의 스타일을 맞춘다.
+3. Provider/Model 하위 가변 카드와 내부 버튼이 공통 스타일 token을 참조하는지 확인한다.
+4. 카드 내부 배경은 기본 다크테마 계열을 유지하고, 과도한 배경색 변경은 피한다.
+5. 강조는 border / chip / text 중심으로 처리한다.
+6. 기능 버튼은 사라지면 안 된다.
+7. 모델 목록 불러오기 Dialog 검색창은 유지한다.
+8. 2페이지 전체 단일 스크롤 구조를 유지한다.
+
+--------------------------------------------------
+3. 기능 보존 체크
+--------------------------------------------------
+
+Provider:
+- Provider 추가
+- Provider 수정
+- Provider 삭제
+- 활성/비활성 Switch
+- API Key 저장/삭제
+- 모델 목록 불러오기
+- 모델 목록 Dialog 검색창
+- 검색어 필터링
+- 조회 결과에서 Model Profile 추가
+- 중복 모델 추가 방지
+- GOOGLE / OPENAI / OPENAI_COMPATIBLE / LOCAL / CUSTOM / NVIDIA 분기
+
+Model:
+- Model 추가
+- Model 수정
+- Model 삭제
+- 활성/비활성 Switch
+- 기본 지정
+- 즐겨찾기 추가/해제
+- ProviderType 필터
+- 즐겨찾기만 필터
+- 활성 모델만 필터
+- Dialog 저장
+- canSave 조건
+
+--------------------------------------------------
+4. 검증 기준
+--------------------------------------------------
+
+스타일:
+- 대화모드 설정 메인 카드:
+- 프로바이더/모델/API 1페이지 카드:
+- 프로바이더/모델 상세 2페이지 1카드:
+- Provider 관리 카드/하위 카드:
+- Model 관리 카드/하위 카드:
+- 버튼 테두리/배경:
+- chip 스타일:
+- 선택/비선택 상태:
+- 다크테마 유지:
+
+기능:
+- Provider 기능 회귀 없음:
+- Model 기능 회귀 없음:
+- 모델 목록 Dialog 검색창 유지:
+- 2중 스크롤 재발 없음:
+- 설정 back stack 유지:
+- Drawer 폭 유지:
+
+연결 금지:
+- ConversationEngine 미연결:
+- Provider 호출 로직 변경 없음:
+- Worker/Scenario 실행 없음:
+- RAG/Web Search/Tool 실행 없음:
+- 저장 schema 변경 없음:
+- 작업모드 변경 없음:
+
+--------------------------------------------------
+
+[다음 작업]
+고급 하네스 설정 화면 스타일 치환 1차 또는 Provider/Model 설정 추가 회귀 보정
+
+==============================
 [2026-05-05 23:10] ModelManagementScreen 스타일 치환 1차
 ==============================
 
