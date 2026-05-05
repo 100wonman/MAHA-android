@@ -384,7 +384,7 @@ private fun WorkerProfilePreviewCard(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { expanded = !expanded }) {
-                        Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                        Text(text = if (expanded) "상세 닫기" else "상세 보기", color = Color(0xFFBFD7FF))
                     }
                     TextButton(onClick = onEdit) {
                         Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
@@ -419,7 +419,7 @@ private fun WorkerProfilePreviewCard(
                 WorkerProfileKeyValue("사용자 수정본", if (worker.userModified) "예" else "아니오")
 
                 WorkerProfileDetailTitle(title = "System Instruction")
-                WorkerProfileKeyValue("전체 보기 placeholder", worker.systemInstruction.previewText(1200))
+                WorkerProfileKeyValue("System Instruction 전체 보기", worker.systemInstruction.previewText(1200))
                 WorkerProfileReadOnlyPlaceholder(text = "System Instruction은 편집 화면에서 저장할 수 있습니다.")
 
                 WorkerProfileDetailTitle(title = "Provider / Model 참조")
@@ -489,7 +489,7 @@ private fun ConversationScenarioPreviewCard(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { expanded = !expanded }) {
-                        Text(text = if (expanded) "접기" else "상세", color = Color(0xFFBFD7FF))
+                        Text(text = if (expanded) "상세 닫기" else "상세 보기", color = Color(0xFFBFD7FF))
                     }
                     TextButton(onClick = onEdit) {
                         Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
@@ -670,7 +670,7 @@ private fun WorkerProfileCollapseButton(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.End
     ) {
         TextButton(onClick = onClick) {
-            Text(text = "접기", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
+            Text(text = "상세 닫기", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
         }
     }
 }

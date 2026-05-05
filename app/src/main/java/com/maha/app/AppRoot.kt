@@ -1994,7 +1994,7 @@ private fun ConversationGlobalSettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            if (selectedPage != "modelApi") {
+            if (selectedPage != null && selectedPage != "modelApi") {
                 item {
                     TextButton(onClick = onBackClick) {
                         Text(text = "←", color = Color.White)

@@ -286,7 +286,7 @@ fun SettingsExpandableCard(
             horizontalArrangement = Arrangement.End
         ) {
             SettingsSecondaryButton(
-                text = if (expanded) "접기" else "펼치기",
+                text = if (expanded) "상세 닫기" else "상세 보기",
                 onClick = { onExpandedChange(!expanded) }
             )
         }

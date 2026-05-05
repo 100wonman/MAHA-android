@@ -546,7 +546,7 @@ private fun CapabilityExpandableSection(
                     )
                 }
                 TextButton(onClick = onToggle) {
-                    Text(if (expanded) "접기" else "펼치기")
+                    Text(if (expanded) "상세 닫기" else "상세 보기")
                 }
             }
 

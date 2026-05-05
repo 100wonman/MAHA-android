@@ -1,4 +1,85 @@
 ==============================
+[2026-05-05 17:25] 대화모드 설정 UX 문구 및 root back arrow 보정
+==============================
+
+[작업]
+- 대화모드 설정 root 화면에서 불필요한 좌측 back arrow 노출 제거
+- SettingsExpandableCard의 “접기 / 펼치기” 문구를 “상세 닫기 / 상세 보기”로 보정
+- Capability Resolver 진단 카드의 접힘/펼침 문구를 “상세 닫기 / 상세 보기”로 보정
+- Worker Profile / Scenario 관리 카드의 접힘/상세 문구를 “상세 닫기 / 상세 보기”로 통일
+- “전체 보기 placeholder” 문구를 “System Instruction 전체 보기”로 보정
+- Provider/Model 상세 2페이지의 기존 단일 스크롤 / useInternalScroll=false 경로 유지
+- SettingsUiComponents 기반 카드/버튼/chip 스타일 유지
+- 설정 내부 back stack 기존 동작 유지
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- 대화모드 설정 root 화면의 불필요한 좌측 back arrow 노출을 제거
+- SettingsExpandableCard의 “접기 / 펼치기” 문구를 “상세 닫기 / 상세 보기”로 보정
+- Capability Resolver 진단 카드의 “접기 / 펼치기” 문구를 “상세 닫기 / 상세 보기”로 보정
+- Worker Profile / Scenario 관리 카드의 “접기 / 상세” 문구를 “상세 닫기 / 상세 보기”로 통일
+- “전체 보기 placeholder” 문구를 “System Instruction 전체 보기”로 보정
+
+[설정 메인 테스트]
+- 카드 수: 기존 축 유지
+- 더미/중복 카드: 추가 생성 없음
+- 고급 하네스 설정 진입: 유지
+- Drawer 폭: 기존 responsiveSettingsDrawerWidth 정책 변경 없음
+
+[프로바이더/모델/API 1페이지 테스트]
+- 제목: 유지
+- 요약 카드: 유지
+- 경고 편입: 유지
+- 상세 설정 진입: 유지
+- 백업/복원 위치: 유지
+
+[프로바이더/모델 상세 2페이지 테스트]
+- Summary card 압축: 유지
+- Provider/Model 탭: 유지
+- 접기/펼치기 문구 제거: 관련 설정/진단/관리 파일 기준 제거
+- 2중 스크롤 없음: ProviderManagementScreen / ModelManagementScreen의 useInternalScroll=false 경로 유지
+- Provider 설정 가능: 코드 경로 유지
+- Model 설정 가능: 코드 경로 유지
+
+[공통 스타일 테스트]
+- 카드 스타일: SettingsUiComponents 기준 유지
+- 버튼 스타일: SettingsPrimaryButton / SettingsSecondaryButton 유지
+- chip 스타일: SettingsStatusChip / SettingsChipRow 유지
+- 선택/비선택 상태: 유지
+- 다크테마 유지: 유지
+
+[뒤로가기 테스트]
+- 2페이지 → 1페이지: 기존 settings back stack 유지
+- Worker 편집 → Worker Profile 관리: 기존 화면 경로 유지
+- Scenario 편집 → Scenario 관리: 기존 화면 경로 유지
+- Dialog 우선 닫기: 기존 BackHandler 유지
+- root Drawer 닫기: 설정 root의 불필요한 back arrow 제거
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- Worker 실행 없음: 유지
+- RAG/Web Search/Tool 실행 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 없음
+
+[변경 파일]
+- AppRoot.kt
+- SettingsUiComponents.kt
+- CapabilityResolverDebugCard.kt
+- WorkerProfileManagementScreen.kt
+
+[빌드]
+성공
+
+==============================
 [2026-05-05 15:10] 대화모드 전역 설정 카드맵 정리 및 Provider/Model 설정 접힘 보정
 ==============================
 
