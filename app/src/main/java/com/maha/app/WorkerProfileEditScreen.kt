@@ -770,43 +770,39 @@ private fun WorkerCapabilityTypeSelector(
         modifier = Modifier
             .fillMaxWidth()
             .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
+            .border(
+                SettingsStyleTokens.cardBorderWidth,
+                SettingsStyleTokens.subtleBorderColor,
+                RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius)
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         WorkerEditKeyValue(label, value.name)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SettingsSecondaryButton(
-                text = "이전",
-                onClick = { onValueChange(value.previousCapabilityType()) },
-                modifier = Modifier.weight(1f)
-            )
-            SettingsSecondaryButton(
-                text = "다음",
-                onClick = { onValueChange(value.nextCapabilityType()) },
-                selected = true,
-                modifier = Modifier.weight(1f)
-            )
-        }
         Text(
-            text = "선택 가능한 값: ${CapabilityType.values().joinToString { it.name }}",
-            color = SettingsStyleTokens.mutedTextColor
+            text = "원하는 출력 타입을 직접 선택합니다.",
+            color = SettingsStyleTokens.mutedTextColor,
+            style = MaterialTheme.typography.bodySmall
         )
+        CapabilityType.values().toList().chunked(2).forEach { rowValues ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowValues.forEach { candidate ->
+                    SettingsSecondaryButton(
+                        text = if (candidate == value) "✓ ${candidate.name}" else candidate.name,
+                        onClick = { onValueChange(candidate) },
+                        selected = candidate == value,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rowValues.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
     }
-}
-
-private fun CapabilityType.nextCapabilityType(): CapabilityType {
-    val values = CapabilityType.values()
-    val nextIndex = (ordinal + 1) % values.size
-    return values[nextIndex]
-}
-
-private fun CapabilityType.previousCapabilityType(): CapabilityType {
-    val values = CapabilityType.values()
-    val previousIndex = if (ordinal == 0) values.lastIndex else ordinal - 1
-    return values[previousIndex]
 }
 
 private fun parseWorkerPolicyInt(value: String, fallback: Int): Int {

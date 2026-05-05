@@ -201,16 +201,10 @@ fun StorageManagementScreen(
         )
 
         if (snapshot.sessions.isEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "앱 전용 저장소에 저장된 대화 세션이 없습니다.",
-                    modifier = Modifier.padding(18.dp),
-                    color = Color(0xFFD0D3DA)
-                )
-            }
+            SettingsInlineNotice(
+                text = "앱 전용 저장소에 저장된 대화 세션이 없습니다.",
+                tone = SettingsChipTone.INFO
+            )
         } else {
             snapshot.sessions.forEach { item ->
                 StorageSessionCard(
@@ -480,67 +474,48 @@ private fun RagSearchTestCard(
     onCopySnippet: (RagSearchResult) -> Unit,
     onOpenDetail: (RagSearchResult) -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "RAG 검색 테스트",
+        subtitle = "앱 전용 저장소의 index_metadata와 chunk 파일을 keyword로 검색합니다."
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text(text = "검색어 입력") }
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = "RAG 검색 테스트",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+            SettingsPrimaryButton(
+                text = "검색",
+                onClick = onSearch,
+                enabled = query.trim().isNotEmpty(),
+                modifier = Modifier.weight(1f)
             )
-            Text(
-                text = "앱 전용 저장소의 index_metadata와 chunk 파일을 keyword로 검색합니다.",
-                color = Color(0xFFB8BCC6),
-                style = MaterialTheme.typography.bodySmall
+            SettingsSecondaryButton(
+                text = "초기화",
+                onClick = onClear,
+                enabled = query.isNotBlank() || results.isNotEmpty(),
+                modifier = Modifier.weight(1f)
             )
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text(text = "검색어 입력") }
+        }
+        message?.let {
+            SettingsInlineNotice(
+                text = it,
+                tone = if (results.isEmpty()) SettingsChipTone.WARNING else SettingsChipTone.INFO
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onSearch,
-                    enabled = query.trim().isNotEmpty(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "검색")
-                }
-                Button(
-                    onClick = onClear,
-                    enabled = query.isNotBlank() || results.isNotEmpty(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "초기화")
-                }
-            }
-            message?.let {
-                Text(
-                    text = it,
-                    color = Color(0xFFD0D3DA),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-            results.forEach { result ->
-                RagSearchResultCard(
-                    result = result,
-                    expanded = expandedResultIds.contains(result.chunkId),
-                    onToggleExpanded = { onToggleExpanded(result.chunkId) },
-                    onCopySnippet = { onCopySnippet(result) },
-                    onOpenDetail = { onOpenDetail(result) }
-                )
-            }
+        }
+        results.forEach { result ->
+            RagSearchResultCard(
+                result = result,
+                expanded = expandedResultIds.contains(result.chunkId),
+                onToggleExpanded = { onToggleExpanded(result.chunkId) },
+                onCopySnippet = { onCopySnippet(result) },
+                onOpenDetail = { onOpenDetail(result) }
+            )
         }
     }
 }
@@ -553,61 +528,49 @@ private fun RagSearchResultCard(
     onCopySnippet: () -> Unit,
     onOpenDetail: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF050A0F)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = result.title.ifBlank { "제목 없음" },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${result.sourceType} · score ${result.score}",
-                        color = Color(0xFFB8BCC6),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                TextButton(onClick = onCopySnippet) {
-                    Text(text = "복사")
-                }
-            }
-            StorageInfoRow(label = "filePath", value = result.filePath)
-            SelectionContainer {
+    SettingsInfoPanel {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = result.matchedTextSnippet.ifBlank { result.textPreview },
-                    color = Color(0xFFD0D3DA),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = if (expanded) Int.MAX_VALUE else 4,
-                    overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis
+                    text = result.title.ifBlank { "제목 없음" },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = SettingsStyleTokens.titleTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${result.sourceType} · score ${result.score}",
+                    color = SettingsStyleTokens.mutedTextColor,
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                TextButton(
-                    onClick = onToggleExpanded,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = if (expanded) "접기" else "펼치기")
-                }
-                TextButton(
-                    onClick = onOpenDetail,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "전체 보기")
-                }
-            }
+            SettingsTextButton(text = "복사", onClick = onCopySnippet)
+        }
+        StorageInfoRow(label = "filePath", value = result.filePath)
+        SelectionContainer {
+            Text(
+                text = result.matchedTextSnippet.ifBlank { result.textPreview },
+                color = SettingsStyleTokens.bodyTextColor,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = if (expanded) Int.MAX_VALUE else 4,
+                overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SettingsSecondaryButton(
+                text = if (expanded) "접기" else "펼치기",
+                onClick = onToggleExpanded,
+                modifier = Modifier.weight(1f)
+            )
+            SettingsSecondaryButton(
+                text = "전체 보기",
+                onClick = onOpenDetail,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -620,51 +583,36 @@ private fun StorageStatusCard(
     onBackupAll: () -> Unit,
     onOpenRestore: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "저장소 상태",
+        chips = listOf(
+            (if (isSafReady) "SAF 연결됨" else "SAF 미연결") to if (isSafReady) SettingsChipTone.SUCCESS else SettingsChipTone.WARNING,
+            "세션 ${snapshot.sessionCount}개" to SettingsChipTone.INFO
+        )
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "저장소 상태",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+        StorageInfoRow(label = "기본 저장소", value = "앱 전용 저장소")
+        StorageInfoRow(label = "위치", value = snapshot.rootPath)
+        StorageInfoRow(label = "파일 수", value = "${snapshot.fileCount}개")
+        StorageInfoRow(label = "대략적 용량", value = formatBytes(snapshot.totalBytes))
+        StorageInfoRow(label = "백업 세션", value = "${backupSessionCount}개")
+        SettingsDivider()
+        SettingsPrimaryButton(
+            text = "전체 세션 백업",
+            onClick = onBackupAll,
+            enabled = isSafReady && snapshot.sessions.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth()
+        )
+        SettingsSecondaryButton(
+            text = "백업에서 복원",
+            onClick = onOpenRestore,
+            enabled = isSafReady,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (!isSafReady) {
+            SettingsInlineNotice(
+                text = "SAF 백업 폴더 연결 후 백업/복원을 사용할 수 있습니다.",
+                tone = SettingsChipTone.WARNING
             )
-            StorageInfoRow(label = "기본 저장소", value = "앱 전용 저장소")
-            StorageInfoRow(label = "위치", value = snapshot.rootPath)
-            StorageInfoRow(label = "세션 수", value = "${snapshot.sessionCount}개")
-            StorageInfoRow(label = "파일 수", value = "${snapshot.fileCount}개")
-            StorageInfoRow(label = "대략적 용량", value = formatBytes(snapshot.totalBytes))
-            StorageInfoRow(
-                label = "SAF 백업",
-                value = if (isSafReady) "연결됨" else "미연결"
-            )
-            StorageInfoRow(label = "백업 세션", value = "${backupSessionCount}개")
-            Button(
-                onClick = onBackupAll,
-                enabled = isSafReady && snapshot.sessions.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = "전체 세션 백업")
-            }
-            Button(
-                onClick = onOpenRestore,
-                enabled = isSafReady,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = "백업에서 복원")
-            }
-            if (!isSafReady) {
-                Text(
-                    text = "SAF 백업 폴더 연결 후 백업/복원을 사용할 수 있습니다.",
-                    color = Color(0xFFB8BCC6),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
         }
     }
 }
@@ -679,66 +627,47 @@ private fun StorageSessionCard(
     onIndexSession: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = item.title,
+        chips = listOf("메시지 ${item.messageCount}개" to SettingsChipTone.INFO)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        StorageInfoRow(label = "sessionId", value = item.sessionId)
+        StorageInfoRow(label = "폴더명", value = item.folderName)
+        StorageInfoRow(label = "마지막 수정", value = item.updatedAt.ifBlank { "알 수 없음" })
+        StorageInfoRow(label = "파일 크기", value = formatBytes(item.totalBytes))
+        SettingsDivider()
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingsSecondaryButton(
+                text = "session.json 보기",
+                onClick = onOpenSessionJson,
+                modifier = Modifier.fillMaxWidth()
             )
-            StorageInfoRow(label = "sessionId", value = item.sessionId)
-            StorageInfoRow(label = "폴더명", value = item.folderName)
-            StorageInfoRow(label = "메시지 수", value = "${item.messageCount}개")
-            StorageInfoRow(label = "마지막 수정", value = item.updatedAt.ifBlank { "알 수 없음" })
-            StorageInfoRow(label = "파일 크기", value = formatBytes(item.totalBytes))
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onOpenSessionJson,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "session.json 보기")
-                }
+            SettingsSecondaryButton(
+                text = "messages.jsonl 보기",
+                onClick = onOpenMessages,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                Button(
-                    onClick = onOpenMessages,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "messages.jsonl 보기")
-                }
+            SettingsSecondaryButton(
+                text = "선택 세션 백업",
+                onClick = onBackup,
+                enabled = isBackupEnabled,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                Button(
-                    onClick = onBackup,
-                    enabled = isBackupEnabled,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "선택 세션 백업")
-                }
+            SettingsPrimaryButton(
+                text = "선택 세션 인덱싱",
+                onClick = onIndexSession,
+                enabled = item.messageCount > 0,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                Button(
-                    onClick = onIndexSession,
-                    enabled = item.messageCount > 0,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "선택 세션 인덱싱")
-                }
-
-                TextButton(
-                    onClick = onDelete,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "삭제")
-                }
-            }
+            SettingsDangerButton(
+                text = "삭제",
+                onClick = onDelete,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -749,33 +678,24 @@ private fun SafBackupSessionCard(
     item: SafBackupSessionInfo,
     onRestore: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            StorageInfoRow(label = "sessionId", value = item.sessionId)
-            StorageInfoRow(label = "백업 폴더", value = item.folderName)
-            StorageInfoRow(label = "메시지 수", value = "${item.messageCount}개")
-            StorageInfoRow(label = "마지막 수정", value = item.updatedAt.ifBlank { "알 수 없음" })
-            Button(
-                onClick = onRestore,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(text = "복원")
-            }
-        }
+    SettingsInfoPanel {
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = SettingsStyleTokens.titleTextColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        StorageInfoRow(label = "sessionId", value = item.sessionId)
+        StorageInfoRow(label = "백업 폴더", value = item.folderName)
+        StorageInfoRow(label = "메시지 수", value = "${item.messageCount}개")
+        StorageInfoRow(label = "마지막 수정", value = item.updatedAt.ifBlank { "알 수 없음" })
+        SettingsPrimaryButton(
+            text = "복원",
+            onClick = onRestore,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -784,21 +704,12 @@ private fun StorageInfoRow(
     label: String,
     value: String
 ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            modifier = Modifier.width(96.dp),
-            color = Color(0xFFB8BCC6),
-            style = MaterialTheme.typography.bodySmall
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(
-            text = value,
-            modifier = Modifier.weight(1f),
-            color = Color(0xFFD0D3DA),
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
+    SettingsInfoRow(
+        label = label,
+        value = value,
+        labelWidth = 96.dp,
+        maxLines = 3
+    )
 }
 
 private fun loadAppSpecificStorageSnapshot(context: Context): AppSpecificStorageSnapshot {

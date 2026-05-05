@@ -1867,10 +1867,6 @@ private fun ConversationGlobalSettingsScreen(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                TextButton(onClick = onBackClick) {
-                    Text(text = "←", color = Color.White)
-                }
-
                 Text(
                     text = "저장소 관리",
                     style = MaterialTheme.typography.headlineMedium,
@@ -1996,6 +1992,7 @@ private fun ConversationGlobalSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             val hideVisualBackArrow = selectedPage in setOf(
+                "rag",
                 "harness",
                 "capabilityResolverDebug",
                 "workerProfileManagement"
@@ -2219,73 +2216,48 @@ private fun ConversationGlobalSettingsScreen(
                     }
 
                     item {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
-                            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                            modifier = Modifier.fillMaxWidth()
+                        SettingsSectionCard(
+                            title = "로컬 저장소",
+                            subtitle = "대화 세션 저장 위치와 SAF 백업 연결 상태를 관리합니다."
                         ) {
-                            Column(
-                                modifier = Modifier.padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "로컬 저장소",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                            SettingsInfoRow(label = "상태", value = storageStatusText)
+                            SettingsInfoRow(label = "위치", value = storageLocationText, maxLines = 2)
+                            SettingsInfoRow(label = "앱 저장소 세션", value = "${appSpecificSessionCount}개")
+
+                            if (lastMigrationResultText.isNotBlank()) {
+                                SettingsInlineNotice(
+                                    text = "마이그레이션 결과: $lastMigrationResultText",
+                                    tone = SettingsChipTone.INFO
                                 )
-
-                                Text(
-                                    text = "상태: $storageStatusText",
-                                    color = SettingsStyleTokens.bodyTextColor
-                                )
-
-                                Text(
-                                    text = "위치: $storageLocationText",
-                                    color = SettingsStyleTokens.bodyTextColor
-                                )
-
-                                Text(
-                                    text = "기존 앱 저장소 세션: ${appSpecificSessionCount}개",
-                                    color = SettingsStyleTokens.bodyTextColor
-                                )
-
-                                if (lastMigrationResultText.isNotBlank()) {
-                                    Text(
-                                        text = "마이그레이션 결과: $lastMigrationResultText",
-                                        color = SettingsStyleTokens.bodyTextColor
-                                    )
-                                }
-
-                                Button(
-                                    onClick = onSelectStorageFolderClick,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(text = "저장 폴더 선택")
-                                }
-
-                                Button(
-                                    onClick = onImportAppSpecificStorageClick,
-                                    enabled = canMigrateAppSpecificSessions,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(text = "기존 앱 저장소에서 가져오기")
-                                }
-
-                                if (!canMigrateAppSpecificSessions) {
-                                    Text(
-                                        text = "SAF 저장소 연결 후 사용할 수 있습니다.",
-                                        color = SettingsStyleTokens.bodyTextColor
-                                    )
-                                }
-
-                                TextButton(
-                                    onClick = onUseFallbackStorageClick,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(text = "기본 앱 저장소 사용")
-                                }
                             }
+
+                            SettingsDivider()
+
+                            SettingsPrimaryButton(
+                                text = "저장 폴더 선택",
+                                onClick = onSelectStorageFolderClick,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            SettingsSecondaryButton(
+                                text = "기존 앱 저장소에서 가져오기",
+                                onClick = onImportAppSpecificStorageClick,
+                                enabled = canMigrateAppSpecificSessions,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            if (!canMigrateAppSpecificSessions) {
+                                SettingsInlineNotice(
+                                    text = "SAF 저장소 연결 후 사용할 수 있습니다.",
+                                    tone = SettingsChipTone.WARNING
+                                )
+                            }
+
+                            SettingsTextButton(
+                                text = "기본 앱 저장소 사용",
+                                onClick = onUseFallbackStorageClick,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
