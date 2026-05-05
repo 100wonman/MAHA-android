@@ -1,4 +1,264 @@
 ==============================
+[2026-05-05 23:10] ModelManagementScreen 스타일 치환 1차
+==============================
+
+[작업]
+- ModelManagementScreen.kt를 대상으로 카드/버튼/chip 스타일을 SettingsUiComponents 기준으로 1차 치환
+- Model 관리 상단 카드, 기본 모델 경고 카드, 필터/컨트롤 카드, Model 개별 카드, Raw Name Guide Card 스타일 통일
+- Model 추가/수정 Dialog와 삭제 확인 Dialog 스타일 통일
+- Model 추가/수정/삭제/활성화/기본 지정/즐겨찾기 기능 버튼 보존
+- MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md 기준으로 visible / enabled / onClick 조건 보존
+- ProviderManagementScreen.kt, Provider 호출 로직, 저장 schema, ConversationEngine, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- ModelManagementScreen.kt의 Model 관리 상단 카드, 기본 모델 경고 카드, 빈 상태/필터 결과 없음 카드를 SettingsSectionCard 기준으로 치환
+- Model 목록 필터 카드와 ProviderType / 즐겨찾기 / 활성 모델 필터 영역을 공통 설정 스타일 기준으로 보정
+- Model 개별 카드의 즐겨찾기 / 기본 지정 / 수정 / 삭제 버튼을 공통 버튼 스타일 기준으로 보정
+- Raw Name Guide Card와 Capability badge 표시를 SettingsUiComponents 계열 스타일로 보정
+- visible / enabled / onClick / 기본 지정 / 즐겨찾기 / 삭제 / 저장 로직은 변경하지 않음
+
+[Model 스타일 테스트]
+- Model 관리 상단 카드: 확인
+- 기본 대화 모델 경고 카드: 확인
+- Model 목록 필터 카드: 확인
+- Model 개별 카드: 확인
+- Raw Name Guide Card: 확인
+- Dialog 카드: 확인
+- 버튼 스타일: 확인
+- chip 스타일: 확인
+
+[Model 기능 회귀 테스트]
+- Model 추가: 확인
+- Model 수정: 확인
+- Model 삭제: 확인
+- 활성/비활성 Switch: 확인
+- 기본 지정: 확인
+- 즐겨찾기 추가/해제: 확인
+- ProviderType 필터: 확인
+- 즐겨찾기만 필터: 확인
+- 활성 모델만 필터: 확인
+- Dialog 저장: 확인
+- canSave 조건: 확인
+
+[연결 금지 확인]
+- ProviderManagementScreen 미수정: 유지
+- Provider 호출 로직 변경 없음: 유지
+- ProviderAdapter 변경 없음: 유지
+- ConversationEngine 미연결: 유지
+- Worker/Scenario 실행 없음: 유지
+- RAG/Web Search/Tool 실행 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 없음
+
+[변경 파일]
+- ModelManagementScreen.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ModelManagementScreen 스타일 치환 1차
+
+목표:
+- ModelManagementScreen.kt만 대상으로 설정 카드/버튼/chip 스타일을 SettingsUiComponents 기준으로 1차 통일한다.
+- MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md의 visible / enabled / onClick 보존 원칙을 따른다.
+- Model 추가 / 수정 / 삭제 / 기본 지정 / 즐겨찾기 기능이 사라지거나 조건이 바뀌지 않게 한다.
+- 이번 단계는 ModelManagementScreen.kt 전용 스타일 치환이며, ProviderManagementScreen.kt는 수정하지 않는다.
+
+--------------------------------------------------
+1. 구현 범위
+--------------------------------------------------
+
+이번 단계에서 구현:
+
+✔ ModelManagementScreen.kt의 직접 Card 사용처를 SettingsSectionCard / SettingsControlCard / SettingsDialogCard 계열로 치환
+✔ Model 관리 상단 카드 스타일 통일
+✔ 기본 대화 모델 경고 카드 스타일 통일
+✔ Model 목록 필터 / 컨트롤 카드 스타일 통일
+✔ Model 개별 카드 스타일 통일
+✔ Raw Name Guide Card 스타일 통일
+✔ Model 추가 / 수정 Dialog 카드 스타일 통일
+✔ 삭제 확인 Dialog 버튼 스타일 통일
+✔ TextButton / Button 직접 사용처를 SettingsPrimaryButton / SettingsSecondaryButton / SettingsDangerButton / SettingsTextButton 계열로 치환
+✔ ProviderType 필터 버튼 스타일 통일
+✔ 즐겨찾기만 / 활성 모델만 필터 버튼 스타일 통일
+✔ Model 추가 / 수정 / 삭제 / 기본 지정 / 즐겨찾기 버튼 유지
+✔ 빌드 성공 확인
+
+이번 단계에서 금지:
+
+❌ ProviderManagementScreen.kt 수정
+❌ Model 기능 로직 변경
+❌ onClick 변경
+❌ enabled 조건 변경
+❌ visible 조건 변경
+❌ 기본 모델 지정 정책 변경
+❌ 즐겨찾기 정책 변경
+❌ Model 저장 schema 변경
+❌ Provider 호출 로직 변경
+❌ ProviderAdapter 변경
+❌ ConversationEngine 연결
+❌ Worker/Scenario 실행 연결
+❌ RAG/Web Search/Tool 실행 연결
+❌ 작업모드 수정
+
+--------------------------------------------------
+2. 대상 파일
+--------------------------------------------------
+
+주요 대상:
+
+- ModelManagementScreen.kt
+
+참조 가능:
+
+- SettingsUiComponents.kt
+- SettingsStyleTokens.kt 또는 동등 token 파일
+- MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md
+
+주의:
+- 이번 턴에서는 ModelManagementScreen.kt만 수정한다.
+- 이미 존재하는 SettingsUiComponents wrapper를 우선 사용한다.
+- 필요한 wrapper가 없으면 최소 추가만 허용한다.
+- 기능 로직과 저장 흐름은 건드리지 않는다.
+
+--------------------------------------------------
+3. 반드시 보존할 Model 액션
+--------------------------------------------------
+
+아래 액션은 사라지면 안 된다.
+
+- Model 추가
+- Model 수정
+- Model 삭제
+- Model 활성/비활성 Switch
+- 기본 모델 지정
+- 즐겨찾기 추가/해제
+- Model 추가/수정 Dialog 저장
+- ProviderType 필터
+- 즐겨찾기만 필터
+- 활성 모델만 필터
+- Provider missing / orphan 관련 표시
+- LOCAL 신규 모델 기본값 적용
+- 기본 모델 삭제 시 자동 재지정 없음 정책
+
+보존 조건:
+
+- visible 조건 유지
+- enabled 조건 유지
+- onClick 역할 유지
+- providers.isNotEmpty 조건 유지
+- canSave 조건 유지
+- 기본 지정 disabled 조건 유지
+- Provider/Model ID 참조 유지
+
+--------------------------------------------------
+4. 스타일 치환 안전 규칙
+--------------------------------------------------
+
+반드시 지킨다.
+
+- 스타일 치환은 기능 버튼의 존재 여부를 바꾸면 안 된다.
+- 스타일 치환은 onClick을 바꾸면 안 된다.
+- 스타일 치환은 enabled 조건을 바꾸면 안 된다.
+- 스타일 치환은 visible 조건을 바꾸면 안 된다.
+- 버튼 문구를 줄이더라도 기능 의미는 유지한다.
+- Model 개별 카드 내부 액션은 삭제하지 않는다.
+- Raw Name 안내는 유지하되 공통 카드 스타일로 맞춘다.
+- API Key 원문은 표시하지 않는다.
+
+--------------------------------------------------
+5. 스타일 적용 기준
+--------------------------------------------------
+
+ModelManagementScreen.kt 내부에서 직접 지정된 다음 요소를 줄인다.
+
+- Card backgroundColor 직접 지정
+- Card border 직접 지정
+- Button containerColor 직접 지정
+- TextButton 직접 사용
+- RadioButton 직접 사용
+- 화면별 임의 radius / alpha / padding
+
+대체 기준:
+
+- 일반 카드: SettingsSectionCard
+- 목록/필터/컨트롤 카드: SettingsControlCard 또는 SettingsSectionCard
+- Dialog 카드: SettingsDialogCard
+- 주요 액션: SettingsPrimaryButton
+- 보조 액션: SettingsSecondaryButton
+- 위험 액션: SettingsDangerButton
+- 텍스트 액션: SettingsTextButton
+- 상태 표시: SettingsStatusChip / SettingsChipRow
+- 선택 row: SettingsRadioRow 또는 기존 기능 보존 가능한 최소 wrapper
+
+--------------------------------------------------
+6. 테스트 기준
+--------------------------------------------------
+
+A. Model 스타일
+- Model 관리 상단 카드:
+- 기본 대화 모델 경고 카드:
+- Model 목록 필터 카드:
+- Model 개별 카드:
+- Raw Name Guide Card:
+- Dialog 카드:
+- 버튼 스타일:
+- chip 스타일:
+
+B. Model 기능 회귀
+- Model 추가:
+- Model 수정:
+- Model 삭제:
+- 활성/비활성 Switch:
+- 기본 지정:
+- 즐겨찾기 추가/해제:
+- ProviderType 필터:
+- 즐겨찾기만 필터:
+- 활성 모델만 필터:
+- Dialog 저장:
+- canSave 조건:
+
+C. 연결 금지 확인
+- ProviderManagementScreen 미수정:
+- Provider 호출 로직 변경 없음:
+- ProviderAdapter 변경 없음:
+- ConversationEngine 미연결:
+- Worker/Scenario 실행 없음:
+- RAG/Web Search/Tool 실행 없음:
+- 저장 schema 변경 없음:
+- 작업모드 변경 없음:
+
+--------------------------------------------------
+7. 완료 기준
+--------------------------------------------------
+
+- ModelManagementScreen.kt의 카드/버튼 스타일이 SettingsUiComponents 기준으로 1차 통일됨
+- Model 기능 버튼이 사라지지 않음
+- visible / enabled / onClick 조건 보존
+- 기본 지정 / 즐겨찾기 / 삭제 정책 보존
+- ProviderManagementScreen.kt 미수정
+- 실행 로직 변경 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+ModelManagementScreen 기능 회귀 추가 보정 또는 AppRoot / 프로바이더·모델·API 설정 1페이지 스타일 정합성 보정
+
+==============================
 [2026-05-05 21:30] ProviderManagementScreen 스타일 치환 1차
 ==============================
 
