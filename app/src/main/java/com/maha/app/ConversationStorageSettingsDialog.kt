@@ -6,11 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +25,9 @@ fun ConversationStorageSettingsDialog(
     onDismiss: () -> Unit
 ) {
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = "대화 설정")
@@ -49,10 +48,10 @@ fun ConversationStorageSettingsDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf("일반", "자동", "정밀").forEach { mode ->
-                            FilterChip(
+                            SettingsSecondaryButton(
+                                text = mode,
                                 selected = modeLabel == mode,
-                                onClick = { onModeSelected(mode) },
-                                label = { Text(text = mode) }
+                                onClick = { onModeSelected(mode) }
                             )
                         }
                     }
@@ -66,7 +65,7 @@ fun ConversationStorageSettingsDialog(
                         text = "검색 사용",
                         modifier = Modifier.padding(top = 12.dp)
                     )
-                    Switch(
+                    SettingsSwitch(
                         checked = searchEnabled,
                         onCheckedChange = onSearchEnabledChange
                     )
@@ -81,25 +80,21 @@ fun ConversationStorageSettingsDialog(
                     )
                     Text(text = "상태: $storageStatusText")
                     Text(text = "위치: $storageLocationText")
-                    Button(
+                    SettingsPrimaryButton(
+                        text = "저장 폴더 선택",
                         onClick = onSelectStorageFolderClick,
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = "저장 폴더 선택")
-                    }
-                    TextButton(
+                    )
+                    SettingsSecondaryButton(
+                        text = "기본 앱 저장소 사용",
                         onClick = onUseFallbackStorageClick,
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = "기본 앱 저장소 사용")
-                    }
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            SettingsSecondaryButton(text = "닫기", onClick = onDismiss)
         }
     )
 }

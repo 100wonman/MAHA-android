@@ -16,13 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -246,6 +244,9 @@ fun StorageManagementScreen(
 
     fileViewerState?.let { viewerState ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { fileViewerState = null },
             title = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -277,31 +278,29 @@ fun StorageManagementScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                SettingsPrimaryButton(
+                    text = "전체 복사",
                     onClick = {
                         clipboardManager.setText(AnnotatedString(viewerState.content))
                     }
-                ) {
-                    Text(text = "전체 복사")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { fileViewerState = null }) {
-                    Text(text = "닫기")
-                }
+                SettingsSecondaryButton(text = "닫기", onClick = { fileViewerState = null })
             }
         )
     }
 
     backupResultMessage?.let { message ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { backupResultMessage = null },
             title = { Text(text = "백업 결과") },
             text = { Text(text = message) },
             confirmButton = {
-                TextButton(onClick = { backupResultMessage = null }) {
-                    Text(text = "확인")
-                }
+                SettingsSecondaryButton(text = "확인", onClick = { backupResultMessage = null })
             }
         )
     }
@@ -309,32 +308,37 @@ fun StorageManagementScreen(
 
     restoreResultMessage?.let { message ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { restoreResultMessage = null },
             title = { Text(text = "복원 결과") },
             text = { Text(text = message) },
             confirmButton = {
-                TextButton(onClick = { restoreResultMessage = null }) {
-                    Text(text = "확인")
-                }
+                SettingsSecondaryButton(text = "확인", onClick = { restoreResultMessage = null })
             }
         )
     }
 
     chunkIndexResultMessage?.let { message ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { chunkIndexResultMessage = null },
             title = { Text(text = "인덱싱 결과") },
             text = { Text(text = message) },
             confirmButton = {
-                TextButton(onClick = { chunkIndexResultMessage = null }) {
-                    Text(text = "확인")
-                }
+                SettingsSecondaryButton(text = "확인", onClick = { chunkIndexResultMessage = null })
             }
         )
     }
 
     if (showRestoreDialog) {
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { showRestoreDialog = false },
             title = { Text(text = "백업에서 복원") },
             text = {
@@ -370,9 +374,7 @@ fun StorageManagementScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showRestoreDialog = false }) {
-                    Text(text = "닫기")
-                }
+                SettingsSecondaryButton(text = "닫기", onClick = { showRestoreDialog = false })
             }
         )
     }
@@ -381,6 +383,9 @@ fun StorageManagementScreen(
     selectedRagDetail?.let { detail ->
         val copyText = detail.chunkText.ifBlank { detail.result.matchedTextSnippet.ifBlank { detail.result.textPreview } }
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { selectedRagDetail = null },
             title = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -417,22 +422,22 @@ fun StorageManagementScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                SettingsPrimaryButton(
+                    text = "전체 복사",
                     onClick = { clipboardManager.setText(AnnotatedString(copyText)) }
-                ) {
-                    Text(text = "전체 복사")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { selectedRagDetail = null }) {
-                    Text(text = "닫기")
-                }
+                SettingsSecondaryButton(text = "닫기", onClick = { selectedRagDetail = null })
             }
         )
     }
 
     deleteTarget?.let { target ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { deleteTarget = null },
             title = { Text(text = "세션 삭제") },
             text = {
@@ -441,21 +446,18 @@ fun StorageManagementScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                SettingsDangerButton(
+                    text = "삭제",
                     onClick = {
                         target.folder.deleteRecursively()
                         onSessionDeleted(target.sessionId)
                         deleteTarget = null
                         refreshSnapshot()
                     }
-                ) {
-                    Text(text = "삭제")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) {
-                    Text(text = "취소")
-                }
+                SettingsSecondaryButton(text = "취소", onClick = { deleteTarget = null })
             }
         )
     }

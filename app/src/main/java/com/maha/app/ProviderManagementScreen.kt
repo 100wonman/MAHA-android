@@ -21,10 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -476,6 +473,9 @@ fun ProviderManagementScreen(
 
     providerToDelete?.let { provider ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { providerToDelete = null },
             title = { Text(text = "Provider 삭제") },
             text = {
@@ -594,20 +594,12 @@ private fun ProviderSettingsTextButton(
     enabled: Boolean = true,
     danger: Boolean = false
 ) {
-    TextButton(
+    SettingsTextButton(
+        text = text,
         onClick = onClick,
-        enabled = enabled
-    ) {
-        Text(
-            text = text,
-            fontWeight = FontWeight.Bold,
-            color = when {
-                !enabled -> SettingsStyleTokens.disabledTextColor
-                danger -> SettingsStyleTokens.dangerTextColor
-                else -> SettingsStyleTokens.linkTextColor
-            }
-        )
-    }
+        enabled = enabled,
+        danger = danger
+    )
 }
 
 @Composable
@@ -802,7 +794,7 @@ private fun ProviderProfileCard(
                         color = providerCallStyleColor(provider.providerType)
                     )
                 }
-                Switch(
+                SettingsSwitch(
                     checked = provider.isEnabled,
                     onCheckedChange = onEnabledChange
                 )
@@ -979,6 +971,9 @@ private fun GoogleModelListDialog(
     }
 
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = { Text(text = "Google 모델 목록") },
         text = {
@@ -1233,6 +1228,9 @@ private fun OpenAIModelListDialog(
     }
 
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI 모델 목록") },
         text = {
@@ -1353,6 +1351,9 @@ private fun OpenAiCompatibleModelListDialog(
     }
 
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI-compatible 모델 목록") },
         text = {
@@ -1478,6 +1479,9 @@ private fun UnsupportedModelListDialog(
     onDismiss: () -> Unit
 ) {
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = { Text(text = "모델 목록 조회 미지원") },
         text = {
@@ -1517,6 +1521,9 @@ private fun ProviderProfileEditDialog(
     val canSave = displayName.trim().isNotEmpty()
 
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = if (initialProvider == null) "Provider 추가" else "Provider 수정")
@@ -1546,7 +1553,7 @@ private fun ProviderProfileEditDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
+                        SettingsRadioButton(
                             selected = providerType == type,
                             onClick = { providerType = type }
                         )
@@ -1630,7 +1637,7 @@ private fun ProviderProfileEditDialog(
                         text = "활성화",
                         modifier = Modifier.weight(1f)
                     )
-                    Switch(
+                    SettingsSwitch(
                         checked = isEnabled,
                         onCheckedChange = { isEnabled = it }
                     )

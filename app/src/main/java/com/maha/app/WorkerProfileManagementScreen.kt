@@ -603,6 +603,9 @@ private fun ScenarioDeleteConfirmDialog(
 ) {
     if (scenario.isDefaultTemplate) {
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = onDismiss,
             title = { Text(text = "기본 Scenario 삭제 제한") },
             text = {
@@ -616,6 +619,9 @@ private fun ScenarioDeleteConfirmDialog(
         )
     } else {
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = onDismiss,
             title = { Text(text = "Scenario 삭제") },
             text = {

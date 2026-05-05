@@ -105,6 +105,20 @@ internal object SettingsStyleTokens {
     val selectedChipBackground = selectedBlue.at(0.08f)
     val disabledChipBackground = neutralSurfaceBase.at(0.035f)
 
+
+    val dialogBackground = cardBackground
+    val dialogBorderColor = cardBorderColor
+
+    val switchCheckedThumbColor = actionTextColor
+    val switchCheckedTrackColor = actionBorderColor
+    val switchCheckedBorderColor = actionBorderColor
+    val switchUncheckedThumbColor = mutedTextColor
+    val switchUncheckedTrackColor = neutralSurfaceBase.at(0.10f)
+    val switchUncheckedBorderColor = subtleBorderColor
+    val switchDisabledThumbColor = disabledTextColor
+    val switchDisabledTrackColor = neutralSurfaceBase.at(0.045f)
+    val switchDisabledBorderColor = subtleBorderColor
+
     val cardBorderWidth = 1.dp
     val cardCornerRadius = 16.dp
     val nestedCornerRadius = 10.dp

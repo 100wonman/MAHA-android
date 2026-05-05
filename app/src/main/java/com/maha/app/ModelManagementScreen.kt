@@ -20,8 +20,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -251,6 +249,9 @@ fun ModelManagementScreen(
 
     modelToDelete?.let { model ->
         AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
             onDismissRequest = { modelToDelete = null },
             title = { Text(text = "모델 삭제") },
             text = { Text(text = "${model.displayName} 모델을 삭제합니다. 기본 모델을 삭제하면 기본 모델 없음 상태가 됩니다.") },
@@ -437,7 +438,7 @@ private fun ModelFilterToggleRow(
             style = MaterialTheme.typography.bodyMedium,
             color = SettingsStyleTokens.bodyTextColor
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        SettingsSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -486,7 +487,7 @@ private fun ModelProfileCard(
                     )
                 }
             }
-            Switch(
+            SettingsSwitch(
                 checked = model.enabled,
                 onCheckedChange = onEnabledChange
             )
@@ -632,6 +633,9 @@ private fun ModelProfileEditDialog(
     val canSave = displayName.trim().isNotEmpty() && rawModelName.trim().isNotEmpty() && providerId.isNotBlank()
 
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = { Text(text = if (initialModel == null) "모델 추가" else "모델 수정") },
         text = {
@@ -659,7 +663,7 @@ private fun ModelProfileEditDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
+                        SettingsRadioButton(
                             selected = providerId == provider.providerId,
                             onClick = {
                                 providerId = provider.providerId
@@ -932,7 +936,7 @@ private fun ToggleRow(
             modifier = Modifier.weight(1f),
             color = SettingsStyleTokens.bodyTextColor
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        SettingsSwitch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

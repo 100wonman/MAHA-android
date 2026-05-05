@@ -20,8 +20,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -368,6 +372,56 @@ fun SettingsTextButton(
     ) {
         Text(text = text, fontWeight = FontWeight.SemiBold)
     }
+}
+
+@Composable
+fun SettingsRadioButton(
+    selected: Boolean,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    RadioButton(
+        selected = selected,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = RadioButtonDefaults.colors(
+            selectedColor = SettingsStyleTokens.selectedTextColor,
+            unselectedColor = SettingsStyleTokens.mutedTextColor,
+            disabledSelectedColor = SettingsStyleTokens.disabledTextColor,
+            disabledUnselectedColor = SettingsStyleTokens.disabledTextColor
+        )
+    )
+}
+
+@Composable
+fun SettingsSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier = modifier,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = SettingsStyleTokens.switchCheckedThumbColor,
+            checkedTrackColor = SettingsStyleTokens.switchCheckedTrackColor,
+            checkedBorderColor = SettingsStyleTokens.switchCheckedBorderColor,
+            uncheckedThumbColor = SettingsStyleTokens.switchUncheckedThumbColor,
+            uncheckedTrackColor = SettingsStyleTokens.switchUncheckedTrackColor,
+            uncheckedBorderColor = SettingsStyleTokens.switchUncheckedBorderColor,
+            disabledCheckedThumbColor = SettingsStyleTokens.switchDisabledThumbColor,
+            disabledCheckedTrackColor = SettingsStyleTokens.switchDisabledTrackColor,
+            disabledCheckedBorderColor = SettingsStyleTokens.switchDisabledBorderColor,
+            disabledUncheckedThumbColor = SettingsStyleTokens.switchDisabledThumbColor,
+            disabledUncheckedTrackColor = SettingsStyleTokens.switchDisabledTrackColor,
+            disabledUncheckedBorderColor = SettingsStyleTokens.switchDisabledBorderColor
+        )
+    )
 }
 
 @Composable

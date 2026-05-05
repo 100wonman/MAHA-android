@@ -2576,6 +2576,9 @@ private fun SettingsBackupListDialog(
     onSelectBackup: (SettingsBackupEntry) -> Unit
 ) {
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = "설정 백업 선택")
@@ -2612,9 +2615,7 @@ private fun SettingsBackupListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            SettingsSecondaryButton(text = "닫기", onClick = onDismiss)
         }
     )
 }
@@ -2626,6 +2627,9 @@ private fun SettingsRestoreConfirmDialog(
     onConfirm: () -> Unit
 ) {
     AlertDialog(
+        containerColor = SettingsStyleTokens.dialogBackground,
+        titleContentColor = SettingsStyleTokens.titleTextColor,
+        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = "설정 복원 확인")
@@ -2636,14 +2640,10 @@ private fun SettingsRestoreConfirmDialog(
             )
         },
         confirmButton = {
-            Button(onClick = onConfirm) {
-                Text(text = "복원")
-            }
+            SettingsPrimaryButton(text = "복원", onClick = onConfirm)
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "취소")
-            }
+            SettingsSecondaryButton(text = "취소", onClick = onDismiss)
         }
     )
 }

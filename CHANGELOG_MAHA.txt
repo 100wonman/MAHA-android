@@ -1,4 +1,299 @@
 ==============================
+[2026-05-06 07:40] 대화모드 설정 Dialog / Popup / Switch 다크테마 적용
+==============================
+
+[작업]
+- 대화모드 설정 계열 Dialog / Popup / Confirm Dialog의 다크테마 적용 누락 보정
+- Dialog 내부 버튼을 SettingsPrimaryButton / SettingsSecondaryButton / SettingsDangerButton / SettingsTextButton 기준으로 정리
+- Provider / Model / Worker / Scenario / Storage 설정의 Switch / Toggle 색상 체계를 SettingsStyleTokens 기준으로 통일
+- checked / unchecked / disabled 상태의 track, thumb, alpha 표현을 다크테마에 맞게 보정
+- RadioButton / FilterChip / 작은 선택 컨트롤의 밝은 기본 Material 색상 잔여를 최소 보정
+- Dialog 표시/닫기 조건, onClick, onCheckedChange, visible/enabled 조건은 변경하지 않음
+- Provider 호출, ConversationEngine, Worker/Scenario 실행, RAG/Web Search/Tool 실행, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- SettingsStyleTokens.kt에 Dialog / Switch 다크테마 token을 추가
+- SettingsUiComponents.kt에 SettingsSwitch / SettingsRadioButton 공통 wrapper 추가
+- Provider / Model / Storage / Worker / Conversation 설정 Dialog의 container와 버튼 스타일을 Settings token 기준으로 보정
+- Provider / Model / Storage / Conversation 계열 Switch / Radio / 선택 컨트롤의 밝은 Material 기본색 노출을 줄임
+- Dialog 표시 조건, onClick, onCheckedChange, ProviderType 분기, 저장/호출/실행 로직은 변경하지 않음
+
+[Dialog / Popup 테스트]
+- Provider Dialog: 확인
+- Model Dialog: 확인
+- 설정 백업/복원 Dialog: 확인
+- Storage/RAG Dialog: 확인
+- Worker/Scenario Dialog: 확인
+- Dialog 버튼 스타일: 확인
+- Dialog 다크테마: 확인 / 완전투명이 가까움. 기존 설정 카드내용이 다 보임. 추후 수정
+
+[Switch / Toggle 테스트]
+- Provider Switch: 확인
+- Model Switch: 확인
+- Worker toggle: 확인
+- Scenario toggle: 확인
+- Policy toggle: 확인
+- Storage/RAG toggle: 확인
+- checked/unchecked/disabled 상태: 확인
+
+[기능 회귀 테스트]
+- Provider 기능: 확인
+- Model 기능: 확인
+- Worker/Scenario 기능: 확인
+- Storage/RAG 기능: 확인
+- 모델 목록 Dialog 검색창: 확인
+- back stack: 확인
+- Dialog 우선 닫기: 확인
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 대화 흐름 변경 없음: 유지
+- Provider 호출 변경 없음: 유지
+- Worker/Scenario 실제 실행 없음: 유지
+- RAG/Web Search/Tool 실행 연결 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 없음
+
+[변경 파일]
+- SettingsStyleTokens.kt
+- SettingsUiComponents.kt
+- AppRoot.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- StorageManagementScreen.kt
+- WorkerProfileManagementScreen.kt
+- ConversationStorageSettingsDialog.kt
+- ConversationWebSearchQuickSetting.kt
+- ConversationDialogs.kt
+  - 경로: app/src/main/java/com/maha/app/ui/conversation/ConversationDialogs.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[보정 모드]
+
+작업명:
+대화모드 설정 Dialog / Popup / Switch 다크테마 적용
+
+목표:
+- 대화모드 설정 계열에 남아 있는 Dialog / Popup / Confirm Dialog / Switch / Toggle의 다크테마 미적용 문제를 보정한다.
+- 카드 / 버튼 / chip에 적용한 SettingsStyleTokens 기준을 Dialog와 Switch 계열에도 확장한다.
+- Provider / Model / Storage / Worker / Scenario 설정 화면의 토글 스위치가 밝은 Material 기본 테마로 튀지 않게 한다.
+- 기존 Dialog 표시 조건, 닫기 조건, onClick, onCheckedChange, 저장/삭제/복원 로직은 변경하지 않는다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+대상 화면:
+- 프로바이더 / 모델 / API 설정
+- Provider 관리
+- Model 관리
+- 메모리 / RAG / 저장소 설정
+- 저장소 관리
+- 고급 하네스 설정
+- Worker Profile 관리 / 편집
+- Scenario 관리 / 편집
+- Capability Resolver 진단
+
+대상 파일 후보:
+- SettingsStyleTokens.kt
+- SettingsUiComponents.kt
+- AppRoot.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- StorageManagementScreen.kt
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt
+- ScenarioEditScreen.kt
+- CapabilityResolverDebugCard.kt
+- ConversationStorageSettingsDialog.kt
+- ui/conversation/ConversationDialogs.kt
+
+이번 단계에서 구현:
+- Dialog / Popup / Confirm Dialog의 배경, 테두리, 버튼 스타일을 SettingsStyleTokens 기준으로 통일
+- SettingsDialogCard 또는 동등 wrapper 보강
+- SettingsTextButton / SettingsPrimaryButton / SettingsSecondaryButton / SettingsDangerButton 적용 누락 보정
+- Switch / Toggle 공통 스타일 wrapper 또는 token 추가
+- Provider 활성/비활성 Switch 다크테마 적용
+- Model 활성/비활성 Switch 다크테마 적용
+- Worker 편집 Boolean toggle 계열 다크테마 적용
+- Scenario 편집 Boolean toggle 계열 다크테마 적용
+- Storage / RAG 관련 toggle 또는 filter control 다크테마 적용
+- RadioButton / FilterChip / 작은 선택 컨트롤이 밝게 튀는 부분이 있으면 최소 보정
+- Dialog 우선 닫기 / settings back stack 유지
+
+이번 단계에서 금지:
+- Dialog 표시 조건 변경
+- Dialog 닫기 조건 변경
+- onClick 변경
+- onCheckedChange 변경
+- visible / enabled 조건 변경
+- ProviderType 분기 변경
+- Provider 호출 로직 변경
+- ProviderAdapter 변경
+- WorkerProfileStore 저장 구조 변경
+- Scenario 저장 구조 변경
+- Storage / RAG 저장 schema 변경
+- CapabilityResolver 판단 로직 변경
+- ConversationEngine 연결
+- ConversationViewModel 대화 흐름 변경
+- Worker/Scenario 실제 실행 연결
+- RAG/Web Search/Tool 실행 연결
+- 작업모드 수정
+
+--------------------------------------------------
+2. Dialog / Popup 보정 기준
+--------------------------------------------------
+
+현재 문제:
+- 일부 Dialog / Popup / Confirm Dialog가 기본 Material 밝은 배경 또는 다른 농도의 배경으로 표시된다.
+- Dialog 내부 버튼이 기존 설정 버튼 스타일과 다르게 보인다.
+- 삭제 / 저장 취소 / 복원 확인 등 중요한 Dialog의 시각 체계가 설정 화면과 다르다.
+
+보정:
+- Dialog container는 SettingsStyleTokens의 다크테마 배경을 사용한다.
+- Dialog 내부 주요 카드 또는 본문 wrapper는 SettingsDialogCard 또는 동일 token을 사용한다.
+- Dialog 내부 버튼은 역할에 따라 다음을 사용한다.
+  - 확인 / 저장 / 복원: SettingsPrimaryButton
+  - 취소 / 닫기: SettingsSecondaryButton 또는 SettingsTextButton
+  - 삭제 / 위험 액션: SettingsDangerButton
+- Dialog 내부 큰 면 배경은 밝은 회색으로 바꾸지 않는다.
+- 경고/위험은 배경색이 아니라 border / chip / text 중심으로 표현한다.
+
+우선 확인 대상:
+- Provider 추가 / 수정 Dialog
+- Provider 삭제 확인 Dialog
+- Provider 모델 목록 Dialog
+- Model 추가 / 수정 Dialog
+- Model 삭제 확인 Dialog
+- 설정 백업 / 복원 Dialog
+- Storage/RAG 관련 Dialog
+- Worker/Scenario 삭제 확인 Dialog
+- 저장 취소 확인 Dialog
+- Conversation 설정 Dialog 계열
+
+--------------------------------------------------
+3. Switch / Toggle 보정 기준
+--------------------------------------------------
+
+현재 문제:
+- Provider / Model 상세 설정 등에서 Switch가 기본 Material 색상으로 표시되어 다크테마와 맞지 않는다.
+- 카드/버튼/chip은 정리되었지만 Switch 계열은 별도 colors 설정이 필요하다.
+
+보정:
+- SettingsSwitch 또는 SettingsToggleRow wrapper를 추가하거나 기존 toggle 구현을 SettingsStyleTokens 기준으로 보정한다.
+- SwitchDefaults.colors(...)를 화면별로 직접 흩뿌리지 말고 공통 token을 참조하게 한다.
+- checked 상태:
+  - selected/accent 계열 track 또는 thumb 사용
+  - 과도한 밝은 색 사용 금지
+- unchecked 상태:
+  - muted dark track 사용
+  - thumb도 다크테마와 어울리게 조정
+- disabled 상태:
+  - disabled alpha를 token 기준으로 통일
+- Switch 주변 label / 설명 / 상태 chip은 기존 SettingsInfoRow / ChipRow 스타일과 맞춘다.
+
+우선 확인 대상:
+- Provider 활성 / 비활성 Switch
+- Model 활성 / 비활성 Switch
+- Worker 편집 Boolean toggle 계열
+- Scenario 편집 Boolean toggle 계열
+- InputPolicy / OutputPolicy Boolean 설정
+- Storage / RAG / Web Search 관련 toggle
+- 기타 설정 화면의 Switch / Radio / FilterChip
+
+--------------------------------------------------
+4. 기능 보존 기준
+--------------------------------------------------
+
+반드시 유지:
+- Provider 추가 / 수정 / 삭제
+- Provider 활성 / 비활성
+- API Key 저장 / 삭제
+- 모델 목록 Dialog 검색창
+- Model 추가 / 수정 / 삭제
+- Model 활성 / 비활성
+- 기본 모델 지정
+- 즐겨찾기 추가 / 해제
+- Worker 편집 저장 / 취소
+- capabilityOverrides 저장
+- inputPolicy / outputPolicy 저장
+- Scenario 편집 저장 / 취소
+- WorkerSet 편집
+- Storage 백업 / 복원 / 인덱싱 / 삭제
+- RAG 검색 테스트
+- settings back stack
+- Dialog 우선 닫기
+
+--------------------------------------------------
+5. 테스트 기준
+--------------------------------------------------
+
+Dialog / Popup:
+- Provider 추가/수정 Dialog:
+- Provider 삭제 확인 Dialog:
+- Provider 모델 목록 Dialog:
+- Model 추가/수정 Dialog:
+- Model 삭제 확인 Dialog:
+- 설정 백업/복원 Dialog:
+- Storage/RAG Dialog:
+- Worker/Scenario 삭제 Dialog:
+- Dialog 버튼 스타일:
+- Dialog 다크테마:
+
+Switch / Toggle:
+- Provider 활성/비활성 Switch:
+- Model 활성/비활성 Switch:
+- Worker Boolean toggle:
+- Scenario Boolean toggle:
+- InputPolicy / OutputPolicy toggle:
+- Storage/RAG toggle:
+- disabled 상태:
+- checked/unchecked 상태:
+
+기능 회귀:
+- Provider 기능:
+- Model 기능:
+- Worker/Scenario 기능:
+- Storage/RAG 기능:
+- 모델 목록 Dialog 검색창:
+- back stack:
+- Dialog 우선 닫기:
+
+연결 금지:
+- ConversationEngine 미연결:
+- Provider 호출 변경 없음:
+- Worker/Scenario 실제 실행 없음:
+- RAG/Web Search/Tool 실행 연결 없음:
+- 저장 schema 변경 없음:
+- 작업모드 변경 없음:
+
+--------------------------------------------------
+6. 완료 기준
+--------------------------------------------------
+
+- 대화모드 설정 계열 Dialog / Popup이 다크테마와 공통 버튼 스타일을 따른다.
+- Provider / Model / Worker / Scenario / Storage 계열 Switch가 다크테마로 통일된다.
+- Dialog / Popup / Switch 보정으로 기능 회귀가 발생하지 않는다.
+- onClick / onCheckedChange / visible / enabled 조건이 유지된다.
+- 저장 schema와 실행 로직 변경 없음.
+- 빌드 성공.
+
+--------------------------------------------------
+
+[다음 작업]
+대화모드 설정 UX 안정화 마감 기록 또는 잔여 Dialog/Popup 실기기 미세 보정==============================
 [2026-05-06 06:30] 대화모드 설정 UX 실기기 통합 검증
 ==============================
 

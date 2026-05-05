@@ -18,9 +18,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +44,7 @@ fun ConversationSettingsDialog(
                 .padding(horizontal = 20.dp),
             shape = conversationUnifiedCardShape(),
             colors = CardDefaults.cardColors(
-                containerColor = conversationUnifiedCardColor()
+                containerColor = SettingsStyleTokens.dialogBackground
             )
         ) {
             Column(
@@ -98,7 +96,7 @@ fun ConversationSettingsDialog(
                         )
                     }
 
-                    Switch(
+                    SettingsSwitch(
                         checked = searchEnabled,
                         onCheckedChange = onSearchEnabledChange
                     )
@@ -113,14 +111,7 @@ fun ConversationSettingsDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(
-                        onClick = onDismiss
-                    ) {
-                        Text(
-                            text = "닫기",
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    SettingsSecondaryButton(text = "닫기", onClick = onDismiss)
                 }
             }
         }
@@ -146,7 +137,8 @@ fun ConversationGlobalSettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(
+            SettingsTextButton(
+                text = "←",
                 onClick = {
                     if (selectedPage == null) {
                         onBackClick()
@@ -154,12 +146,7 @@ fun ConversationGlobalSettingsScreen(
                         onPageSelected(null)
                     }
                 }
-            ) {
-                Text(
-                    text = "←",
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            )
 
             Column(
                 modifier = Modifier.weight(1f)
@@ -208,7 +195,7 @@ fun ConversationGlobalSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = conversationUnifiedCardShape(),
                 colors = CardDefaults.cardColors(
-                    containerColor = conversationUnifiedCardColor()
+                    containerColor = SettingsStyleTokens.dialogBackground
                 )
             ) {
                 Column(
@@ -245,7 +232,7 @@ private fun ConversationGlobalSettingsCard(
             .clickable(onClick = onClick),
         shape = conversationUnifiedCardShape(),
         colors = CardDefaults.cardColors(
-            containerColor = conversationUnifiedCardColor()
+            containerColor = SettingsStyleTokens.dialogBackground
         )
     ) {
         Column(
@@ -307,7 +294,7 @@ fun ConversationMessageEditDialog(
                 .padding(horizontal = 20.dp),
             shape = conversationUnifiedCardShape(),
             colors = CardDefaults.cardColors(
-                containerColor = conversationUnifiedCardColor()
+                containerColor = SettingsStyleTokens.dialogBackground
             )
         ) {
             Column(
@@ -362,28 +349,16 @@ fun ConversationMessageEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(
+                    SettingsSecondaryButton(
+                        text = "취소",
                         onClick = onDismiss
-                    ) {
-                        Text(
-                            text = "취소",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
-                        )
-                    }
+                    )
 
-                    TextButton(
+                    SettingsPrimaryButton(
+                        text = "저장",
                         enabled = messageText.trim().isNotBlank(),
                         onClick = onSave
-                    ) {
-                        Text(
-                            text = "저장",
-                            color = if (messageText.trim().isNotBlank()) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            }
-                        )
-                    }
+                    )
                 }
             }
         }
