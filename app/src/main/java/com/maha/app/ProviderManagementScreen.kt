@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
@@ -369,32 +368,15 @@ fun ProviderManagementScreen(
         modifier = rootModifier,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
-            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-            modifier = Modifier.fillMaxWidth()
+        SettingsSectionCard(
+            title = "Provider 관리",
+            subtitle = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. 실제 연결 테스트와 모델 목록 조회는 후속 단계입니다."
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = "Provider 관리",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. 실제 연결 테스트와 모델 목록 조회는 후속 단계입니다.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SettingsStyleTokens.bodyTextColor
-                )
-                SettingsPrimaryButton(
-                    text = "Provider 추가",
-                    onClick = { isAddDialogOpen = true },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            SettingsPrimaryButton(
+                text = "Provider 추가",
+                onClick = { isAddDialogOpen = true },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         ProviderListControlPanel(
@@ -417,29 +399,15 @@ fun ProviderManagementScreen(
         )
 
         if (providers.isEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "등록된 Provider가 없습니다.",
-                    modifier = Modifier.padding(18.dp),
-                    color = SettingsStyleTokens.bodyTextColor
-                )
-            }
+            SettingsSectionCard(
+                title = "등록된 Provider가 없습니다.",
+                subtitle = "Provider 추가 버튼으로 대화모드 Provider를 등록하세요."
+            )
         } else if (filteredProviders.isEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "현재 검색/필터 조건에 맞는 Provider가 없습니다.",
-                    modifier = Modifier.padding(18.dp),
-                    color = SettingsStyleTokens.bodyTextColor
-                )
-            }
+            SettingsSectionCard(
+                title = "검색/필터 결과 없음",
+                subtitle = "현재 검색/필터 조건에 맞는 Provider가 없습니다."
+            )
         } else {
             filteredProviders.forEach { provider ->
                 ProviderProfileCard(
@@ -513,21 +481,22 @@ fun ProviderManagementScreen(
                 Text(text = "${provider.displayName} Provider를 삭제합니다. 연결된 model_profiles 정리는 후속 단계에서 처리합니다.")
             },
             confirmButton = {
-                TextButton(
+                ProviderSettingsTextButton(
+                    text = "삭제",
                     onClick = {
                         store.deleteProviderProfile(provider.providerId)
                         store.deleteProviderApiKey(provider.providerId)
                         reloadProviders()
                         providerToDelete = null
-                    }
-                ) {
-                    Text(text = "삭제")
-                }
+                    },
+                    danger = true
+                )
             },
             dismissButton = {
-                TextButton(onClick = { providerToDelete = null }) {
-                    Text(text = "취소")
-                }
+                ProviderSettingsTextButton(
+                    text = "취소",
+                    onClick = { providerToDelete = null }
+                )
             }
         )
     }
@@ -583,6 +552,66 @@ fun ProviderManagementScreen(
     }
 }
 
+
+@Composable
+private fun ProviderSettingsCard(
+    modifier: Modifier = Modifier,
+    tone: SettingsChipTone = SettingsChipTone.NEUTRAL,
+    compact: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    val colors = SettingsStyleTokens.cardColors(tone)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = if (compact) SettingsStyleTokens.subCardBackground else colors.background),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, colors.border),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(if (compact) SettingsStyleTokens.compactCardPadding else SettingsStyleTokens.cardPadding)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ProviderSettingsMessageCard(
+    text: String,
+    tone: SettingsChipTone
+) {
+    val colors = SettingsStyleTokens.cardColors(tone)
+    ProviderSettingsCard(tone = tone, compact = true) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.content
+        )
+    }
+}
+
+@Composable
+private fun ProviderSettingsTextButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    danger: Boolean = false
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled
+    ) {
+        Text(
+            text = text,
+            fontWeight = FontWeight.Bold,
+            color = when {
+                !enabled -> SettingsStyleTokens.disabledTextColor
+                danger -> SettingsStyleTokens.dangerTextColor
+                else -> SettingsStyleTokens.linkTextColor
+            }
+        )
+    }
+}
+
 @Composable
 private fun ProviderListControlPanel(
     searchQuery: String,
@@ -602,32 +631,16 @@ private fun ProviderListControlPanel(
     missingBaseUrlCount: Int,
     isFilterApplied: Boolean
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-        modifier = Modifier.fillMaxWidth()
+    SettingsSectionCard(
+        title = "Provider 목록 정리",
+        subtitle = buildString {
+            append("전체 Provider ").append(totalCount).append("개 · 표시 ").append(visibleCount).append("개")
+            append(" · 활성 ").append(enabledCount).append("개")
+            append(" · API Key 설정 ").append(apiKeyConfiguredCount).append("개")
+            append(" · Base URL 미설정 ").append(missingBaseUrlCount).append("개")
+            if (isFilterApplied) append(" · 필터 적용 중")
+        }
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Provider 목록 정리",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Text(
-                text = buildString {
-                    append("전체 Provider ").append(totalCount).append("개 · 표시 ").append(visibleCount).append("개")
-                    append(" · 활성 ").append(enabledCount).append("개")
-                    append(" · API Key 설정 ").append(apiKeyConfiguredCount).append("개")
-                    append(" · Base URL 미설정 ").append(missingBaseUrlCount).append("개")
-                    if (isFilterApplied) append(" · 필터 적용 중")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = SettingsStyleTokens.bodyTextColor
-            )
 
             OutlinedTextField(
                 value = searchQuery,
@@ -714,7 +727,6 @@ private fun ProviderListControlPanel(
                 checked = showOnlyMissingBaseUrl,
                 onCheckedChange = onShowOnlyMissingBaseUrlChange
             )
-        }
     }
 }
 
@@ -764,14 +776,9 @@ private fun ProviderProfileCard(
     onLoadModels: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    ProviderSettingsCard {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(SettingsStyleTokens.cardSpacing)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -844,19 +851,21 @@ private fun ProviderProfileCard(
                 horizontalArrangement = Arrangement.End
             ) {
                 if (isModelListFetchVisible(provider.providerType)) {
-                    TextButton(
+                    ProviderSettingsTextButton(
+                        text = "모델 목록 불러오기",
                         onClick = onLoadModels,
                         enabled = isModelListFetchEnabled(provider, hasApiKey)
-                    ) {
-                        Text(text = "모델 목록 불러오기")
-                    }
+                    )
                 }
-                TextButton(onClick = onEditClick) {
-                    Text(text = "수정")
-                }
-                TextButton(onClick = onDeleteClick) {
-                    Text(text = "삭제")
-                }
+                ProviderSettingsTextButton(
+                    text = "수정",
+                    onClick = onEditClick
+                )
+                ProviderSettingsTextButton(
+                    text = "삭제",
+                    onClick = onDeleteClick,
+                    danger = true
+                )
             }
 
             Text(
@@ -907,6 +916,53 @@ private fun safeModelIdPart(rawModelName: String): String {
         .ifBlank { "model" }
 }
 
+private fun matchesGoogleModelListQuery(
+    item: GoogleModelListItem,
+    normalizedQuery: String
+): Boolean {
+    if (normalizedQuery.isBlank()) return true
+    return listOf(
+        item.name,
+        item.rawModelName,
+        item.displayName,
+        item.description,
+        item.supportedGenerationMethods.joinToString(" "),
+        item.inputTokenLimit?.toString().orEmpty(),
+        item.outputTokenLimit?.toString().orEmpty()
+    ).any { value -> value.lowercase().contains(normalizedQuery) }
+}
+
+private fun matchesOpenAIModelListQuery(
+    item: OpenAIModelListItem,
+    normalizedQuery: String
+): Boolean {
+    if (normalizedQuery.isBlank()) return true
+    return listOf(
+        item.id,
+        item.rawModelName,
+        item.displayName,
+        item.createdAt?.toString().orEmpty(),
+        item.metadataRawSummary.orEmpty()
+    ).any { value -> value.lowercase().contains(normalizedQuery) }
+}
+
+private fun matchesOpenAiCompatibleModelListQuery(
+    item: OpenAiModelListCandidate,
+    normalizedQuery: String
+): Boolean {
+    if (normalizedQuery.isBlank()) return true
+    return listOf(
+        item.rawModelName,
+        item.displayName,
+        item.description.orEmpty(),
+        item.contextWindow?.toString().orEmpty(),
+        item.inputModalities.joinToString(" "),
+        item.outputModalities.joinToString(" "),
+        item.ownedBy.orEmpty(),
+        item.metadataRawSummary.orEmpty()
+    ).any { value -> value.lowercase().contains(normalizedQuery) }
+}
+
 @Composable
 private fun GoogleModelListDialog(
     provider: ProviderProfile,
@@ -918,6 +974,12 @@ private fun GoogleModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (GoogleModelListItem) -> Unit
 ) {
+    var modelSearchQuery by remember(provider.providerId) { mutableStateOf("") }
+    val normalizedModelSearchQuery = modelSearchQuery.trim().lowercase()
+    val filteredModels = models.filter { item ->
+        matchesGoogleModelListQuery(item, normalizedModelSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "Google 모델 목록") },
@@ -934,51 +996,49 @@ private fun GoogleModelListDialog(
                     fontWeight = FontWeight.Bold
                 )
 
+                OutlinedTextField(
+                    value = modelSearchQuery,
+                    onValueChange = { modelSearchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, 설명, metadata") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "검색 결과: ${filteredModels.size} / ${models.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SettingsStyleTokens.mutedTextColor
+                )
+
                 if (isLoading) {
                     Text(text = "모델 목록을 불러오는 중입니다...")
                 }
 
                 errorMessage?.let { message ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.DANGER).background),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = message,
-                            modifier = Modifier.padding(12.dp),
-                            color = SettingsStyleTokens.dangerTextColor
-                        )
-                    }
+                    ProviderSettingsMessageCard(
+                        text = message,
+                        tone = SettingsChipTone.DANGER
+                    )
                 }
 
                 resultMessage?.let { message ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.SUCCESS).background),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = message,
-                            modifier = Modifier.padding(12.dp),
-                            color = SettingsStyleTokens.successTextColor
-                        )
-                    }
+                    ProviderSettingsMessageCard(
+                        text = message,
+                        tone = SettingsChipTone.SUCCESS
+                    )
                 }
 
-                if (!isLoading && errorMessage == null && models.isEmpty()) {
-                    Text(text = "표시할 모델이 없습니다.")
+                if (!isLoading && errorMessage == null && filteredModels.isEmpty()) {
+                    Text(text = if (modelSearchQuery.isBlank()) "표시할 모델이 없습니다." else "검색 조건에 맞는 모델이 없습니다.")
                 }
 
-                models.forEach { item ->
+                filteredModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
 
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    ProviderSettingsCard(compact = true) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
@@ -1026,9 +1086,10 @@ private fun GoogleModelListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            ProviderSettingsTextButton(
+                text = "닫기",
+                onClick = onDismiss
+            )
         }
     )
 }
@@ -1133,13 +1194,8 @@ private fun providerCardGuideText(providerType: ProviderType, hasApiKey: Boolean
 
 @Composable
 private fun ProviderTypeGuideCard(providerType: ProviderType) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
-        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    ProviderSettingsCard(tone = SettingsChipTone.INFO) {
         Column(
-            modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
@@ -1181,6 +1237,12 @@ private fun OpenAIModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (OpenAIModelListItem) -> Unit
 ) {
+    var modelSearchQuery by remember(provider.providerId) { mutableStateOf("") }
+    val normalizedModelSearchQuery = modelSearchQuery.trim().lowercase()
+    val filteredModels = models.filter { item ->
+        matchesOpenAIModelListQuery(item, normalizedModelSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI 모델 목록") },
@@ -1195,6 +1257,19 @@ private fun OpenAIModelListDialog(
                     text = provider.displayName,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
+                )
+                OutlinedTextField(
+                    value = modelSearchQuery,
+                    onValueChange = { modelSearchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, 요약정보") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "검색 결과: ${filteredModels.size} / ${models.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SettingsStyleTokens.mutedTextColor
                 )
                 if (isLoading) {
                     Text(text = "모델 목록을 불러오는 중입니다...")
@@ -1213,17 +1288,15 @@ private fun OpenAIModelListDialog(
                         color = SettingsStyleTokens.successTextColor
                     )
                 }
-                models.forEach { item ->
+                if (!isLoading && errorMessage == null && filteredModels.isEmpty()) {
+                    Text(text = if (modelSearchQuery.isBlank()) "표시할 모델이 없습니다." else "검색 조건에 맞는 모델이 없습니다.")
+                }
+                filteredModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-                        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    ProviderSettingsCard(compact = true) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
@@ -1244,6 +1317,15 @@ private fun OpenAIModelListDialog(
                                     color = SettingsStyleTokens.mutedTextColor
                                 )
                             }
+                            item.metadataRawSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.mutedTextColor,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             SettingsPrimaryButton(
                                 text = if (alreadyAdded) "이미 추가됨" else "Model Profile 추가",
                                 onClick = { onAddModel(item) },
@@ -1256,9 +1338,10 @@ private fun OpenAIModelListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            ProviderSettingsTextButton(
+                text = "닫기",
+                onClick = onDismiss
+            )
         }
     )
 }
@@ -1274,6 +1357,12 @@ private fun OpenAiCompatibleModelListDialog(
     onDismiss: () -> Unit,
     onAddModel: (OpenAiModelListCandidate) -> Unit
 ) {
+    var modelSearchQuery by remember(provider.providerId) { mutableStateOf("") }
+    val normalizedModelSearchQuery = modelSearchQuery.trim().lowercase()
+    val filteredModels = models.filter { item ->
+        matchesOpenAiCompatibleModelListQuery(item, normalizedModelSearchQuery)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "OpenAI-compatible 모델 목록") },
@@ -1288,6 +1377,19 @@ private fun OpenAiCompatibleModelListDialog(
                     text = provider.displayName,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
+                )
+                OutlinedTextField(
+                    value = modelSearchQuery,
+                    onValueChange = { modelSearchQuery = it },
+                    label = { Text(text = "모델 검색") },
+                    placeholder = { Text(text = "모델명, 표시명, 요약정보") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "검색 결과: ${filteredModels.size} / ${models.size}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SettingsStyleTokens.mutedTextColor
                 )
                 if (isLoading) {
                     Text(text = "모델 목록을 불러오는 중입니다...")
@@ -1306,17 +1408,15 @@ private fun OpenAiCompatibleModelListDialog(
                         color = SettingsStyleTokens.successTextColor
                     )
                 }
-                models.forEach { item ->
+                if (!isLoading && errorMessage == null && filteredModels.isEmpty()) {
+                    Text(text = if (modelSearchQuery.isBlank()) "표시할 모델이 없습니다." else "검색 조건에 맞는 모델이 없습니다.")
+                }
+                filteredModels.forEach { item ->
                     val alreadyAdded = existingModels.any { model ->
                         model.providerId == provider.providerId && model.rawModelName == item.rawModelName
                     }
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
-                        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    ProviderSettingsCard(compact = true) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
@@ -1330,6 +1430,15 @@ private fun OpenAiCompatibleModelListDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = SettingsStyleTokens.bodyTextColor
                             )
+                            item.description?.takeIf { it.isNotBlank() }?.let { description ->
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.bodyTextColor,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             item.contextWindow?.let { contextWindow ->
                                 Text(
                                     text = "contextWindow: $contextWindow",
@@ -1344,6 +1453,15 @@ private fun OpenAiCompatibleModelListDialog(
                                     color = SettingsStyleTokens.mutedTextColor
                                 )
                             }
+                            item.metadataRawSummary?.takeIf { it.isNotBlank() }?.let { summary ->
+                                Text(
+                                    text = summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.mutedTextColor,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                             SettingsPrimaryButton(
                                 text = if (alreadyAdded) "이미 추가됨" else "Model Profile 추가",
                                 onClick = { onAddModel(item) },
@@ -1356,9 +1474,10 @@ private fun OpenAiCompatibleModelListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            ProviderSettingsTextButton(
+                text = "닫기",
+                onClick = onDismiss
+            )
         }
     )
 }
@@ -1379,9 +1498,10 @@ private fun UnsupportedModelListDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "닫기")
-            }
+            ProviderSettingsTextButton(
+                text = "닫기",
+                onClick = onDismiss
+            )
         }
     )
 }
@@ -1529,7 +1649,8 @@ private fun ProviderProfileEditDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            ProviderSettingsTextButton(
+                text = "저장",
                 onClick = {
                     val createdAt = initialProvider?.createdAt ?: now
                     val updatedAt = System.currentTimeMillis()
@@ -1557,14 +1678,13 @@ private fun ProviderProfileEditDialog(
                     )
                 },
                 enabled = canSave
-            ) {
-                Text(text = "저장")
-            }
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "취소")
-            }
+            ProviderSettingsTextButton(
+                text = "취소",
+                onClick = onDismiss
+            )
         }
     )
 }
