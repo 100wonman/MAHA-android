@@ -1936,10 +1936,6 @@ private fun ConversationGlobalSettingsScreen(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                TextButton(onClick = onBackClick) {
-                    Text(text = "←", color = Color.White)
-                }
-
                 Text(
                     text = "Provider 관리",
                     style = MaterialTheme.typography.headlineMedium,
@@ -1963,10 +1959,6 @@ private fun ConversationGlobalSettingsScreen(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                TextButton(onClick = onBackClick) {
-                    Text(text = "←", color = Color.White)
-                }
-
                 Text(
                     text = "Model 관리",
                     style = MaterialTheme.typography.headlineMedium,
@@ -2088,7 +2080,7 @@ private fun ConversationGlobalSettingsScreen(
                     }
                 }
 
-                if (selectedPage != "modelApi" && selectedPage != "modelApiDetails" && selectedPage != "harness" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
+                if (selectedPage != "modelApi" && selectedPage != "modelApiDetails" && selectedPage != "rag" && selectedPage != "harness" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),

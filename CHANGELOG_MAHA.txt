@@ -1,4 +1,237 @@
 ==============================
+[2026-05-06 06:30] 대화모드 설정 UX 실기기 통합 검증
+==============================
+
+[작업]
+- 대화모드 설정 메인, 프로바이더/모델/API 설정, 메모리/RAG/저장소 설정, 고급 하네스 설정의 실기기 UX 통합 검증
+- 카드 / 버튼 / chip / 중첩카드 / 다크테마 / border 중심 스타일 정합성 확인
+- 설정 내부 back stack, 시스템 뒤로가기, Dialog 우선 닫기 동작 확인
+- Provider / Model / Worker Profile / Scenario / Capability Resolver / Storage 기능 회귀 확인
+- 발견된 문제는 최소 UI 보정만 허용
+- Provider 호출, ConversationEngine, Worker/Scenario 실행, RAG/Web Search/Tool 실행, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- 메모리 / RAG / 저장소 설정 페이지의 후속 구현 placeholder 카드를 제거
+- Provider 관리 단독 페이지의 좌측 최상단 시각적 back arrow 잔여를 제거
+- Model 관리 단독 페이지의 좌측 최상단 시각적 back arrow 잔여를 제거
+- settings back stack / Android 시스템 뒤로가기 동작은 유지
+- Provider/Model/Storage/Worker/Scenario 기능 로직과 실행 계층은 변경하지 않음
+
+[스타일 통합 검증]
+- 대화모드 설정 메인: 확인
+- 프로바이더/모델/API 설정: 확인
+- 메모리/RAG/저장소 설정: 확인
+- 고급 하네스 설정: 확인
+- 카드/버튼/chip: 확인
+- 중첩카드: 확인
+
+[화면 구조 검증]
+- 1페이지/2페이지 구조: 확인
+- 단일 스크롤: 확인
+- 고급 설정 분리: 확인
+- 문구 중복: 메모리/RAG/저장소 설정 placeholder 제거
+- 상단 공간 낭비: Provider/Model 관리 단독 페이지 back arrow 제거
+
+[뒤로가기 검증]
+- root Drawer 닫기: 확인
+- 2페이지 → 1페이지: 확인
+- 저장소 관리 → 저장소 설정: 확인
+- Worker 편집 → Worker Profile 관리: 확인
+- Scenario 편집 → Scenario 관리: 확인
+- Capability Resolver → 고급 하네스 설정: 확인
+- Dialog 우선 닫기: 확인
+
+[기능 회귀 검증]
+- Provider 기능: 확인
+- Model 기능: 확인
+- Worker Profile 기능: 확인
+- Scenario 기능: 확인
+- Capability Resolver: 확인
+- Storage/RAG 기능: 확인
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- Worker/Scenario 실제 실행 없음: 유지
+- RAG/Web Search/Tool 실행 연결 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 없음
+
+[변경 파일]
+- AppRoot.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[검증/보정 모드]
+
+작업명:
+대화모드 설정 UX 실기기 통합 검증
+
+목표:
+- 최근 진행한 대화모드 설정 UI 보정들이 실제 기기에서 일관되게 동작하는지 통합 검증한다.
+- 새 기능 추가가 아니라 UX 회귀, 기능 회귀, 스타일 불일치, 뒤로가기 문제, 중첩카드 문제를 확인한다.
+- 발견된 문제는 최소 보정만 허용한다.
+- Provider 호출, ConversationEngine, Worker/Scenario 실행, 저장 schema는 변경하지 않는다.
+
+--------------------------------------------------
+1. 검증 범위
+--------------------------------------------------
+
+대상 화면:
+- 대화모드 설정 메인
+- 프로바이더 / 모델 / API 설정 1페이지
+- 프로바이더 / 모델 상세 설정 2페이지
+- Provider 관리
+- Model 관리
+- 메모리 / RAG / 저장소 설정
+- 저장소 관리
+- 고급 하네스 설정
+- Worker Profile 관리
+- Worker Profile 편집
+- Scenario 관리
+- Scenario 편집
+- Capability Resolver 진단
+- Scenario Preview / Plan Preview
+
+대상 파일 후보:
+- AppRoot.kt
+- SettingsStyleTokens.kt
+- SettingsUiComponents.kt
+- ProviderManagementScreen.kt
+- ModelManagementScreen.kt
+- StorageManagementScreen.kt
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt
+- ScenarioEditScreen.kt
+- CapabilityResolverDebugCard.kt
+
+이번 단계에서 허용:
+- 명백한 UI 불일치 최소 보정
+- 좌측 최상단 back icon 잔여 제거
+- 중첩카드 회색감 잔여 최소 보정
+- 버튼 / chip / 카드 스타일 누락 최소 보정
+- 문구 중복 또는 공간 낭비 문구 최소 보정
+- back stack 문제 최소 보정
+- import / syntax / exhaustive when 등 빌드 문제 보정
+
+이번 단계에서 금지:
+- 새 기능 추가
+- Provider 호출 로직 변경
+- ProviderAdapter 변경
+- ConversationEngine 연결
+- ConversationViewModel 대화 흐름 변경
+- Worker/Scenario 실제 실행 연결
+- RAG/Web Search/Tool 실행 연결
+- WorkerProfileStore 저장 구조 변경
+- Scenario 저장 구조 변경
+- Provider/Model 저장 schema 변경
+- Storage/RAG 저장 schema 변경
+- 작업모드 UI 또는 실행 흐름 수정
+
+--------------------------------------------------
+2. 핵심 검증 항목
+--------------------------------------------------
+
+A. 스타일 정합성
+- 카드 배경이 다크테마 기준으로 일관되는지 확인
+- 카드 테두리 색/농도가 화면마다 튀지 않는지 확인
+- 버튼 스타일이 역할별로 일관되는지 확인
+- 선택/비선택 상태가 border / text / chip 중심으로 표현되는지 확인
+- chip 스타일이 화면마다 크게 다르지 않은지 확인
+- 카드 속 카드의 회색 배경 누적이 과하지 않은지 확인
+- InfoRow / Divider / ChipRow / InlineNotice 중심 구조가 유지되는지 확인
+
+B. 화면 구조
+- 대화모드 설정 메인 카드 수가 과도하지 않은지 확인
+- 프로바이더 / 모델 / API 설정 1페이지가 요약 중심인지 확인
+- 프로바이더 / 모델 상세 설정 2페이지가 단일 스크롤 구조인지 확인
+- Provider / Model 탭 전환이 정상인지 확인
+- 메모리 / RAG / 저장소 설정이 과도하게 길지 않은지 확인
+- 고급 하네스 설정이 기본 설정과 분리되어 있는지 확인
+- Capability Resolver 진단 화면의 nested card 구조가 과하지 않은지 확인
+
+C. 뒤로가기
+- 설정 root에서 시스템 뒤로가기 시 Drawer 닫기
+- 2페이지 → 1페이지 복귀
+- 저장소 관리 → 메모리 / RAG / 저장소 설정 복귀
+- Worker 편집 → Worker Profile 관리 복귀
+- Scenario 편집 → Scenario 관리 복귀
+- Capability Resolver → 고급 하네스 설정 복귀
+- Dialog가 열려 있으면 Dialog 닫기 우선
+- 시각적 back icon 제거 상태 유지
+
+D. 기능 회귀
+- Provider 추가 / 수정 / 삭제
+- Provider 활성 / 비활성
+- API Key 저장 / 삭제
+- 모델 목록 불러오기
+- 모델 목록 Dialog 검색창
+- 조회 결과에서 Model Profile 추가
+- Model 추가 / 수정 / 삭제
+- 기본 모델 지정
+- 즐겨찾기 추가 / 해제
+- Worker Profile 편집 저장 / 취소
+- providerId / modelId 저장
+- capabilityOverrides 저장
+- outputPolicy 저장
+- Scenario 편집 저장 / 취소
+- WorkerSet 추가 / 제거 / 순서 변경
+- RAG 검색 테스트
+- session.json / messages.jsonl 보기
+- 세션 백업 / 복원 / 인덱싱 / 삭제
+
+--------------------------------------------------
+3. 최소 보정 기준
+--------------------------------------------------
+
+문제가 발견되면 아래 범위만 수정한다.
+
+허용 보정:
+- 같은 컴포넌트인데 스타일 token이 다르게 적용된 부분 수정
+- 남아 있는 직접 색상 / 직접 border / 직접 radius를 공통 token으로 변경
+- 남아 있는 불필요한 back icon 제거
+- 중첩카드가 과한 경우 InfoRow / Divider / InlineNotice로 축소
+- 중복 문구 삭제
+- 사라진 버튼 복구
+- 빌드 오류 보정
+
+금지 보정:
+- 화면 구조 대개편
+- Provider / Model 기능 로직 재작성
+- Worker / Scenario 실행 연결
+- CapabilityResolver 판단 방식 변경
+- RAG 검색 로직 변경
+- 저장 파일 구조 변경
+
+--------------------------------------------------
+4. 완료 기준
+--------------------------------------------------
+
+- 주요 대화모드 설정 화면을 실제 기기에서 확인
+- 카드 / 버튼 / chip / 중첩카드 / back stack 일관성 확인
+- Provider / Model / Worker / Scenario / Storage 기능 회귀 없음
+- 실행 로직 변경 없음
+- 저장 schema 변경 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+고급 하네스 잔여 스타일 미세 보정 또는 대화모드 설정 UX 안정화 마감
+
+==============================
 [2026-05-06 06:00] Worker Profile 편집 UI 단순화 및 선택 컨트롤 정리
 ==============================
 
