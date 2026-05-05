@@ -5,10 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,6 +37,97 @@ enum class SettingsChipTone {
     DANGER,
     SELECTED,
     DISABLED
+}
+
+
+@Composable
+fun SettingsDivider(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(SettingsStyleTokens.dividerColor)
+    )
+}
+
+@Composable
+fun SettingsInfoRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    labelWidth: androidx.compose.ui.unit.Dp = 96.dp,
+    maxLines: Int = 3
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = SettingsStyleTokens.mutedTextColor,
+            modifier = Modifier.width(labelWidth)
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SettingsStyleTokens.bodyTextColor,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun SettingsInlineNotice(
+    text: String,
+    modifier: Modifier = Modifier,
+    tone: SettingsChipTone = SettingsChipTone.INFO
+) {
+    val colors = SettingsStyleTokens.cardColors(tone)
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = colors.content,
+        modifier = modifier
+            .fillMaxWidth()
+            .border(SettingsStyleTokens.cardBorderWidth, colors.border, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
+            .padding(SettingsStyleTokens.compactCardPadding)
+    )
+}
+
+@Composable
+fun SettingsInfoPanel(
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    tone: SettingsChipTone = SettingsChipTone.NEUTRAL,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val colors = SettingsStyleTokens.cardColors(tone)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SettingsStyleTokens.infoPanelBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
+            .border(SettingsStyleTokens.cardBorderWidth, colors.border, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
+            .padding(SettingsStyleTokens.compactCardPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (!title.isNullOrBlank()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = colors.content
+            )
+            SettingsDivider()
+        }
+        content()
+    }
 }
 
 @Composable

@@ -56,15 +56,18 @@ internal object SettingsStyleTokens {
      * nav/sub/nested/selected/disabled도 별도 색을 만들지 않고 alias로 둔다.
      */
     val cardBackground = neutralSurfaceBase.at(0.082f)
-    val subCardBackground = cardBackground
-    val nestedCardBackground = cardBackground
+    val subCardBackground = Color.Transparent
+    val nestedCardBackground = Color.Transparent
     val navCardBackground = cardBackground
-    val selectedBackground = cardBackground
+    val selectedBackground = Color.Transparent
     val unselectedBackground = Color.Transparent
     val disabledBackground = cardBackground
 
     val cardBorderColor = neutralSurfaceBase.at(0.115f)
     val subtleBorderColor = neutralSurfaceBase.at(0.075f)
+    val infoPanelBackground = Color.Transparent
+    val infoPanelBorderColor = neutralSurfaceBase.at(0.075f)
+    val dividerColor = neutralSurfaceBase.at(0.085f)
 
     /** 액션/선택/상태 border는 카드 면 색이 아니라 윤곽선 중심으로만 표현한다. */
     val actionBorderColor = actionBlue.at(0.44f)

@@ -2516,23 +2516,11 @@ private fun CompactSettingSummaryRow(
     label: String,
     value: String
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = label,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            modifier = Modifier.width(88.dp)
-        )
-        Text(
-            text = value,
-            color = SettingsStyleTokens.bodyTextColor,
-            modifier = Modifier.weight(1f)
-        )
-    }
+    SettingsInfoRow(
+        label = label,
+        value = value,
+        labelWidth = 88.dp
+    )
 }
 
 @Composable
@@ -2643,30 +2631,17 @@ private fun SettingsBackupListDialog(
                     Text(text = "표시할 설정 백업이 없습니다.")
                 } else {
                     backups.forEach { backup ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
-                            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = backup.folderName,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "Provider ${backup.providerCount}개 · Model ${backup.modelCount}개 · API Key 미포함",
-                                    color = SettingsStyleTokens.bodyTextColor
-                                )
-                                SettingsPrimaryButton(
-                                    text = "복원",
-                                    onClick = { onSelectBackup(backup) },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                        SettingsInfoPanel(title = backup.folderName) {
+                            SettingsInfoRow(
+                                label = "내용",
+                                value = "Provider ${backup.providerCount}개 · Model ${backup.modelCount}개 · API Key 미포함",
+                                labelWidth = 54.dp
+                            )
+                            SettingsPrimaryButton(
+                                text = "복원",
+                                onClick = { onSelectBackup(backup) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }

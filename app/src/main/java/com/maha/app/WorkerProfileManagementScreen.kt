@@ -646,13 +646,9 @@ private fun WorkerProfileDetailTitle(title: String) {
 
 @Composable
 private fun WorkerProfileReadOnlyPlaceholder(text: String) {
-    Text(
+    SettingsInlineNotice(
         text = text,
-        color = SettingsStyleTokens.warningTextColor,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+        tone = SettingsChipTone.WARNING
     )
 }
 
@@ -699,25 +695,13 @@ private fun WorkerProfileInlineValue(
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    SettingsInfoRow(
+        label = label,
+        value = value.ifBlank { "미지정" },
+        labelWidth = 64.dp,
+        maxLines = 1,
         modifier = modifier
-            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = SettingsStyleTokens.infoTextColor
-        )
-        Text(
-            text = value.ifBlank { "미지정" },
-            color = SettingsStyleTokens.bodyTextColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    )
 }
 
 @Composable
@@ -738,20 +722,12 @@ private fun WorkerProfileTagRow(values: List<String>) {
 
 @Composable
 private fun WorkerProfileKeyValue(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = SettingsStyleTokens.infoTextColor
-        )
-        SelectionContainer {
-            Text(
-                text = value.ifBlank { "없음" },
-                color = SettingsStyleTokens.bodyTextColor
-            )
-        }
-    }
+    SettingsInfoRow(
+        label = label,
+        value = value.ifBlank { "없음" },
+        labelWidth = 112.dp,
+        maxLines = 6
+    )
 }
 
 @Composable

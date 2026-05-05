@@ -437,34 +437,31 @@ private fun CapabilityPreviewOnlyCard(
     resultMode: String,
     selectedScenario: ConversationScenarioProfile?
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.INFO).background),
-        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.infoBorderColor)
+    SettingsInfoPanel(
+        title = "Preview only",
+        tone = SettingsChipTone.INFO
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CapabilityBadge("Preview only")
-                CapabilityBadge("실제 실행 없음")
-            }
-            CapabilityDebugText("Provider 호출 · Worker 실행 · RAG · Web Search · Tool 실행을 수행하지 않습니다.")
-            CapabilityDebugRow(
-                label = "결과 모드",
-                value = if (resultMode == "SCENARIO_PREVIEW") "Scenario Preview" else "기본 진단"
+        SettingsChipRow(
+            values = listOf(
+                "Preview only" to SettingsChipTone.INFO,
+                "실제 실행 없음" to SettingsChipTone.WARNING
             )
-            selectedScenario?.let { scenario ->
-                CapabilityDebugRow(
-                    label = "선택 Scenario",
-                    value = "${scenario.name.ifBlank { scenario.scenarioId }} · ${scenario.defaultExecutionMode.name} · Worker ${scenario.workerProfileIds.size}개"
-                )
-            }
+        )
+        SettingsInlineNotice(
+            text = "Provider 호출 · Worker 실행 · RAG · Web Search · Tool 실행을 수행하지 않습니다.",
+            tone = SettingsChipTone.INFO
+        )
+        SettingsInfoRow(
+            label = "결과 모드",
+            value = if (resultMode == "SCENARIO_PREVIEW") "Scenario Preview" else "기본 진단",
+            labelWidth = 86.dp
+        )
+        selectedScenario?.let { scenario ->
+            SettingsInfoRow(
+                label = "선택 Scenario",
+                value = "${scenario.name.ifBlank { scenario.scenarioId }} · ${scenario.defaultExecutionMode.name} · Worker ${scenario.workerProfileIds.size}개",
+                labelWidth = 104.dp
+            )
         }
     }
 }

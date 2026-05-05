@@ -567,20 +567,11 @@ private fun ModelInfoRow(
     label: String,
     value: String
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = SettingsStyleTokens.mutedTextColor
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = SettingsStyleTokens.bodyTextColor,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    SettingsInfoRow(
+        label = label,
+        value = value,
+        labelWidth = 120.dp
+    )
 }
 
 @Composable
@@ -873,7 +864,7 @@ private fun rawModelNameGuideText(providerType: ProviderType?): String {
 
 @Composable
 private fun ModelRawNameGuideCard(providerType: ProviderType) {
-    SettingsSectionCard(
+    SettingsInfoPanel(
         title = "${providerType.name} 모델명 안내",
         tone = if (providerType == ProviderType.LOCAL) SettingsChipTone.SUCCESS else SettingsChipTone.INFO
     ) {
@@ -882,16 +873,15 @@ private fun ModelRawNameGuideCard(providerType: ProviderType) {
             style = MaterialTheme.typography.bodySmall,
             color = SettingsStyleTokens.bodyTextColor
         )
-        Text(
-            text = "예: ${rawModelNamePlaceholder(providerType)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = SettingsStyleTokens.bodyTextColor
+        SettingsInfoRow(
+            label = "예",
+            value = rawModelNamePlaceholder(providerType),
+            labelWidth = 44.dp
         )
         if (providerType == ProviderType.LOCAL) {
-            Text(
+            SettingsInlineNotice(
                 text = "LOCAL 기본 capability는 text/code=true, 나머지는 false입니다. 필요하면 직접 수정하세요.",
-                style = MaterialTheme.typography.bodySmall,
-                color = SettingsStyleTokens.bodyTextColor
+                tone = SettingsChipTone.SUCCESS
             )
         }
     }

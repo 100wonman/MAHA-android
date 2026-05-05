@@ -193,7 +193,7 @@ fun WorkerProfileEditScreen(
         }
 
         WorkerEditSection(title = "Provider / Model", initiallyExpanded = true) {
-            WorkerEditNotice("Provider/Model은 Worker가 사용할 실행 엔진 참조입니다. API Key, baseUrl, rawModelName 원문은 WorkerProfile에 복사 저장하지 않습니다.")
+            WorkerEditNotice("Worker는 Provider/Model ID만 참조합니다. API Key, baseUrl, rawModelName은 복사 저장하지 않습니다.")
 
             WorkerProviderSelectionList(
                 providers = providerProfiles,
@@ -247,7 +247,7 @@ fun WorkerProfileEditScreen(
         }
 
         WorkerEditSection(title = "Capability Override", initiallyExpanded = false) {
-            WorkerEditNotice("Worker override는 실행 의도입니다. USER_ENABLED 또는 AVAILABLE이어도 실제 실행 가능 보장은 아니며, Provider/Model capability, API Key, MAHA 구현 상태를 Capability Layer가 함께 판단합니다.")
+            WorkerEditNotice("Override는 실행 의도입니다. 실제 가능 여부는 Provider/Model capability와 MAHA 구현 상태가 함께 판단합니다.")
             WorkerCapabilityStatusSelector(
                 label = "functionCalling",
                 value = functionCallingOverride,
@@ -606,13 +606,25 @@ private fun WorkerSelectionButton(
     description: String,
     onClick: () -> Unit,
 ) {
-    SettingsSectionCard(
-        title = if (selected) "✓ $label" else label,
-        subtitle = description,
-        chips = listOf((if (selected) "선택됨" else "선택 가능") to if (selected) SettingsChipTone.SELECTED else SettingsChipTone.NEUTRAL)
+    SettingsInfoPanel(
+        tone = if (selected) SettingsChipTone.SELECTED else SettingsChipTone.NEUTRAL
     ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) SettingsStyleTokens.selectedTextColor else SettingsStyleTokens.titleTextColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = description,
+            color = SettingsStyleTokens.mutedTextColor,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
         SettingsSecondaryButton(
-            text = if (selected) "선택됨" else "선택",
+            text = if (selected) "선택됨" else "선택 가능",
             selected = selected,
             onClick = onClick,
             modifier = Modifier.fillMaxWidth()
@@ -628,34 +640,52 @@ private fun WorkerCapabilityStatusSelector(
     value: CapabilityLayerStatus,
     onValueChange: (CapabilityLayerStatus) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        WorkerEditKeyValue(label, value.name)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SettingsSecondaryButton(
-                text = "이전",
-                onClick = { onValueChange(value.previousCapabilityLayerStatus()) },
-                modifier = Modifier.weight(1f)
-            )
-            SettingsSecondaryButton(
-                text = "다음",
-                onClick = { onValueChange(value.nextCapabilityLayerStatus()) },
-                selected = true,
-                modifier = Modifier.weight(1f)
-            )
+    SettingsInfoPanel(
+        tone = if (value == CapabilityLayerStatus.USER_ENABLED || value == CapabilityLayerStatus.AVAILABLE) {
+            SettingsChipTone.SELECTED
+        } else {
+            SettingsChipTone.NEUTRAL
         }
-        Text(
-            text = "선택 가능한 값: ${CapabilityLayerStatus.values().joinToString { it.name }}",
-            color = SettingsStyleTokens.mutedTextColor
+    ) {
+        SettingsInfoRow(label = "Capability", value = label)
+        SettingsInfoRow(label = "현재 상태", value = value.name)
+        SettingsInlineNotice(
+            text = "아래 버튼을 눌러 상태를 직접 선택합니다.",
+            tone = SettingsChipTone.INFO
         )
+        CapabilityLayerStatus.values().toList().chunked(2).forEach { rowValues ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowValues.forEach { status ->
+                    SettingsSecondaryButton(
+                        text = status.shortStatusLabel(),
+                        selected = status == value,
+                        onClick = { onValueChange(status) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rowValues.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+private fun CapabilityLayerStatus.shortStatusLabel(): String {
+    return when (this) {
+        CapabilityLayerStatus.AVAILABLE -> "사용 가능"
+        CapabilityLayerStatus.LIMITED -> "제한"
+        CapabilityLayerStatus.NOT_AVAILABLE -> "불가"
+        CapabilityLayerStatus.NOT_IMPLEMENTED -> "미구현"
+        CapabilityLayerStatus.NEED_USER_PERMISSION -> "권한 필요"
+        CapabilityLayerStatus.NEED_API_KEY -> "API Key 필요"
+        CapabilityLayerStatus.PROVIDER_NATIVE_ONLY -> "Provider 전용"
+        CapabilityLayerStatus.MAHA_NATIVE_AVAILABLE -> "MAHA 가능"
+        CapabilityLayerStatus.USER_ENABLED -> "사용자 ON"
+        CapabilityLayerStatus.UNKNOWN -> "알 수 없음"
     }
 }
 
@@ -828,13 +858,9 @@ private fun WorkerEditKeyValue(label: String, value: String) {
 
 @Composable
 private fun WorkerEditNotice(text: String) {
-    Text(
+    SettingsInlineNotice(
         text = text,
-        color = SettingsStyleTokens.warningTextColor,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+        tone = SettingsChipTone.WARNING
     )
 }
 

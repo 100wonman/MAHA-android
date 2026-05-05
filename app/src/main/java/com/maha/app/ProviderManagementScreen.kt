@@ -581,14 +581,10 @@ private fun ProviderSettingsMessageCard(
     text: String,
     tone: SettingsChipTone
 ) {
-    val colors = SettingsStyleTokens.cardColors(tone)
-    ProviderSettingsCard(tone = tone, compact = true) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.content
-        )
-    }
+    SettingsInlineNotice(
+        text = text,
+        tone = tone
+    )
 }
 
 @Composable
@@ -1101,20 +1097,11 @@ private fun ProviderInfoRow(
     label: String,
     value: String
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = SettingsStyleTokens.mutedTextColor
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = SettingsStyleTokens.bodyTextColor,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    SettingsInfoRow(
+        label = label,
+        value = value,
+        labelWidth = 132.dp
+    )
 }
 
 private fun isDefaultSeedProvider(provider: ProviderProfile): Boolean {
