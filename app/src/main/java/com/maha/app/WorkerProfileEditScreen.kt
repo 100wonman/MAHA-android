@@ -181,7 +181,7 @@ fun WorkerProfileEditScreen(
             )
             Text(
                 text = "글자 수: ${systemInstruction.length}",
-                color = Color(0xFFB8BCC6)
+                color = SettingsStyleTokens.mutedTextColor
             )
             WorkerEditNotice("API Key, 비밀번호, 개인 민감정보를 System Instruction에 넣지 마세요.")
             WorkerEditPlaceholderRow(
@@ -513,7 +513,7 @@ private fun WorkerProviderSelectionList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -521,7 +521,7 @@ private fun WorkerProviderSelectionList(
             text = "Provider 선택",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         WorkerSelectionButton(
             selected = selectedProviderId == null,
@@ -530,7 +530,7 @@ private fun WorkerProviderSelectionList(
             onClick = { onSelectProvider(null) }
         )
         if (providers.isEmpty()) {
-            Text(text = "등록된 Provider가 없습니다.", color = Color(0xFFFFD18A))
+            Text(text = "등록된 Provider가 없습니다.", color = SettingsStyleTokens.warningTextColor)
         } else {
             providers.forEach { provider ->
                 val keyRequired = provider.providerType.name in setOf("GOOGLE", "OPENAI", "OPENAI_COMPATIBLE", "NVIDIA")
@@ -561,7 +561,7 @@ private fun WorkerModelSelectionList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -569,7 +569,7 @@ private fun WorkerModelSelectionList(
             text = "Model 선택",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         WorkerSelectionButton(
             selected = selectedModelId == null,
@@ -583,7 +583,7 @@ private fun WorkerModelSelectionList(
             } else {
                 "선택한 Provider에 연결된 Model이 없습니다."
             }
-            Text(text = message, color = Color(0xFFFFD18A))
+            Text(text = message, color = SettingsStyleTokens.warningTextColor)
         } else {
             models.forEach { model ->
                 val provider = providersById[model.providerId]
@@ -631,7 +631,7 @@ private fun WorkerCapabilityStatusSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -644,20 +644,20 @@ private fun WorkerCapabilityStatusSelector(
                 onClick = { onValueChange(value.previousCapabilityLayerStatus()) },
                 modifier = Modifier.weight(1f)
             ) {
-                Text(text = "이전", color = Color(0xFFBFD7FF))
+                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
             }
             TextButton(
                 onClick = { onValueChange(value.nextCapabilityLayerStatus()) },
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
+                    .background(SettingsStyleTokens.selectedButtonBackground, MaterialTheme.shapes.medium)
             ) {
                 Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
         Text(
             text = "선택 가능한 값: ${CapabilityLayerStatus.values().joinToString { it.name }}",
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
     }
 }
@@ -683,7 +683,7 @@ private fun WorkerBooleanToggle(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -698,7 +698,7 @@ private fun WorkerBooleanToggle(
             ) {
                 Text(
                     text = if (!value) "✓ false" else "false",
-                    color = if (!value) Color.White else Color(0xFFBFD7FF),
+                    color = if (!value) Color.White else SettingsStyleTokens.linkTextColor,
                     fontWeight = if (!value) FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -706,11 +706,11 @@ private fun WorkerBooleanToggle(
                 onClick = { onValueChange(true) },
                 modifier = Modifier
                     .weight(1f)
-                    .background(if (value) Color(0xFF33445C) else Color.Transparent, MaterialTheme.shapes.medium)
+                    .background(if (value) SettingsStyleTokens.selectedButtonBackground else Color.Transparent, MaterialTheme.shapes.medium)
             ) {
                 Text(
                     text = if (value) "✓ true" else "true",
-                    color = if (value) Color.White else Color(0xFFBFD7FF),
+                    color = if (value) Color.White else SettingsStyleTokens.linkTextColor,
                     fontWeight = if (value) FontWeight.Bold else FontWeight.Normal
                 )
             }
@@ -739,7 +739,7 @@ private fun WorkerPolicyIntField(
             parsed < 0 -> "음수는 0으로 보정됩니다."
             else -> "저장될 값: $parsed"
         }
-        Text(text = message, color = Color(0xFFB8BCC6))
+        Text(text = message, color = SettingsStyleTokens.mutedTextColor)
     }
 }
 
@@ -752,7 +752,7 @@ private fun WorkerCapabilityTypeSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -765,20 +765,20 @@ private fun WorkerCapabilityTypeSelector(
                 onClick = { onValueChange(value.previousCapabilityType()) },
                 modifier = Modifier.weight(1f)
             ) {
-                Text(text = "이전", color = Color(0xFFBFD7FF))
+                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
             }
             TextButton(
                 onClick = { onValueChange(value.nextCapabilityType()) },
                 modifier = Modifier
                     .weight(1f)
-                    .background(Color(0xFF33445C), MaterialTheme.shapes.medium)
+                    .background(SettingsStyleTokens.selectedButtonBackground, MaterialTheme.shapes.medium)
             ) {
                 Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
         Text(
             text = "선택 가능한 값: ${CapabilityType.values().joinToString { it.name }}",
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
     }
 }
@@ -815,13 +815,13 @@ private fun WorkerEditPlaceholderRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         WorkerEditKeyValue(label, value)
         TextButton(onClick = onAction) {
-            Text(text = actionLabel, color = Color(0xFFBFD7FF))
+            Text(text = actionLabel, color = SettingsStyleTokens.linkTextColor)
         }
     }
 }
@@ -833,12 +833,12 @@ private fun WorkerEditKeyValue(label: String, value: String) {
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         SelectionContainer {
             Text(
                 text = value.ifBlank { "없음" },
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
         }
     }
@@ -848,10 +848,10 @@ private fun WorkerEditKeyValue(label: String, value: String) {
 private fun WorkerEditNotice(text: String) {
     Text(
         text = text,
-        color = Color(0xFFE6D0B8),
+        color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }

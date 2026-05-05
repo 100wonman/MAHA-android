@@ -1,5 +1,6 @@
 package com.maha.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -151,7 +152,8 @@ fun ModelManagementScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3F49)),
+            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -167,20 +169,19 @@ fun ModelManagementScreen(
                 Text(
                     text = "대화모드 전용 모델을 수동으로 추가, 수정, 삭제합니다. 실제 모델 목록 조회는 후속 단계입니다.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
-                Button(
+                SettingsPrimaryButton(
+                    text = "모델 추가",
                     onClick = { isAddDialogOpen = true },
                     enabled = providers.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "모델 추가")
-                }
+                )
                 if (providers.isEmpty()) {
                     Text(
                         text = "Provider를 먼저 추가해야 모델을 등록할 수 있습니다.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFD0D3DA)
+                        color = SettingsStyleTokens.bodyTextColor
                     )
                 }
             }
@@ -188,7 +189,8 @@ fun ModelManagementScreen(
 
         if (models.none { it.enabled && it.isDefaultForConversation }) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2F1B)),
+                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background),
+                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.warningBorderColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -199,12 +201,12 @@ fun ModelManagementScreen(
                         text = "기본 대화 모델이 지정되지 않았습니다.",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFFD28A)
+                        color = SettingsStyleTokens.warningTextColor
                     )
                     Text(
                         text = "Gemini 실제 호출을 사용하려면 모델 카드에서 기본 지정을 눌러주세요.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFEBD7B3)
+                        color = SettingsStyleTokens.warningTextColor
                     )
                 }
             }
@@ -228,18 +230,20 @@ fun ModelManagementScreen(
 
         if (models.isEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "등록된 모델이 없습니다.",
                     modifier = Modifier.padding(18.dp),
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
         } else if (filteredModels.isEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -255,7 +259,7 @@ fun ModelManagementScreen(
                     Text(
                         text = "검색어 또는 필터를 해제해 다시 확인하세요.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFD0D3DA)
+                        color = SettingsStyleTokens.bodyTextColor
                     )
                 }
             }
@@ -361,7 +365,8 @@ private fun ModelListFilterPanel(
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -382,7 +387,7 @@ private fun ModelListFilterPanel(
                     if (isFilterApplied) append(" · 필터 적용 중")
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             OutlinedTextField(
                 value = searchQuery,
@@ -396,7 +401,7 @@ private fun ModelListFilterPanel(
                 text = "ProviderType 필터",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             providerFilterItems.chunked(2).forEach { rowItems ->
                 Row(
@@ -437,19 +442,12 @@ private fun ModelFilterButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    TextButton(
+    SettingsSecondaryButton(
+        text = text,
         onClick = onClick,
-        modifier = modifier.background(
-            if (selected) Color(0xFF1E3F66) else Color(0xFF303640)
-        )
-    ) {
-        Text(
-            text = text,
-            color = if (selected) Color(0xFFB7D7FF) else Color(0xFFD0D3DA),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+        modifier = modifier,
+        selected = selected
+    )
 }
 
 @Composable
@@ -466,7 +464,7 @@ private fun ModelFilterToggleRow(
             text = label,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFD0D3DA)
+            color = SettingsStyleTokens.bodyTextColor
         )
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -487,7 +485,8 @@ private fun ModelProfileCard(
     val capabilityV2 = model.capabilitiesV2 ?: model.capabilities.toModelCapabilityV2()
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -514,13 +513,13 @@ private fun ModelProfileCard(
                         text = if (model.isDefaultForConversation) "✓ 기본 대화 모델" else "대화모드 모델",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = if (model.isDefaultForConversation) FontWeight.Bold else FontWeight.Normal,
-                        color = if (model.isDefaultForConversation) Color(0xFF9FE3B1) else Color(0xFFD0D3DA)
+                        color = if (model.isDefaultForConversation) SettingsStyleTokens.successTextColor else SettingsStyleTokens.bodyTextColor
                     )
                     if (isLocalModel) {
                         Text(
                             text = "LOCAL 모델 · 사용자 지정 capability",
                             style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFF9FE3B1)
+                            color = SettingsStyleTokens.successTextColor
                         )
                     }
                 }
@@ -534,7 +533,7 @@ private fun ModelProfileCard(
                 Text(
                     text = "기본 모델 · 대화 호출에 사용됨",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF9FE3B1)
+                    color = SettingsStyleTokens.successTextColor
                 )
             }
 
@@ -600,12 +599,12 @@ private fun ModelInfoRow(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFD0D3DA),
+            color = SettingsStyleTokens.bodyTextColor,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -708,7 +707,7 @@ private fun ModelProfileEditDialog(
                             Text(
                                 text = provider.providerType.name,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFB8BCC6)
+                                color = SettingsStyleTokens.mutedTextColor
                             )
                         }
                     }
@@ -758,7 +757,7 @@ private fun ModelProfileEditDialog(
                 Text(
                     text = "입력 → 출력 형식으로 모델 기능을 표시합니다. 체크한 기능은 호출 시 참고 정보이며, 실제 지원 여부는 Provider/모델 정책에 따라 달라질 수 있습니다.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFB8BCC6)
+                    color = SettingsStyleTokens.mutedTextColor
                 )
 
                 CapabilityGroupHeader(text = "입력 → 출력")
@@ -780,7 +779,7 @@ private fun ModelProfileEditDialog(
                 Text(
                     text = "thinking summary: 현재 저장 필드 없음 / 후속 단계에서 지원 예정",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFB8BCC6)
+                    color = SettingsStyleTokens.mutedTextColor
                 )
 
                 Divider()
@@ -892,7 +891,8 @@ private fun rawModelNameGuideText(providerType: ProviderType?): String {
 @Composable
 private fun ModelRawNameGuideCard(providerType: ProviderType) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -903,23 +903,23 @@ private fun ModelRawNameGuideCard(providerType: ProviderType) {
                 text = "${providerType.name} 모델명 안내",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (providerType == ProviderType.LOCAL) Color(0xFF9FE3B1) else Color(0xFFB7D7FF)
+                color = if (providerType == ProviderType.LOCAL) SettingsStyleTokens.successTextColor else SettingsStyleTokens.infoTextColor
             )
             Text(
                 text = rawModelNameGuideText(providerType),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             Text(
                 text = "예: ${rawModelNamePlaceholder(providerType)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             if (providerType == ProviderType.LOCAL) {
                 Text(
                     text = "LOCAL 기본 capability는 text/code=true, 나머지는 false입니다. 필요하면 직접 수정하세요.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
         }
@@ -932,7 +932,7 @@ private fun CapabilityGroupHeader(text: String) {
         text = text,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFFD0D3DA),
+        color = SettingsStyleTokens.bodyTextColor,
         modifier = Modifier.padding(top = 8.dp)
     )
 }
@@ -977,7 +977,7 @@ private fun CapabilityV2Section(
         Text(
             text = "Capability V2 · $capabilitySource",
             style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
         CapabilityBadgeGroup(
             title = "입력",
@@ -1028,7 +1028,7 @@ private fun CapabilityBadgeGroup(
         Text(
             text = title,
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
         items.chunked(3).forEach { rowItems ->
             Row(
@@ -1064,8 +1064,8 @@ private fun CapabilityStatusBadge(
     }
     val textColor = when (status) {
         CapabilityStatus.SUPPORTED -> Color(0xFFB7F7CB)
-        CapabilityStatus.USER_ENABLED -> Color(0xFFB7D7FF)
-        CapabilityStatus.UNKNOWN -> Color(0xFFD0D3DA)
+        CapabilityStatus.USER_ENABLED -> SettingsStyleTokens.infoTextColor
+        CapabilityStatus.UNKNOWN -> SettingsStyleTokens.bodyTextColor
         CapabilityStatus.UNSUPPORTED,
         CapabilityStatus.USER_DISABLED -> Color(0xFF8E94A1)
     }

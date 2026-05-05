@@ -1,5 +1,6 @@
 package com.maha.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -84,7 +85,7 @@ fun CapabilityResolverDebugCard(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101821))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground)
     ) {
         Column(
             modifier = Modifier
@@ -96,13 +97,13 @@ fun CapabilityResolverDebugCard(
                 text = "Capability Resolver 진단",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = SettingsStyleTokens.titleTextColor
             )
 
             Text(
                 text = "이 화면은 실제 대화 실행이 아닙니다. Provider 호출, Worker 실행, RAG 검색, Web Search, Tool 실행을 하지 않고 Orchestrator가 어떤 capability와 실행 방식을 추정할지 미리 보여줍니다.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFB8C0CC)
+                color = SettingsStyleTokens.mutedTextColor
             )
 
             CapabilityDebugNotice()
@@ -147,29 +148,30 @@ fun CapabilityResolverDebugCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
+                SettingsPrimaryButton(
+                    text = "기본 진단",
                     onClick = {
                         plan = buildCurrentPlan(useScenario = false)
-                    }
-                ) {
-                    Text("기본 진단")
-                }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
 
-                Button(
+                SettingsPrimaryButton(
+                    text = "Scenario Preview",
                     enabled = selectedScenario != null,
                     onClick = {
                         plan = buildCurrentPlan(useScenario = true)
-                    }
-                ) {
-                    Text("Scenario Preview")
-                }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                TextButton(
+                SettingsSecondaryButton(
+                    text = "Scenario 목록 새로고침",
                     onClick = {
                         WorkerProfileStore.clearCache()
                         WorkerProfileStore.initialize(context)
@@ -179,11 +181,10 @@ fun CapabilityResolverDebugCard(
                         plan = null
                         resultMode = "NONE"
                     }
-                ) {
-                    Text("Scenario 목록 새로고침")
-                }
+                )
 
-                TextButton(
+                SettingsSecondaryButton(
+                    text = "결과 복사",
                     onClick = {
                         val currentPlan = plan ?: buildCurrentPlan(useScenario = selectedScenario != null)
                         clipboardManager.setText(
@@ -196,9 +197,7 @@ fun CapabilityResolverDebugCard(
                             )
                         )
                     }
-                ) {
-                    Text("결과 복사")
-                }
+                )
             }
 
             val currentPlan = plan
@@ -206,7 +205,7 @@ fun CapabilityResolverDebugCard(
                 Text(
                     text = "기본 진단은 userInput만 분석합니다. Scenario Preview는 선택한 Scenario와 WorkerProfile 목록을 함께 사용합니다.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF8F9AAD)
+                    color = SettingsStyleTokens.mutedTextColor
                 )
             } else {
                 CapabilityPlanPreview(
@@ -224,7 +223,7 @@ private fun CapabilityDebugNotice() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF182435))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -247,7 +246,7 @@ private fun CapabilityScenarioSelector(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -257,38 +256,38 @@ private fun CapabilityScenarioSelector(
                 text = "Scenario 선택",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = SettingsStyleTokens.titleTextColor
             )
 
             Text(
                 text = "선택값은 저장하지 않습니다. Scenario Preview 진단에만 사용합니다.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFB8C0CC)
+                color = SettingsStyleTokens.mutedTextColor
             )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                SettingsSecondaryButton(
+                    text = "이전",
                     onClick = {
                         val next = if (selectedScenarioIndex <= 0) scenarios.size else selectedScenarioIndex - 1
                         onSelectedScenarioIndexChange(next)
                     }
-                ) {
-                    Text("이전")
-                }
-                OutlinedButton(
+                )
+                SettingsSecondaryButton(
+                    text = "다음",
                     onClick = {
                         val next = if (selectedScenarioIndex >= scenarios.size) 0 else selectedScenarioIndex + 1
                         onSelectedScenarioIndexChange(next)
                     }
-                ) {
-                    Text("다음")
-                }
-                TextButton(onClick = { onSelectedScenarioIndexChange(0) }) {
-                    Text("미선택")
-                }
+                )
+                SettingsSecondaryButton(
+                    text = "미선택",
+                    onClick = { onSelectedScenarioIndexChange(0) },
+                    selected = selectedScenarioIndex == 0
+                )
             }
 
             if (selectedScenario == null) {
@@ -320,20 +319,15 @@ private fun CapabilityResolverExampleButtons(
             text = "예시 입력",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFFD7DEE8)
+            color = SettingsStyleTokens.bodyTextColor
         )
 
         examples.forEachIndexed { index, example ->
-            TextButton(
+            SettingsSecondaryButton(
+                text = "예시 ${index + 1}: $example",
                 onClick = { onExampleSelected(example) },
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "예시 ${index + 1}: $example",
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xFFAEC6FF)
-                )
-            }
+            )
         }
     }
 }
@@ -446,7 +440,7 @@ private fun CapabilityPreviewOnlyCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF162A3B))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.INFO).background)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -482,7 +476,7 @@ private fun CapabilityPlanSummaryCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -492,7 +486,7 @@ private fun CapabilityPlanSummaryCard(
                 text = "Plan 요약",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = SettingsStyleTokens.titleTextColor
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -520,7 +514,7 @@ private fun CapabilityExpandableSection(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
     ) {
         Column(
             modifier = Modifier
@@ -537,17 +531,18 @@ private fun CapabilityExpandableSection(
                         text = title,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = SettingsStyleTokens.titleTextColor
                     )
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF8F9AAD)
+                        color = SettingsStyleTokens.mutedTextColor
                     )
                 }
-                TextButton(onClick = onToggle) {
-                    Text(if (expanded) "상세 닫기" else "상세 보기")
-                }
+                SettingsSecondaryButton(
+                    text = if (expanded) "상세 닫기" else "상세 보기",
+                    onClick = onToggle
+                )
             }
 
             if (expanded) {
@@ -562,7 +557,7 @@ private fun CapabilityWorkerPlanCard(worker: WorkerPlan) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -579,7 +574,7 @@ private fun CapabilityWorkerPlanCard(worker: WorkerPlan) {
                 text = worker.displayName.ifBlank { worker.workerRole.name },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFD7DEE8)
+                color = SettingsStyleTokens.bodyTextColor
             )
             CapabilityCompactInfoRow("Provider / Model", "${worker.assignedProviderId ?: "Provider 미지정"} / ${worker.assignedModelId ?: "Model 미지정"}")
             CapabilityCompactInfoRow("순서 / 병렬", "${worker.executionOrder} / ${worker.canRunInParallel}")
@@ -597,7 +592,7 @@ private fun CapabilityLimitationCard(reason: LimitationReason) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -632,7 +627,7 @@ private fun CapabilityMiniCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111A26))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -648,7 +643,7 @@ private fun CapabilityMiniCard(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFD7DEE8)
+                color = SettingsStyleTokens.bodyTextColor
             )
             lines.forEach { line -> CapabilityDebugText(line) }
         }
@@ -663,7 +658,7 @@ private fun CapabilityCompactInfoRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF111A26), RoundedCornerShape(10.dp))
+            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -671,13 +666,13 @@ private fun CapabilityCompactInfoRow(
             text = label,
             modifier = Modifier.weight(0.42f),
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF8F9AAD)
+            color = SettingsStyleTokens.mutedTextColor
         )
         SelectionContainer(modifier = Modifier.weight(0.58f)) {
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD7DEE8)
+                color = SettingsStyleTokens.bodyTextColor
             )
         }
     }
@@ -717,7 +712,7 @@ private fun CapabilityDebugSection(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172231))
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
     ) {
         Column(
             modifier = Modifier
@@ -729,7 +724,7 @@ private fun CapabilityDebugSection(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = SettingsStyleTokens.titleTextColor
             )
             content()
         }
@@ -744,19 +739,19 @@ private fun CapabilityDebugRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF111A26), RoundedCornerShape(10.dp))
+            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF8F9AAD)
+            color = SettingsStyleTokens.mutedTextColor
         )
         SelectionContainer {
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD7DEE8)
+                color = SettingsStyleTokens.bodyTextColor
             )
         }
     }
@@ -769,7 +764,7 @@ private fun CapabilityDebugText(text: String) {
             text = text,
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFFD7DEE8)
+            color = SettingsStyleTokens.bodyTextColor
         )
     }
 }

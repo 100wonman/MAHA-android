@@ -21,7 +21,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,31 +35,13 @@ enum class SettingsChipTone {
     DISABLED
 }
 
-private data class SettingsToneColors(
-    val background: Color,
-    val border: Color,
-    val content: Color
-)
-
-private fun settingsChipColors(tone: SettingsChipTone): SettingsToneColors {
-    return when (tone) {
-        SettingsChipTone.NEUTRAL -> SettingsToneColors(Color(0xFF202733), Color(0xFF3B4556), Color(0xFFD0D3DA))
-        SettingsChipTone.INFO -> SettingsToneColors(Color(0xFF162A3B), Color(0xFF3B82F6), Color(0xFFBFD7FF))
-        SettingsChipTone.SUCCESS -> SettingsToneColors(Color(0xFF163224), Color(0xFF22C55E), Color(0xFFBBF7D0))
-        SettingsChipTone.WARNING -> SettingsToneColors(Color(0xFF332B1F), Color(0xFFF59E0B), Color(0xFFFFD9A8))
-        SettingsChipTone.DANGER -> SettingsToneColors(Color(0xFF3A1F24), Color(0xFFEF4444), Color(0xFFFFC2C2))
-        SettingsChipTone.SELECTED -> SettingsToneColors(Color(0xFF33445C), Color(0xFF86B7FF), Color.White)
-        SettingsChipTone.DISABLED -> SettingsToneColors(Color(0xFF1A202A), Color(0xFF2C3340), Color(0xFF7D8796))
-    }
-}
-
 @Composable
 fun SettingsStatusChip(
     text: String,
     modifier: Modifier = Modifier,
     tone: SettingsChipTone = SettingsChipTone.NEUTRAL
 ) {
-    val colors = settingsChipColors(tone)
+    val colors = SettingsStyleTokens.chipColors(tone)
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
@@ -68,9 +49,9 @@ fun SettingsStatusChip(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
-            .background(colors.background, RoundedCornerShape(999.dp))
-            .border(1.dp, colors.border, RoundedCornerShape(999.dp))
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .background(colors.background, RoundedCornerShape(SettingsStyleTokens.chipCornerRadius))
+            .border(SettingsStyleTokens.cardBorderWidth, colors.border, RoundedCornerShape(SettingsStyleTokens.chipCornerRadius))
+            .padding(horizontal = SettingsStyleTokens.chipHorizontalPadding, vertical = SettingsStyleTokens.chipVerticalPadding)
     )
 }
 
@@ -106,40 +87,28 @@ fun SettingsSectionCard(
     tone: SettingsChipTone = SettingsChipTone.NEUTRAL,
     content: @Composable (() -> Unit)? = null
 ) {
-    val borderColor = when (tone) {
-        SettingsChipTone.WARNING -> Color(0xFFF59E0B)
-        SettingsChipTone.DANGER -> Color(0xFFEF4444)
-        SettingsChipTone.SUCCESS -> Color(0xFF22C55E)
-        SettingsChipTone.INFO -> Color(0xFF3B82F6)
-        else -> Color(0xFF3B4556)
-    }
-    val background = when (tone) {
-        SettingsChipTone.WARNING -> Color(0xFF332B1F)
-        SettingsChipTone.DANGER -> Color(0xFF3A1F24)
-        SettingsChipTone.INFO -> Color(0xFF172231)
-        else -> Color(0xFF202733)
-    }
+    val colors = SettingsStyleTokens.cardColors(tone)
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = background),
-        border = BorderStroke(1.dp, borderColor),
+        colors = CardDefaults.cardColors(containerColor = colors.background),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, colors.border),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(SettingsStyleTokens.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(SettingsStyleTokens.cardSpacing)
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = SettingsStyleTokens.titleTextColor
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
             SettingsChipRow(values = chips)
@@ -157,17 +126,17 @@ fun SettingsNavCard(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val background = if (enabled) Color(0xFF263244) else Color(0xFF1A202A)
-    val border = if (enabled) Color(0xFF3B82F6) else Color(0xFF2C3340)
+    val background = if (enabled) SettingsStyleTokens.navCardBackground else SettingsStyleTokens.disabledBackground
+    val border = if (enabled) SettingsStyleTokens.infoBorderColor else SettingsStyleTokens.subtleBorderColor
     Card(
         colors = CardDefaults.cardColors(containerColor = background),
-        border = BorderStroke(1.dp, border),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, border),
         modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(SettingsStyleTokens.cardPadding),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -179,12 +148,12 @@ fun SettingsNavCard(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (enabled) Color.White else Color(0xFF7D8796)
+                    color = if (enabled) SettingsStyleTokens.titleTextColor else SettingsStyleTokens.disabledTextColor
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (enabled) Color(0xFFD0D3DA) else Color(0xFF7D8796)
+                    color = if (enabled) SettingsStyleTokens.bodyTextColor else SettingsStyleTokens.disabledTextColor
                 )
                 SettingsChipRow(values = chips)
             }
@@ -192,7 +161,7 @@ fun SettingsNavCard(
                 text = "›",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (enabled) Color(0xFFBFD7FF) else Color(0xFF7D8796)
+                color = if (enabled) SettingsStyleTokens.linkTextColor else SettingsStyleTokens.disabledTextColor
             )
         }
     }
@@ -210,10 +179,10 @@ fun SettingsPrimaryButton(
         enabled = enabled,
         modifier = modifier,
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF2563EB),
-            contentColor = Color.White,
-            disabledContainerColor = Color(0xFF263244),
-            disabledContentColor = Color(0xFF7D8796)
+            containerColor = SettingsStyleTokens.primaryButtonBackground,
+            contentColor = SettingsStyleTokens.titleTextColor,
+            disabledContainerColor = SettingsStyleTokens.disabledButtonBackground,
+            disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {
         Text(text = text, fontWeight = FontWeight.Bold)
@@ -232,11 +201,11 @@ fun SettingsSecondaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
-        border = BorderStroke(1.dp, if (selected) Color(0xFF86B7FF) else Color(0xFF3B4556)),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, if (selected) SettingsStyleTokens.selectedBorderColor else SettingsStyleTokens.cardBorderColor),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (selected) Color(0xFF33445C) else Color.Transparent,
-            contentColor = if (enabled) Color(0xFFBFD7FF) else Color(0xFF7D8796),
-            disabledContentColor = Color(0xFF7D8796)
+            containerColor = if (selected) SettingsStyleTokens.selectedButtonBackground else SettingsStyleTokens.unselectedButtonBackground,
+            contentColor = if (enabled) SettingsStyleTokens.linkTextColor else SettingsStyleTokens.disabledTextColor,
+            disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {
         Text(text = text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -255,10 +224,10 @@ fun SettingsDangerButton(
         enabled = enabled,
         modifier = modifier,
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFFB91C1C),
-            contentColor = Color.White,
-            disabledContainerColor = Color(0xFF263244),
-            disabledContentColor = Color(0xFF7D8796)
+            containerColor = SettingsStyleTokens.dangerButtonBackground,
+            contentColor = SettingsStyleTokens.titleTextColor,
+            disabledContainerColor = SettingsStyleTokens.disabledButtonBackground,
+            disabledContentColor = SettingsStyleTokens.disabledTextColor
         )
     ) {
         Text(text = text, fontWeight = FontWeight.Bold)

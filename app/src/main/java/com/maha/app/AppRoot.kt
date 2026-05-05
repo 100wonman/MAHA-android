@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -2016,7 +2017,7 @@ private fun ConversationGlobalSettingsScreen(
                     Text(
                         text = "기본 설정",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFFB8BCC6)
+                        color = SettingsStyleTokens.mutedTextColor
                     )
                 }
 
@@ -2080,7 +2081,7 @@ private fun ConversationGlobalSettingsScreen(
                         Text(
                             text = pageSubtitle,
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color(0xFFB8BCC6)
+                            color = SettingsStyleTokens.mutedTextColor
                         )
                     }
                 }
@@ -2088,9 +2089,8 @@ private fun ConversationGlobalSettingsScreen(
                 if (selectedPage != "modelApi" && selectedPage != "modelApiDetails" && selectedPage != "harness" && selectedPage != "capabilityResolverDebug" && selectedPage != "workerProfileManagement") {
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF3A3F49)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+                            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -2114,7 +2114,7 @@ private fun ConversationGlobalSettingsScreen(
 
                                 Text(
                                     text = "이 설정은 후속 단계에서 연결합니다.",
-                                    color = Color(0xFFD0D3DA)
+                                    color = SettingsStyleTokens.bodyTextColor
                                 )
                             }
                         }
@@ -2215,9 +2215,8 @@ private fun ConversationGlobalSettingsScreen(
 
                     item {
                         Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF3A3F49)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+                            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -2233,23 +2232,23 @@ private fun ConversationGlobalSettingsScreen(
 
                                 Text(
                                     text = "상태: $storageStatusText",
-                                    color = Color(0xFFD0D3DA)
+                                    color = SettingsStyleTokens.bodyTextColor
                                 )
 
                                 Text(
                                     text = "위치: $storageLocationText",
-                                    color = Color(0xFFD0D3DA)
+                                    color = SettingsStyleTokens.bodyTextColor
                                 )
 
                                 Text(
                                     text = "기존 앱 저장소 세션: ${appSpecificSessionCount}개",
-                                    color = Color(0xFFD0D3DA)
+                                    color = SettingsStyleTokens.bodyTextColor
                                 )
 
                                 if (lastMigrationResultText.isNotBlank()) {
                                     Text(
                                         text = "마이그레이션 결과: $lastMigrationResultText",
-                                        color = Color(0xFFD0D3DA)
+                                        color = SettingsStyleTokens.bodyTextColor
                                     )
                                 }
 
@@ -2271,7 +2270,7 @@ private fun ConversationGlobalSettingsScreen(
                                 if (!canMigrateAppSpecificSessions) {
                                     Text(
                                         text = "SAF 저장소 연결 후 사용할 수 있습니다.",
-                                        color = Color(0xFFD0D3DA)
+                                        color = SettingsStyleTokens.bodyTextColor
                                     )
                                 }
 
@@ -2525,7 +2524,7 @@ private fun CompactSettingSummaryRow(
         )
         Text(
             text = value,
-            color = Color(0xFFD0D3DA),
+            color = SettingsStyleTokens.bodyTextColor,
             modifier = Modifier.weight(1f)
         )
     }
@@ -2589,7 +2588,7 @@ private fun ModelApiSettingsBackupCard(
         if (message.isNotBlank()) {
             Text(
                 text = message,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
         }
         Row(
@@ -2640,9 +2639,8 @@ private fun SettingsBackupListDialog(
                 } else {
                     backups.forEach { backup ->
                         Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFF3A3F49)
-                            ),
+                            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+                            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -2656,14 +2654,13 @@ private fun SettingsBackupListDialog(
                                 )
                                 Text(
                                     text = "Provider ${backup.providerCount}개 · Model ${backup.modelCount}개 · API Key 미포함",
-                                    color = Color(0xFFD0D3DA)
+                                    color = SettingsStyleTokens.bodyTextColor
                                 )
-                                Button(
+                                SettingsPrimaryButton(
+                                    text = "복원",
                                     onClick = { onSelectBackup(backup) },
                                     modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(text = "복원")
-                                }
+                                )
                             }
                         }
                     }

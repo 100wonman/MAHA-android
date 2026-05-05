@@ -1,6 +1,7 @@
 package com.maha.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -336,7 +337,7 @@ private fun WorkerProfileCompactSectionTitle(
         )
         Text(
             text = subtitle,
-            color = Color(0xFFB8BCC6),
+            color = SettingsStyleTokens.mutedTextColor,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -353,10 +354,9 @@ private fun WorkerProfilePreviewCard(
     var expanded by remember { mutableStateOf(false) }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF3B4556), MaterialTheme.shapes.medium)
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -377,18 +377,17 @@ private fun WorkerProfilePreviewCard(
                     )
                     Text(
                         text = worker.roleLabel.ifBlank { "역할 미지정" },
-                        color = Color(0xFFB8BCC6),
+                        color = SettingsStyleTokens.mutedTextColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { expanded = !expanded }) {
-                        Text(text = if (expanded) "상세 닫기" else "상세 보기", color = Color(0xFFBFD7FF))
-                    }
-                    TextButton(onClick = onEdit) {
-                        Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
-                    }
+                    SettingsSecondaryButton(
+                        text = if (expanded) "상세 닫기" else "상세 보기",
+                        onClick = { expanded = !expanded }
+                    )
+                    SettingsSecondaryButton(text = "편집", onClick = onEdit)
                 }
             }
 
@@ -458,10 +457,9 @@ private fun ConversationScenarioPreviewCard(
     var expanded by remember { mutableStateOf(false) }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF202733)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF3B4556), MaterialTheme.shapes.medium)
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -482,18 +480,17 @@ private fun ConversationScenarioPreviewCard(
                     )
                     Text(
                         text = scenario.defaultExecutionMode.name,
-                        color = Color(0xFFB8BCC6),
+                        color = SettingsStyleTokens.mutedTextColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { expanded = !expanded }) {
-                        Text(text = if (expanded) "상세 닫기" else "상세 보기", color = Color(0xFFBFD7FF))
-                    }
-                    TextButton(onClick = onEdit) {
-                        Text(text = "편집", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
-                    }
+                    SettingsSecondaryButton(
+                        text = if (expanded) "상세 닫기" else "상세 보기",
+                        onClick = { expanded = !expanded }
+                    )
+                    SettingsSecondaryButton(text = "편집", onClick = onEdit)
                 }
             }
 
@@ -587,7 +584,7 @@ private fun ScenarioCardActionRow(
             }
             Text(
                 text = if (isDefaultTemplate) "기본 Scenario는 삭제 대신 비활성화 또는 복제를 권장합니다." else "삭제 시 Scenario만 제거됩니다.",
-                color = Color(0xFFB8BCC6),
+                color = SettingsStyleTokens.mutedTextColor,
                 modifier = Modifier.weight(2f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -646,7 +643,7 @@ private fun WorkerProfileDetailTitle(title: String) {
         text = title,
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFFBFD7FF),
+        color = SettingsStyleTokens.linkTextColor,
         modifier = Modifier.padding(top = 4.dp)
     )
 }
@@ -655,10 +652,10 @@ private fun WorkerProfileDetailTitle(title: String) {
 private fun WorkerProfileReadOnlyPlaceholder(text: String) {
     Text(
         text = text,
-        color = Color(0xFFE6D0B8),
+        color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
@@ -669,9 +666,10 @@ private fun WorkerProfileCollapseButton(onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        TextButton(onClick = onClick) {
-            Text(text = "상세 닫기", color = Color(0xFFBFD7FF), fontWeight = FontWeight.Bold)
-        }
+        SettingsSecondaryButton(
+            text = "상세 닫기",
+            onClick = onClick
+        )
     }
 }
 
@@ -707,7 +705,7 @@ private fun WorkerProfileInlineValue(
 ) {
     Column(
         modifier = modifier
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -715,11 +713,11 @@ private fun WorkerProfileInlineValue(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         Text(
             text = value.ifBlank { "미지정" },
-            color = Color(0xFFD0D3DA),
+            color = SettingsStyleTokens.bodyTextColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -749,12 +747,12 @@ private fun WorkerProfileKeyValue(label: String, value: String) {
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         SelectionContainer {
             Text(
                 text = value.ifBlank { "없음" },
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
         }
     }

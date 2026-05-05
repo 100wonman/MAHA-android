@@ -302,13 +302,13 @@ private fun ScenarioBooleanToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, color = Color(0xFFD0D3DA), modifier = Modifier.weight(1f))
+        Text(text = label, color = SettingsStyleTokens.bodyTextColor, modifier = Modifier.weight(1f))
         TextButton(onClick = { onValueChange(!value) }) {
-            Text(text = if (value) "true" else "false", color = Color(0xFFBFD7FF))
+            Text(text = if (value) "true" else "false", color = SettingsStyleTokens.linkTextColor)
         }
     }
 }
@@ -323,7 +323,7 @@ private fun ScenarioExecutionModeSelector(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -332,16 +332,16 @@ private fun ScenarioExecutionModeSelector(
                 text = "defaultExecutionMode",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF9DB7E8)
+                color = SettingsStyleTokens.infoTextColor
             )
-            Text(text = value.name, color = Color(0xFFD0D3DA))
+            Text(text = value.name, color = SettingsStyleTokens.bodyTextColor)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { onValueChange(values[(currentIndex - 1 + values.size) % values.size]) }) {
-                Text(text = "이전", color = Color(0xFFBFD7FF))
+                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
             }
             TextButton(onClick = { onValueChange(values[(currentIndex + 1) % values.size]) }) {
-                Text(text = "다음", color = Color(0xFFBFD7FF))
+                Text(text = "다음", color = SettingsStyleTokens.linkTextColor)
             }
         }
     }
@@ -360,21 +360,21 @@ private fun ScenarioWorkerEditableRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "${index + 1}. ${worker?.displayName?.ifBlank { workerId } ?: "missing Worker"}",
             fontWeight = FontWeight.Bold,
-            color = if (worker == null) Color(0xFFFFB0B0) else Color.White
+            color = if (worker == null) SettingsStyleTokens.dangerTextColor else Color.White
         )
         Text(
             text = worker?.let { "${it.roleLabel.ifBlank { "역할 미지정" }} · ${if (it.enabled) "활성" else "비활성"}" }
                 ?: "이 WorkerProfile ID를 찾을 수 없습니다.",
-            color = Color(0xFFD0D3DA)
+            color = SettingsStyleTokens.bodyTextColor
         )
-        Text(text = workerId, color = Color(0xFF9DB7E8))
+        Text(text = workerId, color = SettingsStyleTokens.infoTextColor)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -417,7 +417,7 @@ private fun ScenarioAddWorkerSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1B222D), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.nestedCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -425,11 +425,11 @@ private fun ScenarioAddWorkerSection(
             text = "Worker 추가",
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         Text(
             text = "이미 포함된 Worker는 추가 후보에서 제외됩니다. WorkerProfile 자체는 생성/수정/삭제하지 않습니다.",
-            color = Color(0xFFD0D3DA)
+            color = SettingsStyleTokens.bodyTextColor
         )
         if (candidates.isEmpty()) {
             ScenarioEditNotice("추가 가능한 Worker가 없습니다. 중복 Worker 추가는 방지됩니다.")
@@ -473,7 +473,7 @@ private fun ScenarioWorkerPicker(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF252E3B), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -481,7 +481,7 @@ private fun ScenarioWorkerPicker(
             text = title,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         ScenarioSelectableWorkerRow(
             label = emptyLabel,
@@ -546,9 +546,9 @@ private fun ScenarioPlaceholderAction(label: String) {
         onClick = { },
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF1B222D), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.nestedCardBackground, MaterialTheme.shapes.small)
     ) {
-        Text(text = "$label · 후속 구현 예정", color = Color(0xFFBFD7FF))
+        Text(text = "$label · 후속 구현 예정", color = SettingsStyleTokens.linkTextColor)
     }
 }
 
@@ -556,10 +556,10 @@ private fun ScenarioPlaceholderAction(label: String) {
 private fun ScenarioEditNotice(text: String) {
     Text(
         text = text,
-        color = Color(0xFFE6D0B8),
+        color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF332B1F), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
@@ -568,10 +568,10 @@ private fun ScenarioEditNotice(text: String) {
 private fun ScenarioWarningText(text: String) {
     Text(
         text = text,
-        color = Color(0xFFFFC3C3),
+        color = SettingsStyleTokens.dangerTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF3A2525), MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.DANGER).background, MaterialTheme.shapes.small)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
@@ -583,10 +583,10 @@ private fun ScenarioEditKeyValue(label: String, value: String) {
             text = label,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF9DB7E8)
+            color = SettingsStyleTokens.infoTextColor
         )
         SelectionContainer {
-            Text(text = value.ifBlank { "없음" }, color = Color(0xFFD0D3DA))
+            Text(text = value.ifBlank { "없음" }, color = SettingsStyleTokens.bodyTextColor)
         }
     }
 }

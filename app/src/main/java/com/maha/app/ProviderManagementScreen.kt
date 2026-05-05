@@ -1,5 +1,6 @@
 package com.maha.app
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,8 +63,13 @@ fun ProviderManagementScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val googleModelListFetcher = remember { GoogleModelListFetcher() }
+    val openAIModelListFetcher = remember { OpenAIModelListFetcher() }
+    val openAiCompatibleModelListFetcher = remember { OpenAiCompatibleModelListFetcher() }
     var modelListProvider by remember { mutableStateOf<ProviderProfile?>(null) }
+    var modelListKind by remember { mutableStateOf<ProviderModelListKind?>(null) }
     var googleModels by remember { mutableStateOf<List<GoogleModelListItem>>(emptyList()) }
+    var openAIModels by remember { mutableStateOf<List<OpenAIModelListItem>>(emptyList()) }
+    var openAiCompatibleModels by remember { mutableStateOf<List<OpenAiModelListCandidate>>(emptyList()) }
     var googleModelListError by remember { mutableStateOf<String?>(null) }
     var googleModelListMessage by remember { mutableStateOf<String?>(null) }
     var isGoogleModelListLoading by remember { mutableStateOf(false) }
@@ -75,11 +81,23 @@ fun ProviderManagementScreen(
         }
     }
 
-    fun openGoogleModelList(provider: ProviderProfile) {
-        modelListProvider = provider
+    fun clearModelListState(clearProvider: Boolean = true) {
+        if (clearProvider) {
+            modelListProvider = null
+            modelListKind = null
+        }
         googleModels = emptyList()
+        openAIModels = emptyList()
+        openAiCompatibleModels = emptyList()
         googleModelListError = null
         googleModelListMessage = null
+        isGoogleModelListLoading = false
+    }
+
+    fun openGoogleModelList(provider: ProviderProfile) {
+        clearModelListState()
+        modelListProvider = provider
+        modelListKind = ProviderModelListKind.GOOGLE
         isGoogleModelListLoading = true
 
         coroutineScope.launch {
@@ -100,6 +118,66 @@ fun ProviderManagementScreen(
                 googleModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
             } else {
                 googleModelListError = result.errorMessage ?: "모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun openOpenAIModelList(provider: ProviderProfile) {
+        clearModelListState()
+        modelListProvider = provider
+        modelListKind = ProviderModelListKind.OPENAI
+        isGoogleModelListLoading = true
+
+        coroutineScope.launch {
+            val apiKey = store.loadProviderApiKey(provider.providerId)
+            val result = openAIModelListFetcher.fetchModels(
+                provider = provider,
+                apiKey = apiKey
+            )
+            isGoogleModelListLoading = false
+            if (result.success) {
+                openAIModels = result.models
+                googleModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
+            } else {
+                googleModelListError = result.errorMessage ?: "OpenAI 모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun openOpenAiCompatibleModelList(provider: ProviderProfile) {
+        clearModelListState()
+        modelListProvider = provider
+        modelListKind = ProviderModelListKind.OPENAI_COMPATIBLE
+        isGoogleModelListLoading = true
+
+        coroutineScope.launch {
+            val apiKey = store.loadProviderApiKey(provider.providerId)
+            val result = openAiCompatibleModelListFetcher.fetchModels(
+                provider = provider,
+                apiKey = apiKey
+            )
+            isGoogleModelListLoading = false
+            if (result.success) {
+                openAiCompatibleModels = result.models
+                googleModelListError = if (result.models.isEmpty()) "조회된 모델이 없습니다." else null
+            } else {
+                googleModelListError = result.errorMessage ?: "모델 목록 조회에 실패했습니다."
+            }
+        }
+    }
+
+    fun openProviderModelList(provider: ProviderProfile) {
+        when (provider.providerType) {
+            ProviderType.GOOGLE -> openGoogleModelList(provider)
+            ProviderType.OPENAI -> openOpenAIModelList(provider)
+            ProviderType.OPENAI_COMPATIBLE,
+            ProviderType.LOCAL,
+            ProviderType.CUSTOM -> openOpenAiCompatibleModelList(provider)
+            ProviderType.NVIDIA -> {
+                clearModelListState()
+                modelListProvider = provider
+                modelListKind = ProviderModelListKind.UNSUPPORTED
+                googleModelListError = "NVIDIA Provider의 대화모드 모델 목록 조회는 현재 정책상 지원하지 않습니다."
             }
         }
     }
@@ -148,6 +226,90 @@ fun ProviderManagementScreen(
             inputTokenLimit = item.inputTokenLimit,
             outputTokenLimit = item.outputTokenLimit,
             metadataRawSummary = buildGoogleMetadataSummary(item),
+            lastMetadataFetchedAt = now
+        )
+        store.addModelProfile(profile)
+        googleModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
+    }
+
+    fun addOpenAIModelProfile(provider: ProviderProfile, item: OpenAIModelListItem) {
+        val rawModelName = item.rawModelName.trim()
+        if (rawModelName.isBlank()) {
+            googleModelListMessage = "rawModelName이 비어 있어 추가할 수 없습니다."
+            return
+        }
+
+        val current = store.loadModelProfiles()
+        val alreadyExists = current.any { model ->
+            model.providerId == provider.providerId && model.rawModelName == rawModelName
+        }
+        if (alreadyExists) {
+            googleModelListMessage = "이미 추가된 모델입니다: $rawModelName"
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val profile = ConversationModelProfile(
+            modelId = "model_${provider.providerId}_${safeModelIdPart(rawModelName)}_$now",
+            providerId = provider.providerId,
+            displayName = item.displayName.ifBlank { rawModelName },
+            rawModelName = rawModelName,
+            contextWindow = null,
+            inputModalities = listOf("text"),
+            outputModalities = listOf("text"),
+            capabilities = ConversationModelCapability(text = true),
+            isFavorite = false,
+            isDefaultForConversation = false,
+            lastUsedAt = null,
+            enabled = true,
+            capabilitiesV2 = createOpenAITextCapabilityV2(),
+            capabilitySource = "METADATA",
+            supportedGenerationMethods = emptyList(),
+            inputTokenLimit = null,
+            outputTokenLimit = null,
+            metadataRawSummary = item.metadataRawSummary,
+            lastMetadataFetchedAt = now
+        )
+        store.addModelProfile(profile)
+        googleModelListMessage = "모델을 추가했습니다: ${profile.displayName}"
+    }
+
+    fun addOpenAiCompatibleModelProfile(provider: ProviderProfile, item: OpenAiModelListCandidate) {
+        val rawModelName = item.rawModelName.trim()
+        if (rawModelName.isBlank()) {
+            googleModelListMessage = "rawModelName이 비어 있어 추가할 수 없습니다."
+            return
+        }
+
+        val current = store.loadModelProfiles()
+        val alreadyExists = current.any { model ->
+            model.providerId == provider.providerId && model.rawModelName == rawModelName
+        }
+        if (alreadyExists) {
+            googleModelListMessage = "이미 추가된 모델입니다: $rawModelName"
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val profile = ConversationModelProfile(
+            modelId = "model_${provider.providerId}_${safeModelIdPart(rawModelName)}_$now",
+            providerId = provider.providerId,
+            displayName = item.displayName.ifBlank { rawModelName },
+            rawModelName = rawModelName,
+            contextWindow = item.contextWindow,
+            inputModalities = item.inputModalities.ifEmpty { listOf("text") },
+            outputModalities = item.outputModalities.ifEmpty { listOf("text") },
+            capabilities = ConversationModelCapability(text = true),
+            isFavorite = false,
+            isDefaultForConversation = false,
+            lastUsedAt = null,
+            enabled = true,
+            capabilitiesV2 = createOpenAITextCapabilityV2(),
+            capabilitySource = "METADATA",
+            supportedGenerationMethods = emptyList(),
+            inputTokenLimit = item.contextWindow,
+            outputTokenLimit = null,
+            metadataRawSummary = item.metadataRawSummary,
             lastMetadataFetchedAt = now
         )
         store.addModelProfile(profile)
@@ -208,9 +370,8 @@ fun ProviderManagementScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF3A3F49)
-            ),
+            colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+            border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -226,14 +387,13 @@ fun ProviderManagementScreen(
                 Text(
                     text = "대화모드 전용 Provider 설정을 추가, 수정, 삭제합니다. 실제 연결 테스트와 모델 목록 조회는 후속 단계입니다.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
-                Button(
+                SettingsPrimaryButton(
+                    text = "Provider 추가",
                     onClick = { isAddDialogOpen = true },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Provider 추가")
-                }
+                )
             }
         }
 
@@ -258,28 +418,26 @@ fun ProviderManagementScreen(
 
         if (providers.isEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF252A33)
-                ),
+                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "등록된 Provider가 없습니다.",
                     modifier = Modifier.padding(18.dp),
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
         } else if (filteredProviders.isEmpty()) {
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF252A33)
-                ),
+                colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "현재 검색/필터 조건에 맞는 Provider가 없습니다.",
                     modifier = Modifier.padding(18.dp),
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
         } else {
@@ -289,7 +447,7 @@ fun ProviderManagementScreen(
                     hasApiKey = providerApiKeyStates[provider.providerId] == true,
                     onEditClick = { editingProvider = provider },
                     onDeleteClick = { providerToDelete = provider },
-                    onLoadGoogleModels = { openGoogleModelList(provider) },
+                    onLoadModels = { openProviderModelList(provider) },
                     onEnabledChange = { enabled ->
                         val now = System.currentTimeMillis()
                         store.updateProviderProfile(
@@ -376,22 +534,52 @@ fun ProviderManagementScreen(
 
 
     modelListProvider?.let { provider ->
-        GoogleModelListDialog(
-            provider = provider,
-            isLoading = isGoogleModelListLoading,
-            models = googleModels,
-            errorMessage = googleModelListError,
-            resultMessage = googleModelListMessage,
-            existingModels = store.loadModelProfiles(),
-            onDismiss = {
-                modelListProvider = null
-                googleModels = emptyList()
-                googleModelListError = null
-                googleModelListMessage = null
-                isGoogleModelListLoading = false
-            },
-            onAddModel = { item -> addGoogleModelProfile(provider, item) }
-        )
+        when (modelListKind) {
+            ProviderModelListKind.GOOGLE -> {
+                GoogleModelListDialog(
+                    provider = provider,
+                    isLoading = isGoogleModelListLoading,
+                    models = googleModels,
+                    errorMessage = googleModelListError,
+                    resultMessage = googleModelListMessage,
+                    existingModels = store.loadModelProfiles(),
+                    onDismiss = { clearModelListState() },
+                    onAddModel = { item -> addGoogleModelProfile(provider, item) }
+                )
+            }
+            ProviderModelListKind.OPENAI -> {
+                OpenAIModelListDialog(
+                    provider = provider,
+                    isLoading = isGoogleModelListLoading,
+                    models = openAIModels,
+                    errorMessage = googleModelListError,
+                    resultMessage = googleModelListMessage,
+                    existingModels = store.loadModelProfiles(),
+                    onDismiss = { clearModelListState() },
+                    onAddModel = { item -> addOpenAIModelProfile(provider, item) }
+                )
+            }
+            ProviderModelListKind.OPENAI_COMPATIBLE -> {
+                OpenAiCompatibleModelListDialog(
+                    provider = provider,
+                    isLoading = isGoogleModelListLoading,
+                    models = openAiCompatibleModels,
+                    errorMessage = googleModelListError,
+                    resultMessage = googleModelListMessage,
+                    existingModels = store.loadModelProfiles(),
+                    onDismiss = { clearModelListState() },
+                    onAddModel = { item -> addOpenAiCompatibleModelProfile(provider, item) }
+                )
+            }
+            ProviderModelListKind.UNSUPPORTED -> {
+                UnsupportedModelListDialog(
+                    provider = provider,
+                    message = googleModelListError ?: "이 Provider는 모델 목록 조회를 지원하지 않습니다.",
+                    onDismiss = { clearModelListState() }
+                )
+            }
+            null -> Unit
+        }
     }
 }
 
@@ -415,9 +603,8 @@ private fun ProviderListControlPanel(
     isFilterApplied: Boolean
 ) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF252A33)
-        ),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -439,7 +626,7 @@ private fun ProviderListControlPanel(
                     if (isFilterApplied) append(" · 필터 적용 중")
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
 
             OutlinedTextField(
@@ -453,7 +640,7 @@ private fun ProviderListControlPanel(
             Text(
                 text = "API Key 원문은 검색하거나 표시하지 않습니다.",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFB8BCC6)
+                color = SettingsStyleTokens.mutedTextColor
             )
 
             Text(
@@ -538,15 +725,11 @@ private fun ProviderFilterButton(
     onClick: () -> Unit
 ) {
     val buttonText = if (selected) "✓ $text" else text
-    if (selected) {
-        Button(onClick = onClick) {
-            Text(text = buttonText)
-        }
-    } else {
-        TextButton(onClick = onClick) {
-            Text(text = buttonText)
-        }
-    }
+    SettingsSecondaryButton(
+        text = buttonText,
+        onClick = onClick,
+        selected = selected
+    )
 }
 
 @Composable
@@ -567,7 +750,7 @@ private fun ProviderBooleanFilterRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFD0D3DA)
+            color = SettingsStyleTokens.bodyTextColor
         )
     }
 }
@@ -578,13 +761,12 @@ private fun ProviderProfileCard(
     hasApiKey: Boolean,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onLoadGoogleModels: () -> Unit,
+    onLoadModels: () -> Unit,
     onEnabledChange: (Boolean) -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF252A33)
-        ),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -607,7 +789,7 @@ private fun ProviderProfileCard(
                     Text(
                         text = provider.providerType.name,
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFD0D3DA)
+                        color = SettingsStyleTokens.bodyTextColor
                     )
                     Text(
                         text = providerCallStyleLabel(provider.providerType),
@@ -649,7 +831,7 @@ private fun ProviderProfileCard(
                 Text(
                     text = "Base URL 미설정 · 호출 시 BASE_URL_MISSING으로 실패합니다.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFFFD08A)
+                    color = SettingsStyleTokens.warningTextColor
                 )
             }
             ProviderInfoRow(
@@ -661,10 +843,10 @@ private fun ProviderProfileCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                if (provider.providerType == ProviderType.GOOGLE) {
+                if (isModelListFetchVisible(provider.providerType)) {
                     TextButton(
-                        onClick = onLoadGoogleModels,
-                        enabled = hasApiKey
+                        onClick = onLoadModels,
+                        enabled = isModelListFetchEnabled(provider, hasApiKey)
                     ) {
                         Text(text = "모델 목록 불러오기")
                     }
@@ -680,10 +862,49 @@ private fun ProviderProfileCard(
             Text(
                 text = providerCardGuideText(provider.providerType, hasApiKey),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (hasApiKey || !isApiKeyRequiredForProvider(provider.providerType)) Color(0xFF9FE3B1) else Color(0xFFFFD08A)
+                color = if (hasApiKey || !isApiKeyRequiredForProvider(provider.providerType)) SettingsStyleTokens.successTextColor else SettingsStyleTokens.warningTextColor
             )
         }
     }
+}
+
+private enum class ProviderModelListKind {
+    GOOGLE,
+    OPENAI,
+    OPENAI_COMPATIBLE,
+    UNSUPPORTED
+}
+
+private fun isModelListFetchVisible(providerType: ProviderType): Boolean {
+    return when (providerType) {
+        ProviderType.GOOGLE,
+        ProviderType.OPENAI,
+        ProviderType.OPENAI_COMPATIBLE,
+        ProviderType.LOCAL,
+        ProviderType.CUSTOM -> true
+        ProviderType.NVIDIA -> false
+    }
+}
+
+private fun isModelListFetchEnabled(
+    provider: ProviderProfile,
+    hasApiKey: Boolean
+): Boolean {
+    return when (provider.providerType) {
+        ProviderType.GOOGLE -> hasApiKey
+        ProviderType.OPENAI -> hasApiKey
+        ProviderType.OPENAI_COMPATIBLE -> hasApiKey
+        ProviderType.LOCAL,
+        ProviderType.CUSTOM -> provider.baseUrl.isNotBlank() || !provider.modelListEndpoint.isNullOrBlank()
+        ProviderType.NVIDIA -> false
+    }
+}
+
+private fun safeModelIdPart(rawModelName: String): String {
+    return rawModelName
+        .replace(Regex("[^A-Za-z0-9_-]"), "_")
+        .take(48)
+        .ifBlank { "model" }
 }
 
 @Composable
@@ -719,26 +940,26 @@ private fun GoogleModelListDialog(
 
                 errorMessage?.let { message ->
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2222)),
+                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.DANGER).background),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = message,
                             modifier = Modifier.padding(12.dp),
-                            color = Color(0xFFFFC4C4)
+                            color = SettingsStyleTokens.dangerTextColor
                         )
                     }
                 }
 
                 resultMessage?.let { message ->
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF203020)),
+                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.SUCCESS).background),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = message,
                             modifier = Modifier.padding(12.dp),
-                            color = Color(0xFFBFECC4)
+                            color = SettingsStyleTokens.successTextColor
                         )
                     }
                 }
@@ -753,7 +974,7 @@ private fun GoogleModelListDialog(
                     }
 
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF252A33)),
+                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -769,13 +990,13 @@ private fun GoogleModelListDialog(
                             Text(
                                 text = "rawModelName: ${item.rawModelName}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFD0D3DA)
+                                color = SettingsStyleTokens.bodyTextColor
                             )
                             if (item.description.isNotBlank()) {
                                 Text(
                                     text = item.description,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFD0D3DA),
+                                    color = SettingsStyleTokens.bodyTextColor,
                                     maxLines = 3,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -783,23 +1004,22 @@ private fun GoogleModelListDialog(
                             Text(
                                 text = "inputTokenLimit: ${item.inputTokenLimit ?: "unknown"} / outputTokenLimit: ${item.outputTokenLimit ?: "unknown"}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFD0D3DA)
+                                color = SettingsStyleTokens.bodyTextColor
                             )
                             Text(
                                 text = "methods: ${item.supportedGenerationMethods.joinToString().ifBlank { "unknown" }}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFD0D3DA),
+                                color = SettingsStyleTokens.bodyTextColor,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
 
-                            Button(
+                            SettingsPrimaryButton(
+                                text = if (alreadyAdded) "이미 추가됨" else "추가",
                                 onClick = { onAddModel(item) },
                                 enabled = !alreadyAdded,
                                 modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(text = if (alreadyAdded) "이미 추가됨" else "추가")
-                            }
+                            )
                         }
                     }
                 }
@@ -822,12 +1042,12 @@ private fun ProviderInfoRow(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFFB8BCC6)
+            color = SettingsStyleTokens.mutedTextColor
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color(0xFFD0D3DA),
+            color = SettingsStyleTokens.bodyTextColor,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -856,11 +1076,11 @@ private fun providerCallStyleLabel(providerType: ProviderType): String {
 private fun providerCallStyleColor(providerType: ProviderType): Color {
     return when (providerType) {
         ProviderType.GOOGLE -> Color(0xFF9EC7FF)
-        ProviderType.OPENAI -> Color(0xFFB7D7FF)
-        ProviderType.OPENAI_COMPATIBLE -> Color(0xFFB7D7FF)
-        ProviderType.LOCAL -> Color(0xFF9FE3B1)
-        ProviderType.CUSTOM -> Color(0xFFFFD08A)
-        ProviderType.NVIDIA -> Color(0xFF9FE3B1)
+        ProviderType.OPENAI -> SettingsStyleTokens.infoTextColor
+        ProviderType.OPENAI_COMPATIBLE -> SettingsStyleTokens.infoTextColor
+        ProviderType.LOCAL -> SettingsStyleTokens.successTextColor
+        ProviderType.CUSTOM -> SettingsStyleTokens.warningTextColor
+        ProviderType.NVIDIA -> SettingsStyleTokens.successTextColor
     }
 }
 
@@ -914,7 +1134,8 @@ private fun providerCardGuideText(providerType: ProviderType, hasApiKey: Boolean
 @Composable
 private fun ProviderTypeGuideCard(providerType: ProviderType) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF101820)),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -930,22 +1151,239 @@ private fun ProviderTypeGuideCard(providerType: ProviderType) {
             Text(
                 text = providerCardGuideText(providerType, hasApiKey = false),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             Text(
                 text = "API Key: ${apiKeyRequirementLabel(providerType)} · Base URL 예: ${baseUrlPlaceholder(providerType)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFD0D3DA)
+                color = SettingsStyleTokens.bodyTextColor
             )
             if (providerType == ProviderType.LOCAL) {
                 Text(
                     text = "On-device 모델 직접 실행은 로컬 모델/런타임 단계에서 별도 지원 예정입니다.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFD0D3DA)
+                    color = SettingsStyleTokens.bodyTextColor
                 )
             }
         }
     }
+}
+
+
+@Composable
+private fun OpenAIModelListDialog(
+    provider: ProviderProfile,
+    isLoading: Boolean,
+    models: List<OpenAIModelListItem>,
+    errorMessage: String?,
+    resultMessage: String?,
+    existingModels: List<ConversationModelProfile>,
+    onDismiss: () -> Unit,
+    onAddModel: (OpenAIModelListItem) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "OpenAI 모델 목록") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = provider.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isLoading) {
+                    Text(text = "모델 목록을 불러오는 중입니다...")
+                }
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SettingsStyleTokens.warningTextColor
+                    )
+                }
+                resultMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SettingsStyleTokens.successTextColor
+                    )
+                }
+                models.forEach { item ->
+                    val alreadyAdded = existingModels.any { model ->
+                        model.providerId == provider.providerId && model.rawModelName == item.rawModelName
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = item.displayName.ifBlank { item.rawModelName },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = SettingsStyleTokens.titleTextColor
+                            )
+                            Text(
+                                text = "rawModelName: ${item.rawModelName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SettingsStyleTokens.bodyTextColor
+                            )
+                            item.createdAt?.let { createdAt ->
+                                Text(
+                                    text = "created: $createdAt",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.mutedTextColor
+                                )
+                            }
+                            SettingsPrimaryButton(
+                                text = if (alreadyAdded) "이미 추가됨" else "Model Profile 추가",
+                                onClick = { onAddModel(item) },
+                                enabled = !alreadyAdded,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
+}
+
+@Composable
+private fun OpenAiCompatibleModelListDialog(
+    provider: ProviderProfile,
+    isLoading: Boolean,
+    models: List<OpenAiModelListCandidate>,
+    errorMessage: String?,
+    resultMessage: String?,
+    existingModels: List<ConversationModelProfile>,
+    onDismiss: () -> Unit,
+    onAddModel: (OpenAiModelListCandidate) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "OpenAI-compatible 모델 목록") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = provider.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (isLoading) {
+                    Text(text = "모델 목록을 불러오는 중입니다...")
+                }
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SettingsStyleTokens.warningTextColor
+                    )
+                }
+                resultMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SettingsStyleTokens.successTextColor
+                    )
+                }
+                models.forEach { item ->
+                    val alreadyAdded = existingModels.any { model ->
+                        model.providerId == provider.providerId && model.rawModelName == item.rawModelName
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+                        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = item.displayName.ifBlank { item.rawModelName },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = SettingsStyleTokens.titleTextColor
+                            )
+                            Text(
+                                text = "rawModelName: ${item.rawModelName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SettingsStyleTokens.bodyTextColor
+                            )
+                            item.contextWindow?.let { contextWindow ->
+                                Text(
+                                    text = "contextWindow: $contextWindow",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.mutedTextColor
+                                )
+                            }
+                            item.ownedBy?.let { ownedBy ->
+                                Text(
+                                    text = "ownedBy: $ownedBy",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SettingsStyleTokens.mutedTextColor
+                                )
+                            }
+                            SettingsPrimaryButton(
+                                text = if (alreadyAdded) "이미 추가됨" else "Model Profile 추가",
+                                onClick = { onAddModel(item) },
+                                enabled = !alreadyAdded,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
+}
+
+@Composable
+private fun UnsupportedModelListDialog(
+    provider: ProviderProfile,
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "모델 목록 조회 미지원") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = provider.displayName, fontWeight = FontWeight.Bold)
+                Text(text = message)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
+        }
+    )
 }
 
 @Composable
@@ -1016,7 +1454,7 @@ private fun ProviderProfileEditDialog(
                     Text(
                         text = "Base URL이 비어 있습니다. 저장은 가능하지만 호출 시 BASE_URL_MISSING으로 실패합니다.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFFFD08A)
+                        color = SettingsStyleTokens.warningTextColor
                     )
                 }
 
@@ -1148,6 +1586,28 @@ private fun createGoogleMetadataCapabilityV2(): ModelCapabilityV2 {
             image = CapabilityStatus.UNKNOWN,
             audio = CapabilityStatus.UNKNOWN,
             video = CapabilityStatus.UNKNOWN
+        ),
+        tools = ModelToolCapability(
+            functionCalling = CapabilityStatus.UNKNOWN,
+            webSearch = CapabilityStatus.UNKNOWN,
+            codeExecution = CapabilityStatus.UNKNOWN,
+            structuredOutput = CapabilityStatus.UNKNOWN
+        ),
+        reasoning = ModelReasoningCapability(
+            thinking = CapabilityStatus.UNKNOWN,
+            thinkingSummary = CapabilityStatus.UNKNOWN,
+            chainOfThoughtRawAllowed = CapabilityStatus.UNSUPPORTED
+        )
+    )
+}
+
+private fun createOpenAITextCapabilityV2(): ModelCapabilityV2 {
+    return ModelCapabilityV2(
+        input = ModelInputCapability(
+            text = CapabilityStatus.SUPPORTED
+        ),
+        output = ModelOutputCapability(
+            text = CapabilityStatus.SUPPORTED
         ),
         tools = ModelToolCapability(
             functionCalling = CapabilityStatus.UNKNOWN,
