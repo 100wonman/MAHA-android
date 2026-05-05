@@ -9,13 +9,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -513,7 +513,7 @@ private fun WorkerProviderSelectionList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -561,7 +561,7 @@ private fun WorkerModelSelectionList(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -631,7 +631,7 @@ private fun WorkerCapabilityStatusSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -640,20 +640,17 @@ private fun WorkerCapabilityStatusSelector(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(
+            SettingsSecondaryButton(
+                text = "이전",
                 onClick = { onValueChange(value.previousCapabilityLayerStatus()) },
                 modifier = Modifier.weight(1f)
-            ) {
-                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
-            }
-            TextButton(
+            )
+            SettingsSecondaryButton(
+                text = "다음",
                 onClick = { onValueChange(value.nextCapabilityLayerStatus()) },
-                modifier = Modifier
-                    .weight(1f)
-                    .background(SettingsStyleTokens.selectedButtonBackground, MaterialTheme.shapes.medium)
-            ) {
-                Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
-            }
+                selected = true,
+                modifier = Modifier.weight(1f)
+            )
         }
         Text(
             text = "선택 가능한 값: ${CapabilityLayerStatus.values().joinToString { it.name }}",
@@ -683,7 +680,7 @@ private fun WorkerBooleanToggle(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -692,28 +689,18 @@ private fun WorkerBooleanToggle(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(
+            SettingsSecondaryButton(
+                text = if (!value) "✓ false" else "false",
                 onClick = { onValueChange(false) },
+                selected = !value,
                 modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = if (!value) "✓ false" else "false",
-                    color = if (!value) Color.White else SettingsStyleTokens.linkTextColor,
-                    fontWeight = if (!value) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-            TextButton(
+            )
+            SettingsSecondaryButton(
+                text = if (value) "✓ true" else "true",
                 onClick = { onValueChange(true) },
-                modifier = Modifier
-                    .weight(1f)
-                    .background(if (value) SettingsStyleTokens.selectedButtonBackground else Color.Transparent, MaterialTheme.shapes.medium)
-            ) {
-                Text(
-                    text = if (value) "✓ true" else "true",
-                    color = if (value) Color.White else SettingsStyleTokens.linkTextColor,
-                    fontWeight = if (value) FontWeight.Bold else FontWeight.Normal
-                )
-            }
+                selected = value,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -752,7 +739,7 @@ private fun WorkerCapabilityTypeSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -761,20 +748,17 @@ private fun WorkerCapabilityTypeSelector(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(
+            SettingsSecondaryButton(
+                text = "이전",
                 onClick = { onValueChange(value.previousCapabilityType()) },
                 modifier = Modifier.weight(1f)
-            ) {
-                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
-            }
-            TextButton(
+            )
+            SettingsSecondaryButton(
+                text = "다음",
                 onClick = { onValueChange(value.nextCapabilityType()) },
-                modifier = Modifier
-                    .weight(1f)
-                    .background(SettingsStyleTokens.selectedButtonBackground, MaterialTheme.shapes.medium)
-            ) {
-                Text(text = "다음", color = Color.White, fontWeight = FontWeight.Bold)
-            }
+                selected = true,
+                modifier = Modifier.weight(1f)
+            )
         }
         Text(
             text = "선택 가능한 값: ${CapabilityType.values().joinToString { it.name }}",
@@ -815,14 +799,12 @@ private fun WorkerEditPlaceholderRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         WorkerEditKeyValue(label, value)
-        TextButton(onClick = onAction) {
-            Text(text = actionLabel, color = SettingsStyleTokens.linkTextColor)
-        }
+        SettingsTextButton(text = actionLabel, onClick = onAction)
     }
 }
 
@@ -851,7 +833,7 @@ private fun WorkerEditNotice(text: String) {
         color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }

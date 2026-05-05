@@ -7,13 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -302,14 +302,16 @@ private fun ScenarioBooleanToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, color = SettingsStyleTokens.bodyTextColor, modifier = Modifier.weight(1f))
-        TextButton(onClick = { onValueChange(!value) }) {
-            Text(text = if (value) "true" else "false", color = SettingsStyleTokens.linkTextColor)
-        }
+        SettingsSecondaryButton(
+            text = if (value) "✓ true" else "false",
+            onClick = { onValueChange(!value) },
+            selected = value
+        )
     }
 }
 
@@ -323,7 +325,7 @@ private fun ScenarioExecutionModeSelector(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -337,12 +339,15 @@ private fun ScenarioExecutionModeSelector(
             Text(text = value.name, color = SettingsStyleTokens.bodyTextColor)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = { onValueChange(values[(currentIndex - 1 + values.size) % values.size]) }) {
-                Text(text = "이전", color = SettingsStyleTokens.linkTextColor)
-            }
-            TextButton(onClick = { onValueChange(values[(currentIndex + 1) % values.size]) }) {
-                Text(text = "다음", color = SettingsStyleTokens.linkTextColor)
-            }
+            SettingsSecondaryButton(
+                text = "이전",
+                onClick = { onValueChange(values[(currentIndex - 1 + values.size) % values.size]) }
+            )
+            SettingsSecondaryButton(
+                text = "다음",
+                onClick = { onValueChange(values[(currentIndex + 1) % values.size]) },
+                selected = true
+            )
         }
     }
 }
@@ -360,7 +365,7 @@ private fun ScenarioWorkerEditableRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -417,7 +422,7 @@ private fun ScenarioAddWorkerSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.nestedCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -473,7 +478,7 @@ private fun ScenarioWorkerPicker(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -542,14 +547,12 @@ private fun ScenarioSelectableWorkerRow(
 
 @Composable
 private fun ScenarioPlaceholderAction(label: String) {
-    TextButton(
+    SettingsSecondaryButton(
+        text = "$label · 후속 구현 예정",
         onClick = { },
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SettingsStyleTokens.nestedCardBackground, MaterialTheme.shapes.small)
-    ) {
-        Text(text = "$label · 후속 구현 예정", color = SettingsStyleTokens.linkTextColor)
-    }
+        enabled = false,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -559,7 +562,7 @@ private fun ScenarioEditNotice(text: String) {
         color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
@@ -571,7 +574,7 @@ private fun ScenarioWarningText(text: String) {
         color = SettingsStyleTokens.dangerTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.DANGER).background, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.DANGER).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }

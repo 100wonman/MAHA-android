@@ -11,13 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -354,6 +354,7 @@ private fun WorkerProfilePreviewCard(
     var expanded by remember { mutableStateOf(false) }
 
     Card(
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
         border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
@@ -457,6 +458,7 @@ private fun ConversationScenarioPreviewCard(
     var expanded by remember { mutableStateOf(false) }
 
     Card(
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
         colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
         border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor),
         modifier = Modifier.fillMaxWidth()
@@ -609,9 +611,7 @@ private fun ScenarioDeleteConfirmDialog(
                 )
             },
             confirmButton = {
-                TextButton(onClick = onDismiss) {
-                    Text(text = "확인")
-                }
+                SettingsSecondaryButton(text = "확인", onClick = onDismiss)
             }
         )
     } else {
@@ -624,14 +624,10 @@ private fun ScenarioDeleteConfirmDialog(
                 )
             },
             confirmButton = {
-                TextButton(onClick = onConfirmDelete) {
-                    Text(text = "삭제", color = Color(0xFFFFB4AB))
-                }
+                SettingsDangerButton(text = "삭제", onClick = onConfirmDelete)
             },
             dismissButton = {
-                TextButton(onClick = onDismiss) {
-                    Text(text = "취소")
-                }
+                SettingsSecondaryButton(text = "취소", onClick = onDismiss)
             }
         )
     }
@@ -655,7 +651,7 @@ private fun WorkerProfileReadOnlyPlaceholder(text: String) {
         color = SettingsStyleTokens.warningTextColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.cardColors(SettingsChipTone.WARNING).background, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     )
 }
@@ -705,7 +701,7 @@ private fun WorkerProfileInlineValue(
 ) {
     Column(
         modifier = modifier
-            .background(SettingsStyleTokens.subCardBackground, MaterialTheme.shapes.small)
+            .background(SettingsStyleTokens.subCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {

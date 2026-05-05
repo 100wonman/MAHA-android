@@ -1995,7 +1995,12 @@ private fun ConversationGlobalSettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            if (selectedPage != null && selectedPage != "modelApi") {
+            val hideVisualBackArrow = selectedPage in setOf(
+                "harness",
+                "capabilityResolverDebug",
+                "workerProfileManagement"
+            )
+            if (selectedPage != null && selectedPage != "modelApi" && !hideVisualBackArrow) {
                 item {
                     TextButton(onClick = onBackClick) {
                         Text(text = "←", color = Color.White)

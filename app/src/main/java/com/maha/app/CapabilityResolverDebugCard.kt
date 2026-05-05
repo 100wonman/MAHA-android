@@ -13,14 +13,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,8 +81,9 @@ fun CapabilityResolverDebugCard(
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier
@@ -222,8 +220,9 @@ fun CapabilityResolverDebugCard(
 private fun CapabilityDebugNotice() {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -245,8 +244,9 @@ private fun CapabilityScenarioSelector(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -439,8 +439,9 @@ private fun CapabilityPreviewOnlyCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.INFO).background)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.cardColors(SettingsChipTone.INFO).background),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.infoBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -475,8 +476,9 @@ private fun CapabilityPlanSummaryCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -513,8 +515,9 @@ private fun CapabilityExpandableSection(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier
@@ -556,8 +559,9 @@ private fun CapabilityExpandableSection(
 private fun CapabilityWorkerPlanCard(worker: WorkerPlan) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -591,8 +595,9 @@ private fun CapabilityWorkerPlanCard(worker: WorkerPlan) {
 private fun CapabilityLimitationCard(reason: LimitationReason) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -626,8 +631,9 @@ private fun CapabilityMiniCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.nestedCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.subtleBorderColor)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -658,7 +664,7 @@ private fun CapabilityCompactInfoRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(10.dp))
+            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -711,8 +717,9 @@ private fun CapabilityDebugSection(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground)
+        shape = RoundedCornerShape(SettingsStyleTokens.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = SettingsStyleTokens.subCardBackground),
+        border = BorderStroke(SettingsStyleTokens.cardBorderWidth, SettingsStyleTokens.cardBorderColor)
     ) {
         Column(
             modifier = Modifier
@@ -739,7 +746,7 @@ private fun CapabilityDebugRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(10.dp))
+            .background(SettingsStyleTokens.nestedCardBackground, RoundedCornerShape(SettingsStyleTokens.nestedCornerRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(

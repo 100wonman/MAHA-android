@@ -1,4 +1,272 @@
 ==============================
+[2026-05-06 05:00] 고급 하네스 설정 화면 스타일 치환 1차
+==============================
+
+[작업]
+- 고급 하네스 설정 메인 및 하위 화면의 카드/버튼/chip/접힘 UI를 SettingsStyleTokens 기준으로 1차 통일
+- Worker Profile 관리 / Worker 편집 / Scenario 관리 / Scenario 편집 화면의 공통 스타일 누락 보정
+- Capability Resolver 진단 및 Scenario Plan Preview 카드/버튼/chip 스타일 보정
+- 고급 하네스 설정 및 하위 화면 좌측 최상단 시각적 back arrow 제거
+- Android 시스템 뒤로가기, 설정 내부 back stack, Dialog 우선 닫기 동작 유지
+- Worker/Scenario 저장, CapabilityResolver 판단, Provider 호출, ConversationEngine, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- 고급 하네스 설정 / Worker Profile 관리 / Worker 편집 / Scenario 편집 / Capability Resolver 카드 스타일을 SettingsStyleTokens 기준으로 1차 보정
+- Worker / Scenario / Capability 하위 카드 radius, border, nested background를 공통 token 기준으로 정리
+- 직접 TextButton 기반의 selector / placeholder / 삭제 확인 버튼 일부를 SettingsSecondaryButton / SettingsDangerButton / SettingsTextButton 계열로 치환
+- 고급 하네스 설정 / Capability Resolver / Worker Profile 관리 페이지의 좌측 최상단 시각적 back arrow 제거
+- 시스템 뒤로가기 / settings back stack / Dialog 우선 닫기 / 저장 로직 / preview 로직은 변경하지 않음
+
+[스타일 테스트]
+- 고급 하네스 설정 메인: 확인
+- Worker Profile 관리: 확인
+- Worker Profile 편집: 확인
+- Scenario 관리: 확인
+- Scenario 편집: 확인
+- Capability Resolver 진단: 확인
+- 카드/버튼/chip/접힘 UI: 확인
+
+[기능 유지 테스트]
+- Worker Profile 관리: 확인
+- Worker 편집 저장/취소: 확인
+- Scenario 관리: 확인
+- Scenario 편집 저장/취소: 확인
+- Capability Resolver 진단: 확인
+- Scenario Preview: 확인
+
+[뒤로가기 테스트]
+- 좌측 최상단 back icon 제거: 확인
+- Worker 편집 → Worker Profile 관리: 확인
+- Scenario 편집 → Scenario 관리: 확인
+- Capability Resolver → 고급 하네스 설정: 확인
+- 고급 하네스 설정 → 대화모드 설정 메인: 확인
+- Dialog 우선 닫기: 확인
+- root Drawer 닫기: 확인
+
+[연결 금지 확인]
+- ConversationEngine 미연결: 유지
+- ConversationViewModel 미연결: 유지
+- Provider 호출 변경 없음: 유지
+- ProviderManagementScreen 미수정: 유지
+- ModelManagementScreen 미수정: 유지
+- Worker/Scenario 실제 실행 없음: 유지
+- RAG/Web Search/Tool 실행 없음: 유지
+- 저장 schema 변경 없음: 유지
+- 작업모드 변경 없음: 유지
+
+[문제]
+- 없음
+
+[변경 파일]
+- AppRoot.kt
+- SettingsUiComponents.kt
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt
+- ScenarioEditScreen.kt
+- CapabilityResolverDebugCard.kt
+
+[빌드]
+성공
+
+--------------------------------------------------
+
+[구현/보정 모드]
+
+작업명:
+고급 하네스 설정 화면 스타일 치환 1차
+
+목표:
+- 고급 하네스 설정 및 하위 화면의 카드 / 버튼 / chip / 접힘 UI를 SettingsStyleTokens / SettingsUiComponents 기준으로 1차 통일한다.
+- 고급 하네스 설정 및 하위 화면 좌측 최상단의 시각적 back arrow를 제거한다.
+- Android 시스템 뒤로가기 / 설정 내부 back stack / Dialog 우선 닫기 동작은 유지한다.
+- Worker / Scenario 편집 저장 기능과 Capability Resolver preview 기능은 변경하지 않는다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+대상 화면:
+- 고급 하네스 설정 메인
+- Worker Profile 관리
+- Worker Profile 편집
+- Scenario 관리
+- Scenario 편집
+- Capability Resolver 진단
+- Scenario Plan Preview 영역
+
+대상 파일 후보:
+- AppRoot.kt
+- WorkerProfileManagementScreen.kt
+- WorkerProfileEditScreen.kt
+- ScenarioEditScreen.kt
+- CapabilityResolverDebugCard.kt
+- SettingsUiComponents.kt
+- SettingsStyleTokens.kt
+
+이번 단계에서 구현:
+- 고급 하네스 설정 메인 카드/진입 카드 스타일 통일
+- Worker Profile 관리 카드/버튼/chip 스타일 통일
+- Worker Profile 편집 화면의 접힘 카드/selector/toggle/button 스타일 통일
+- Scenario 관리 카드/버튼/chip 스타일 통일
+- Scenario 편집 화면의 접힘 카드/selector/toggle/button 스타일 통일
+- Capability Resolver 진단/preview 카드/버튼/chip 스타일 통일
+- 직접 Card / Button / TextButton / OutlinedButton 사용처를 공통 컴포넌트로 1차 치환
+- 좌측 최상단 시각적 back arrow 제거
+- back icon 제거 후 빈 Row / Spacer / padding 최소 보정
+- 기존 공통 다크테마와 border 중심 선택 상태 유지
+
+이번 단계에서 금지:
+- ProviderManagementScreen.kt 수정 금지
+- ModelManagementScreen.kt 수정 금지
+- WorkerProfileStore 저장 구조 변경 금지
+- Scenario 저장 구조 변경 금지
+- CapabilityResolver 판단 로직 변경 금지
+- ConversationEngine 연결 금지
+- ConversationViewModel 대화 흐름 연결 금지
+- Provider 호출 로직 변경 금지
+- Worker/Scenario 실제 실행 연결 금지
+- RAG/Web Search/Tool 실행 연결 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+
+--------------------------------------------------
+2. 핵심 요구사항
+--------------------------------------------------
+
+1. SettingsStyleTokens 기준의 다크테마 카드/버튼/chip 스타일을 적용한다.
+2. 카드와 버튼의 큰 면 배경색은 과도하게 바꾸지 않는다.
+3. 선택/경고/위험 상태는 border / chip / text 중심으로 표시한다.
+4. Worker / Scenario / Capability 화면 간 카드 radius, border, padding, chip 스타일이 튀지 않게 한다.
+5. 좌측 최상단 시각적 back arrow는 제거한다.
+6. 시스템 뒤로가기는 직전 설정 화면으로 pop되어야 한다.
+7. Dialog가 열려 있으면 Dialog 닫기가 우선이다.
+8. 저장 / 취소 / 삭제 / 복제 / 활성화 / 비활성화 기능 버튼은 사라지면 안 된다.
+9. Capability Resolver의 입력, 분석, Scenario 선택, Plan preview, limitation 표시 기능은 유지한다.
+
+--------------------------------------------------
+3. 화면별 보정 기준
+--------------------------------------------------
+
+Worker Profile 관리:
+- Worker 카드 스타일 통일
+- Scenario 카드 스타일 통일
+- 상세 보기 / 상세 닫기 버튼 스타일 통일
+- 편집 / 복제 / 활성화 / 비활성화 / 삭제 버튼 유지
+- 삭제 확인 Dialog 유지
+
+Worker Profile 편집:
+- Header card 스타일 통일
+- System Instruction / Provider-Model / Capability / Policy 접힘 카드 스타일 통일
+- selector / toggle / placeholder action 버튼 스타일 통일
+- 저장 / 취소 버튼 유지
+- 저장 시 기존 필드 보존 정책 유지
+
+Scenario 편집:
+- Header card 스타일 통일
+- WorkerSet / 실행 방식 / Orchestrator-Synthesis 선택 섹션 스타일 통일
+- Worker 추가 / 제거 / 순서 변경 버튼 유지
+- 저장 / 취소 버튼 유지
+
+Capability Resolver 진단:
+- 진단 안내 카드 스타일 통일
+- Scenario 선택 카드 스타일 통일
+- Preview only 카드 스타일 통일
+- Plan summary / WorkerPlan / limitation / mini card 스타일 통일
+- 입력 / 분석 / 예시 버튼 유지
+- raw dump 기본 노출 축소 정책 유지
+
+--------------------------------------------------
+4. 뒤로가기 기대 동작
+--------------------------------------------------
+
+예상 흐름:
+- 대화모드 설정 메인
+  → 고급 하네스 설정
+  → Worker Profile 관리
+  → Worker 편집
+
+시스템 뒤로가기:
+- Worker 편집
+  → Worker Profile 관리
+  → 고급 하네스 설정
+  → 대화모드 설정 메인
+
+Scenario 흐름:
+- 고급 하네스 설정
+  → Scenario 관리
+  → Scenario 편집
+  → 시스템 뒤로가기
+  → Scenario 관리
+
+주의:
+- 시각적 back icon만 제거한다.
+- settings back stack pop 로직은 제거하지 않는다.
+
+--------------------------------------------------
+5. 테스트 기준
+--------------------------------------------------
+
+스타일:
+- 고급 하네스 설정 메인:
+- Worker Profile 관리:
+- Worker Profile 편집:
+- Scenario 관리:
+- Scenario 편집:
+- Capability Resolver 진단:
+- 카드 / 버튼 / chip / 접힘 UI:
+- 다크테마 / border 중심 스타일:
+
+기능:
+- Worker Profile 관리 진입:
+- Worker 편집 저장/취소:
+- Worker 상세 보기/닫기:
+- Scenario 관리 진입:
+- Scenario 편집 저장/취소:
+- Scenario WorkerSet 편집:
+- Capability Resolver 진단:
+- Scenario Preview:
+
+뒤로가기:
+- 좌측 최상단 back icon 제거:
+- Worker 편집 → Worker Profile 관리:
+- Scenario 편집 → Scenario 관리:
+- Capability Resolver → 고급 하네스 설정:
+- 고급 하네스 설정 → 대화모드 설정 메인:
+- Dialog 우선 닫기:
+- root Drawer 닫기:
+
+연결 금지:
+- ConversationEngine 미연결:
+- Provider 호출 변경 없음:
+- Worker/Scenario 실행 없음:
+- RAG/Web Search/Tool 실행 없음:
+- 저장 schema 변경 없음:
+- 작업모드 변경 없음:
+
+--------------------------------------------------
+6. 완료 기준
+--------------------------------------------------
+
+- 고급 하네스 설정 및 하위 화면의 스타일이 SettingsStyleTokens 기준으로 1차 통일됨
+- 좌측 최상단 시각적 back arrow 제거 완료
+- settings back stack / 시스템 뒤로가기 유지
+- Worker / Scenario 편집 기능 유지
+- Capability Resolver preview 기능 유지
+- Provider/Model 화면 미수정
+- 실행 로직 변경 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+고급 하네스 설정 기능 회귀 보정 또는 Storage/Dialog 계열 스타일 치환 검토
+
+==============================
 [2026-05-06 04:20] 프로바이더·모델·API 설정 스타일 정합성 검증 및 미세 보정
 ==============================
 

@@ -249,6 +249,32 @@ fun SettingsDangerButton(
     }
 }
 
+
+@Composable
+fun SettingsTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    danger: Boolean = false
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = when {
+                !enabled -> SettingsStyleTokens.disabledTextColor
+                danger -> SettingsStyleTokens.dangerTextColor
+                else -> SettingsStyleTokens.actionTextColor
+            },
+            disabledContentColor = SettingsStyleTokens.disabledTextColor
+        )
+    ) {
+        Text(text = text, fontWeight = FontWeight.SemiBold)
+    }
+}
+
 @Composable
 fun SettingsExpandableCard(
     title: String,
