@@ -1,4 +1,80 @@
 ==============================
+[2026-05-05 21:30] Provider/Model 설정 카드·버튼 역할 목록 고정 설계
+==============================
+
+[작업]
+- ProviderManagementScreen.kt의 카드/버튼/액션 역할 목록 문서화
+- ProviderType별 모델 목록 불러오기 표시 조건과 동작 정책 정리
+- Provider 추가/수정/삭제/활성화/API Key 관련 액션 보존 조건 정리
+- ModelManagementScreen.kt의 카드/버튼/액션 역할 목록 문서화
+- Model 추가/수정/삭제/기본 지정/즐겨찾기 액션 보존 조건 정리
+- SettingsUiComponents 기반 스타일 치환 전 기능 회귀 방지 기준 수립
+- 실제 코드 기능 변경과 스타일 치환은 제외
+
+--------------------------------------------------
+
+[결과]
+(성공 / 실패)
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ProviderManagementScreen.kt의 카드/버튼/액션 역할 목록을 문서화
+- ModelManagementScreen.kt의 카드/버튼/액션 역할 목록을 문서화
+- ProviderType별 모델 목록 불러오기 표시 조건 / enabled 조건 / 조회 Dialog 정책을 고정
+- 후속 SettingsUiComponents 스타일 치환 시 보존해야 할 visible / enabled / onClick 조건을 명문화
+- Kotlin 기능 로직과 스타일 코드는 변경하지 않음
+
+[설계 산출물]
+- 문서명: MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md
+- 작성 위치: docs/design/MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md
+- 주요 섹션: 목적 / 설계 전제 / 직전 회귀 원인 요약 / Provider 역할 목록 / Model 역할 목록 / 스타일 치환 안전 규칙 / 후속 단계 분리 계획 / 테스트 체크리스트
+
+[Provider 역할 목록]
+- 카드 목록: Provider 관리 상단 카드, Provider 목록 정리 카드, Provider 없음 카드, 필터 결과 없음 카드, Provider 개별 카드, ProviderType 안내 카드, 모델 목록 Dialog, 삭제 확인 Dialog
+- 버튼/액션 목록: Provider 추가, ProviderType 필터, 활성 Provider만, API Key 설정됨만, Base URL 미설정만, 활성/비활성 Switch, 모델 목록 불러오기, 수정, 삭제, 저장, API Key 삭제
+- ProviderType별 모델 목록 조회: GOOGLE / OPENAI / OPENAI_COMPATIBLE / LOCAL / CUSTOM / NVIDIA 정책 정리
+- Dialog 액션: Provider 추가/수정 Dialog, Google 모델 목록 Dialog, OpenAI 모델 목록 Dialog, OpenAI-compatible 모델 목록 Dialog, 미지원 Dialog
+- 보존 조건: 버튼 존재 여부, visible 조건, enabled 조건, onClick, ProviderType when 분기, API Key 원문 미표시 유지
+
+[Model 역할 목록]
+- 카드 목록: Model 관리 상단 카드, 기본 대화 모델 경고 카드, Model 목록 필터 카드, Model 없음 카드, 필터 결과 없음 카드, Model 개별 카드, Raw Name Guide Card, Model 추가/수정 Dialog, 삭제 확인 Dialog
+- 버튼/액션 목록: Model 추가, ProviderType 필터, 즐겨찾기만, 활성 모델만, 활성/비활성 Switch, 즐겨찾기 추가/해제, 기본 지정, 수정, 삭제, 저장
+- 기본 지정: 선택 모델만 기본값 true, 나머지는 false로 단일 기본 모델 유지
+- 즐겨찾기: isFavorite만 토글하며 기본 지정 상태는 변경하지 않음
+- 삭제: deleteModelProfile 호출, 기본 모델 삭제 시 자동 재지정 없음
+- 보존 조건: providers.isNotEmpty 조건, canSave 조건, 기본 지정 disabled 조건, Provider missing 필터, LOCAL 신규 모델 기본값 적용 유지
+
+[후속 스타일 치환 안전 규칙]
+- onClick 보존: 필수
+- enabled 조건 보존: 필수
+- visible 조건 보존: 필수
+- ProviderType 분기 보존: 필수
+- 기능 버튼 삭제 금지: 필수
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- Provider 호출: 변경 없음
+- Model 저장: 변경 없음
+- ConversationEngine: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_PROVIDER_MODEL_ACTION_ROLE_MAP_v1.md
+
+[빌드]
+해당 없음
+
+[다음 작업]
+ProviderManagementScreen 스타일 치환 1차 또는 ModelManagementScreen 스타일 치환 1차
+
+==============================
 [2026-05-05 17:55] 대화모드 설정 공통 스타일 토큰화 및 하위 카드/버튼 전면 적용
 ==============================
 
