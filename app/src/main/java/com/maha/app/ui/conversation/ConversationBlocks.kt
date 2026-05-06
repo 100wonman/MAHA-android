@@ -2,6 +2,7 @@ package com.maha.app
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,12 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +46,11 @@ fun ConversationOutputBlockCard(
     val isUserBlock = role == ConversationRole.USER
     val shouldUseCard = isUserBlock || shouldRenderAsStructuredBlock(block)
     val isLongMessage = shouldUseMessagePreview(block.content)
-    val blockContainerColor = conversationUnifiedCardColor()
+    val blockContainerColor = if (isUserBlock) {
+        ConversationMessageTokens.userBackground
+    } else {
+        ConversationMessageTokens.assistantBackground
+    }
     val blockTextColor = MaterialTheme.colorScheme.onSurface
     val clipboardManager = LocalClipboardManager.current
 
@@ -88,7 +89,7 @@ fun ConversationOutputBlockCard(
                 contentAlignment = Alignment.CenterStart
             ) {
                 if (shouldUseCard) {
-                    Card(
+                    ConversationMessageCard(
                         modifier = messageModifier.combinedClickable(
                             onClick = {
                                 if (isLongMessage || block.collapsed) {
@@ -99,30 +100,29 @@ fun ConversationOutputBlockCard(
                                 isMenuOpen = true
                             }
                         ),
-                        shape = conversationUnifiedCardShape(),
-                        colors = CardDefaults.cardColors(containerColor = blockContainerColor)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            StructuredBlockHeader(
-                                block = block,
-                                showTitle = !isUserBlock,
-                                onCopy = {
-                                    clipboardManager.setText(AnnotatedString(block.content))
-                                }
-                            )
-
-                            ConversationBlockContent(
-                                content = block.content,
-                                isUserBlock = isUserBlock,
-                                showPreview = showPreview,
-                                blockContainerColor = blockContainerColor,
-                                blockTextColor = blockTextColor,
-                                fillWidth = true
-                            )
+                        role = if (isUserBlock) {
+                            ConversationMessageVisualRole.USER
+                        } else {
+                            ConversationMessageVisualRole.ASSISTANT
                         }
+                    ) {
+                        StructuredBlockHeader(
+                            block = block,
+                            showTitle = !isUserBlock,
+                            onCopy = {
+                                clipboardManager.setText(AnnotatedString(block.content))
+                            }
+                        )
+
+                        ConversationBlockContent(
+                            content = block.content,
+                            blockType = block.type,
+                            isUserBlock = isUserBlock,
+                            showPreview = showPreview,
+                            blockContainerColor = blockContainerColor,
+                            blockTextColor = blockTextColor,
+                            fillWidth = true
+                        )
                     }
                 } else {
                     Box(
@@ -140,6 +140,7 @@ fun ConversationOutputBlockCard(
                     ) {
                         ConversationBlockContent(
                             content = block.content,
+                            blockType = block.type,
                             isUserBlock = isUserBlock,
                             showPreview = showPreview,
                             blockContainerColor = MaterialTheme.colorScheme.background,
@@ -204,7 +205,7 @@ private fun StructuredBlockHeader(
             Box(modifier = Modifier.weight(1f))
         }
 
-        IconButton(
+        ConversationIconActionButton(
             onClick = onCopy,
             modifier = Modifier
                 .height(28.dp)
@@ -214,7 +215,7 @@ private fun StructuredBlockHeader(
                 text = "⧉",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = ConversationColors.actionText
             )
         }
     }
@@ -223,6 +224,7 @@ private fun StructuredBlockHeader(
 @Composable
 private fun ConversationBlockContent(
     content: String,
+    blockType: ConversationOutputBlockType,
     isUserBlock: Boolean,
     showPreview: Boolean,
     blockContainerColor: Color,
@@ -232,14 +234,29 @@ private fun ConversationBlockContent(
     Box(
         modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
     ) {
-        Text(
-            text = content,
-            style = MaterialTheme.typography.bodySmall,
-            color = blockTextColor,
-            maxLines = if (showPreview) 5 else Int.MAX_VALUE,
-            textAlign = TextAlign.Start,
-            modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
-        )
+        val tableRows = remember(content, blockType) {
+            if (blockType == ConversationOutputBlockType.TABLE_BLOCK) {
+                parseConversationTableRows(content)
+            } else {
+                emptyList()
+            }
+        }
+
+        if (!isUserBlock && tableRows.isNotEmpty()) {
+            ConversationTableBlock(
+                rows = if (showPreview) tableRows.take(5) else tableRows,
+                textColor = blockTextColor
+            )
+        } else {
+            Text(
+                text = normalizeConversationDisplayText(content),
+                style = MaterialTheme.typography.bodySmall,
+                color = blockTextColor,
+                maxLines = if (showPreview) 5 else Int.MAX_VALUE,
+                textAlign = TextAlign.Start,
+                modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
+            )
+        }
 
         if (showPreview) {
             Box(
@@ -270,6 +287,172 @@ private fun ConversationBlockContent(
     }
 }
 
+
+@Composable
+private fun ConversationTableBlock(
+    rows: List<ConversationTableRow>,
+    textColor: Color
+) {
+    val header = rows.firstOrNull()
+    val bodyRows = rows.drop(1)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = ConversationBorders.subtleBorder,
+                shape = RoundedCornerShape(ConversationShapes.structuredBlockRadius)
+            )
+    ) {
+        if (header != null) {
+            ConversationTableRowView(
+                row = header,
+                textColor = textColor,
+                isHeader = true
+            )
+        }
+
+        bodyRows.forEachIndexed { index, row ->
+            ConversationTableDivider()
+            ConversationTableRowView(
+                row = row,
+                textColor = textColor,
+                isHeader = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationTableRowView(
+    row: ConversationTableRow,
+    textColor: Color,
+    isHeader: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        row.cells.forEachIndexed { index, cell ->
+            val cellWeight = when {
+                row.cells.size == 2 && index == 0 -> 0.34f
+                row.cells.size == 2 -> 0.66f
+                else -> 1f
+            }
+            Text(
+                text = cell,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (isHeader || index == 0) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isHeader || index == 0) {
+                    textColor.copy(alpha = 0.92f)
+                } else {
+                    textColor.copy(alpha = 0.84f)
+                },
+                modifier = Modifier
+                    .weight(cellWeight)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationTableDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(ConversationBorders.subtleBorder.copy(alpha = 0.72f))
+    )
+}
+
+private data class ConversationTableRow(
+    val cells: List<String>
+)
+
+private fun parseConversationTableRows(
+    content: String
+): List<ConversationTableRow> {
+    val lines = content
+        .lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+
+    if (lines.isEmpty()) {
+        return emptyList()
+    }
+
+    val parsedRows = when {
+        lines.any { it.contains("|") } -> parsePipeTableRows(lines)
+        lines.any { it.contains("\t") } -> parseDelimitedTableRows(lines) { line ->
+            line.split("\t")
+        }
+        else -> parseDelimitedTableRows(lines) { line ->
+            Regex("\\s{2,}").split(line, limit = 2)
+        }
+    }
+
+    val normalizedRows = parsedRows
+        .map { cells ->
+            cells
+                .map { normalizeConversationDisplayText(it) }
+                .filter { it.isNotBlank() }
+        }
+        .filter { it.size >= 2 }
+
+    if (normalizedRows.size < 2) {
+        return emptyList()
+    }
+
+    return normalizedRows.map { cells -> ConversationTableRow(cells) }
+}
+
+private fun parsePipeTableRows(
+    lines: List<String>
+): List<List<String>> {
+    return lines
+        .filterNot { isMarkdownTableSeparator(it) }
+        .map { line ->
+            line
+                .trim()
+                .trim('|')
+                .split("|")
+                .map { it.trim() }
+        }
+}
+
+private fun parseDelimitedTableRows(
+    lines: List<String>,
+    splitter: (String) -> List<String>
+): List<List<String>> {
+    return lines.map { line -> splitter(line).map { it.trim() } }
+}
+
+private fun isMarkdownTableSeparator(
+    line: String
+): Boolean {
+    val normalized = line.trim().trim('|').trim()
+    if (normalized.isBlank()) {
+        return false
+    }
+    return normalized
+        .split('|')
+        .map { it.trim() }
+        .all { cell -> cell.matches(Regex(":?-{3,}:?")) }
+}
+
+private fun normalizeConversationDisplayText(
+    value: String
+): String {
+    return value
+        .replace(Regex("(?i)<br\\s*/?>"), "\n")
+        .replace(Regex("\\*\\*(.*?)\\*\\*")) { match -> match.groupValues[1] }
+        .replace(Regex("__(.*?)__")) { match -> match.groupValues[1] }
+        .trim()
+}
+
 @Composable
 private fun ConversationBlockActionDialog(
     sentAt: String,
@@ -283,47 +466,31 @@ private fun ConversationBlockActionDialog(
     Dialog(
         onDismissRequest = onDismiss
     ) {
-        Card(
+        ConversationDialogSurface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
-            shape = conversationUnifiedCardShape(),
-            colors = CardDefaults.cardColors(
-                containerColor = conversationUnifiedCardColor()
-            )
+            title = sentAt.ifBlank { "알 수 없음" }
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = sentAt.ifBlank { "알 수 없음" },
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
-                )
+            ConversationDialogActionText(
+                text = "복사",
+                onClick = onCopy
+            )
 
-                ConversationDialogActionText(
-                    text = "복사",
-                    onClick = onCopy
-                )
+            ConversationDialogActionText(
+                text = "텍스트 선택",
+                onClick = onTextSelect
+            )
 
-                ConversationDialogActionText(
-                    text = "텍스트 선택",
-                    onClick = onTextSelect
-                )
+            ConversationDialogActionText(
+                text = if (canEdit) "메시지 편집" else "메시지 편집 (추후 지원)",
+                onClick = onEdit
+            )
 
-                ConversationDialogActionText(
-                    text = if (canEdit) "메시지 편집" else "메시지 편집 (추후 지원)",
-                    onClick = onEdit
-                )
-
-                ConversationDialogActionText(
-                    text = "공유",
-                    onClick = onShare
-                )
-            }
+            ConversationDialogActionText(
+                text = "공유",
+                onClick = onShare
+            )
         }
     }
 }
@@ -333,25 +500,20 @@ internal fun ConversationDialogActionText(
     text: String,
     onClick: () -> Unit
 ) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Start
-        )
-    }
+    ConversationTextActionButton(
+        text = text,
+        onClick = onClick
+    )
+}
+
+
+@Composable
+internal fun conversationUnifiedCardColor(): Color {
+    return ConversationSurfaces.cardBackground
 }
 
 @Composable
-internal fun conversationUnifiedCardColor() = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-
-@Composable
-internal fun conversationUnifiedCardShape() = RoundedCornerShape(28.dp)
+internal fun conversationUnifiedCardShape() = RoundedCornerShape(ConversationShapes.cardRadius)
 
 internal fun buildConversationBlockTypeLabel(
     block: ConversationOutputBlock
