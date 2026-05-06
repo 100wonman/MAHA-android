@@ -5,9 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -189,35 +192,66 @@ private fun ConversationAssistantQuote(
 private fun ConversationAssistantMarkdownTable(
     rows: List<List<String>>
 ) {
+    val normalizedRows = remember(rows) { normalizeConversationAssistantTableRows(rows) }
+    if (normalizedRows.isEmpty()) return
+
     val horizontalScrollState = rememberScrollState()
-    val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-    val headerBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)
-    val bodyBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.028f)
+    val columnWidths = remember(normalizedRows) {
+        conversationAssistantTableColumnWidths(normalizedRows.firstOrNull()?.size ?: 0)
+    }
+
+    val borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
+    val tableBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.24f)
+    val headerBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.090f)
+    val oddRowBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.032f)
+    val evenRowBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.018f)
+    val tableBackground = conversationUnifiedCardColor().copy(alpha = 0.18f)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(horizontalScrollState)
-            .background(conversationUnifiedCardColor().copy(alpha = 0.28f), RoundedCornerShape(14.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        rows.forEachIndexed { rowIndex, cells ->
-            Row(
-                verticalAlignment = Alignment.Top
-            ) {
-                cells.forEachIndexed { cellIndex, cell ->
-                    ConversationAssistantTableCell(
-                        text = cell,
-                        isHeader = rowIndex == 0,
-                        width = conversationAssistantTableCellWidth(
-                            cellIndex = cellIndex,
-                            columnCount = cells.size
-                        ),
-                        borderColor = borderColor,
-                        backgroundColor = if (rowIndex == 0) headerBackground else bodyBackground
-                    )
+        if (normalizedRows.firstOrNull().orEmpty().size > 2) {
+            Text(
+                text = "표 · 좌우로 밀어서 전체 열 보기",
+                modifier = Modifier.padding(horizontal = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(horizontalScrollState)
+                .background(tableBackground, RoundedCornerShape(12.dp))
+                .border(1.dp, tableBorderColor, RoundedCornerShape(12.dp))
+                .padding(1.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            normalizedRows.forEachIndexed { rowIndex, cells ->
+                val rowBackground = when {
+                    rowIndex == 0 -> headerBackground
+                    rowIndex % 2 == 0 -> evenRowBackground
+                    else -> oddRowBackground
+                }
+
+                Row(
+                    modifier = Modifier.height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    cells.forEachIndexed { cellIndex, cell ->
+                        ConversationAssistantTableCell(
+                            text = cell,
+                            isHeader = rowIndex == 0,
+                            isFirstColumn = cellIndex == 0,
+                            width = columnWidths.getOrElse(cellIndex) { 190.dp },
+                            borderColor = borderColor,
+                            backgroundColor = rowBackground
+                        )
+                    }
                 }
             }
         }
@@ -228,43 +262,81 @@ private fun ConversationAssistantMarkdownTable(
 private fun ConversationAssistantTableCell(
     text: String,
     isHeader: Boolean,
+    isFirstColumn: Boolean,
     width: Dp,
     borderColor: Color,
     backgroundColor: Color
 ) {
-    SelectionContainer {
-        Text(
-            text = buildConversationAssistantAnnotatedText(
-                normalizeConversationAssistantDisplayText(text)
-            ),
-            modifier = Modifier
-                .width(width)
-                .border(0.6.dp, borderColor)
-                .background(backgroundColor)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            style = if (isHeader) {
-                MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-            } else {
-                MaterialTheme.typography.bodySmall.copy(
-                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.18f
-                )
-            },
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (isHeader) 0.96f else 0.88f)
+    val textStyle = when {
+        isHeader -> MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+        isFirstColumn -> MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            lineHeight = MaterialTheme.typography.labelMedium.lineHeight * 1.14f
         )
+        else -> MaterialTheme.typography.bodySmall.copy(
+            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.20f
+        )
+    }
+
+    val textAlpha = when {
+        isHeader -> 0.98f
+        isFirstColumn -> 0.92f
+        else -> 0.86f
+    }
+
+    Box(
+        modifier = Modifier
+            .width(width)
+            .fillMaxHeight()
+            .border(0.6.dp, borderColor)
+            .background(backgroundColor)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        contentAlignment = Alignment.TopStart
+    ) {
+        SelectionContainer {
+            Text(
+                text = buildConversationAssistantAnnotatedText(
+                    normalizeConversationAssistantDisplayText(text)
+                ),
+                style = textStyle,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = textAlpha)
+            )
+        }
     }
 }
 
-private fun conversationAssistantTableCellWidth(
-    cellIndex: Int,
+private fun normalizeConversationAssistantTableRows(
+    rows: List<List<String>>
+): List<List<String>> {
+    val columnCount = rows.maxOfOrNull { row -> row.size } ?: 0
+    if (columnCount < 2) return emptyList()
+
+    return rows
+        .map { row ->
+            row.map { cell -> normalizeConversationAssistantDisplayText(cell) }
+                .let { cells ->
+                    if (cells.size >= columnCount) {
+                        cells
+                    } else {
+                        cells + List(columnCount - cells.size) { "" }
+                    }
+                }
+        }
+        .filter { row -> row.any { cell -> cell.isNotBlank() } }
+}
+
+private fun conversationAssistantTableColumnWidths(
     columnCount: Int
-): Dp {
+): List<Dp> {
     return when {
-        columnCount <= 2 && cellIndex == 0 -> 126.dp
-        columnCount <= 2 -> 280.dp
-        columnCount == 3 && cellIndex == 0 -> 116.dp
-        columnCount == 3 -> 230.dp
-        cellIndex == 0 -> 108.dp
-        else -> 220.dp
+        columnCount <= 0 -> emptyList()
+        columnCount == 1 -> listOf(320.dp)
+        columnCount == 2 -> listOf(124.dp, 320.dp)
+        columnCount == 3 -> listOf(112.dp, 230.dp, 230.dp)
+        columnCount == 4 -> listOf(112.dp, 220.dp, 220.dp, 180.dp)
+        else -> List(columnCount) { index ->
+            if (index == 0) 112.dp else 190.dp
+        }
     }
 }
 
