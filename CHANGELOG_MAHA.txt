@@ -1,4 +1,171 @@
 ==============================
+[2026-05-06 21:30] ConversationBlocks renderer 책임 재정리
+==============================
+
+[작업]
+- ConversationBlocks.kt에서 TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown table 처리 책임 제거
+- ConversationBlocks.kt를 명시적 OutputBlock card shell / CODE_BLOCK / JSON_BLOCK / TABLE_BLOCK 표시 책임으로 정리
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 표시는 ConversationAssistantRenderer 책임으로 유지
+- 임시 inline structured text 처리 함수와 관련 분기 제거
+- copy / edit / share / long-click callback, block type mapping, block.content 저장값은 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- ConversationBlocks.kt에서 TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown table 처리 책임 제거
+- ConversationBlocks.kt는 명시적 OutputBlock card shell / CODE_BLOCK / JSON_BLOCK / TABLE_BLOCK 표시 책임으로 정리
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 표시는 ConversationAssistantRenderer 책임으로 유지
+- 임시 inline structured text 처리 함수와 관련 분기 제거
+- copy / edit / share / long-click callback, block type mapping, block.content 저장값은 변경하지 않음
+
+[변경 파일]
+- ConversationBlocks.kt
+
+[기능 확인]
+- 일반 assistant text: ConversationAssistantRenderer 경로 유지 / 통과
+- TEXT/MARKDOWN 내부 table: ConversationAssistantRenderer 경로 유지 / 통과
+- 명시적 TABLE_BLOCK: 기존 ConversationBlocks TABLE_BLOCK renderer 유지 / 통과
+- CODE_BLOCK: 기존 표시 의미 유지 / 통과
+- JSON_BLOCK: 기존 표시 의미 유지 / 통과
+- block copy/action: 기존 callback 유지 / 통과
+- preview/expand: 기존 동작 유지 / 통과
+- 기존 callback 의미: 유지
+
+[영향]
+- 금지 영역 영향: 없음
+- parser / marker 변경: 없음
+- block type mapping 변경: 없음
+- block content 저장값 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[기본 확인]
+- 빌드: 성공
+
+[로드맵 상태]
+- 1단계 ConversationDisplayParser 분리: 완료
+- 2단계 Assistant message rendering layer: 완료
+- 3단계 ConversationBlocks renderer 책임: 진행
+- 4단계 RunInfo/RAG/Web Search parser 분리: 미진행
+- 5단계 ConversationInputPanel 분리: 미진행
+
+[문제]
+- 없음
+
+[후속 후보]
+- 4단계 진행 전 RunInfo / RAG / Web Search 표시 경로를 먼저 진단하는 것이 안전
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+대화세션 리팩토링 3단계 - ConversationBlocks renderer 책임 재정리
+
+목표:
+- 1~5단계 리팩토링 로드맵 중 3단계만 수행한다.
+- ConversationBlocks.kt의 책임을 “명시적 OutputBlock renderer”로 정리한다.
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown segment 표시는 ConversationAssistantRenderer 책임으로 유지한다.
+- ConversationBlocks.kt에 남은 임시 table 표시 코드와 중복 책임을 정리한다.
+- 화면 표시 결과와 기존 callback 의미는 유지한다.
+
+로드맵 상태:
+1. ConversationDisplayParser.kt 분리: 완료
+2. Assistant message rendering layer 분리: 완료
+3. ConversationBlocks.kt renderer 책임 재정리: 이번 단계
+4. RunInfo / RAG / Web Search parser 분리: 대기
+5. ConversationInputPanel 파일 분리: 대기
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationAssistantRenderer.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDisplayParser.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationUiComponents.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+
+수정 조건:
+- ConversationBlocks.kt는 명시적 ConversationOutputBlock 표시 책임만 갖도록 정리한다.
+- ConversationAssistantRenderer.kt는 assistant text 내부 segment 표시 책임을 유지한다.
+- ConversationDisplayParser.kt는 공용 순수 parser/helper 정리에 필요한 경우만 수정한다.
+- ConversationUiComponents.kt / ConversationStyleTokens.kt는 컴파일 보정 또는 wrapper props 보강이 필요한 경우만 수정한다.
+- 신규 기능 추가 금지.
+
+책임 경계:
+- ConversationAssistantRenderer:
+  - 일반 assistant text 표시
+  - heading 표시
+  - quote 표시
+  - TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown table 표시
+
+- ConversationBlocks:
+  - 명시적 OutputBlock card shell
+  - 명시적 CODE_BLOCK 표시
+  - 명시적 JSON_BLOCK 표시
+  - 명시적 TABLE_BLOCK 표시
+  - block copy / action dialog / preview-expand
+
+작업 범위:
+- ConversationBlocks.kt 내부 함수 역할 정리
+- TEXT_BLOCK 내부 markdown table 처리와 명시적 TABLE_BLOCK 처리 경계 정리
+- 중복 table helper가 있으면 공용 parser/helper로 정리
+- 임시 코드, 중복 코드, 사용되지 않는 import 정리
+- copy / edit / share / long-click callback 의미 유지
+- code/json/table 명시적 block 표시 유지
+- 원본 block.content 보존
+
+절대 금지:
+- ConversationRoomScreen.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- parser marker / trace marker 변경 금지
+- block type mapping 변경 금지
+- block content 저장값 변경 금지
+- sendMessage 흐름 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- RunInfo / RAG / Web Search parser 분리 금지
+- ConversationInputPanel 분리 금지
+- ConversationSessionListScreen 보정 금지
+- 여러 리팩토링 단계를 한 번에 진행 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationBlocks.kt 책임이 명시적 OutputBlock renderer로 정리됨
+- AssistantRenderer와 ConversationBlocks의 table 표시 책임이 분리됨
+- 일반 assistant text 표시 유지
+- markdown table 포함 assistant text 표시 유지
+- 명시적 TABLE_BLOCK 표시 유지
+- block copy / action dialog / preview-expand 유지
+- code/json 표시 영향 없음
+- 빌드 성공
+- 4~5단계로 작업 범위 확장 없음
+
+검증 기준:
+- 일반 assistant text 표시 유지
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 table 표시 유지
+- 명시적 TABLE_BLOCK 표시 유지
+- CODE_BLOCK / JSON_BLOCK 표시 유지
+- block copy action 유지
+- block action dialog 유지
+- preview/expand 유지
+- parser / marker / block type mapping 변경 없음
+- 저장 schema / 실행 로직 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+RunInfo / RAG / Web Search parser 분리
+
+==============================
 [2026-05-06 21:20] Assistant message rendering layer 분리
 ==============================
 

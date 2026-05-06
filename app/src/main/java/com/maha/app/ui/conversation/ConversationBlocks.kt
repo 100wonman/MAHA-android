@@ -244,28 +244,11 @@ private fun ConversationBlockContent(
                 emptyList()
             }
         }
-        val inlineSegments = remember(content, blockType) {
-            if (blockType == ConversationOutputBlockType.TEXT_BLOCK || blockType == ConversationOutputBlockType.MARKDOWN_BLOCK) {
-                parseConversationDisplaySegments(content)
-            } else {
-                emptyList()
-            }
-        }
-        val hasInlineTableSegment = inlineSegments.any { segment ->
-            segment.type == ConversationOutputBlockType.TABLE_BLOCK && parseConversationTableRows(segment.content).isNotEmpty()
-        }
-        val shouldRenderInlineStructuredContent = !showPreview && hasInlineTableSegment
 
         if (!isUserBlock && tableRows.isNotEmpty()) {
             ConversationTableBlock(
                 rows = if (showPreview) tableRows.take(5) else tableRows,
                 textColor = blockTextColor
-            )
-        } else if (!isUserBlock && shouldRenderInlineStructuredContent) {
-            ConversationInlineStructuredTextBlock(
-                segments = inlineSegments,
-                textColor = blockTextColor,
-                fillWidth = fillWidth
             )
         } else {
             Text(
@@ -307,37 +290,6 @@ private fun ConversationBlockContent(
     }
 }
 
-@Composable
-private fun ConversationInlineStructuredTextBlock(
-    segments: List<ConversationDisplaySegment>,
-    textColor: Color,
-    fillWidth: Boolean
-) {
-    Column(
-        modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        segments.forEach { segment ->
-            if (segment.type == ConversationOutputBlockType.TABLE_BLOCK) {
-                val rows = parseConversationTableRows(segment.content)
-                if (rows.isNotEmpty()) {
-                    ConversationTableBlock(
-                        rows = rows,
-                        textColor = textColor
-                    )
-                }
-            } else if (segment.content.isNotBlank()) {
-                Text(
-                    text = normalizeConversationDisplayText(segment.content),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textColor,
-                    textAlign = TextAlign.Start,
-                    modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ConversationTableBlock(
