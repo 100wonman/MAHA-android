@@ -58,6 +58,9 @@ object ConversationColors {
 object ConversationSurfaces {
     val screenBackground: Color = Color(0xFF080D18)
     val panelBackground: Color = Color(0xFF101827)
+    // Compatibility alias for existing conversation visual helpers.
+    // Keep this neutral surface stable until full ConversationUiComponents migration.
+    val cardBackground: Color = panelBackground
     val messageUserBackground: Color = Color.White.copy(alpha = 0.055f)
     val messageAssistantBackground: Color = Color.White.copy(alpha = 0.038f)
     val messageSystemBackground: Color = Color.White.copy(alpha = 0.032f)
@@ -80,6 +83,8 @@ object ConversationBorders {
 
 object ConversationShapes {
     val messageRadius: Dp = 18.dp
+    // Compatibility alias for existing conversation visual helpers.
+    val cardRadius: Dp = messageRadius
     val assistantBlockRadius: Dp = 18.dp
     val structuredBlockRadius: Dp = 16.dp
     val codeBlockRadius: Dp = 14.dp
