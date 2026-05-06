@@ -1,4 +1,161 @@
 ==============================
+[2026-05-06 22:08] ConversationInputPanel 파일 분리
+==============================
+
+[작업]
+- ConversationInputPanel.kt 신규 생성
+- ConversationRoomScreen.kt에 있던 ConversationInputPanel UI를 별도 파일로 분리
+- 입력창 / 전송 버튼 / 모드 선택 / RAG / Web Search / fallback / 빠른 설정 접힘 UI 구조 유지
+- canSend 조건과 keyboard hide 후 onSend 호출 흐름 유지
+- ConversationEngine, ConversationViewModel, sendMessage 흐름, 저장 schema, 실행 로직은 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationInputPanel.kt 신규 생성
+- ConversationRoomScreen.kt에 있던 ConversationInputPanel UI를 별도 파일로 분리
+- 입력창 / 전송 버튼 / 모드 선택 / RAG / Web Search / fallback / 빠른 설정 접힘 UI 구조 유지
+- canSend 조건과 keyboard hide 후 onSend 호출 흐름 유지
+- ConversationEngine, ConversationViewModel, sendMessage 흐름, 저장 schema, 실행 로직은 변경하지 않음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+- ConversationInputPanel.kt
+
+[기능 확인]
+- 입력창 표시: 통과
+- 일반 입력: 통과
+- 빈 입력 send 방지: 통과
+- 실행 중 send disabled: 통과
+- send button: 통과
+- mode radio: 통과
+- RAG switch: 통과
+- Web Search switch: 통과
+- fallback switch: 통과
+- quick setting 접힘/펼침: 통과
+- keyboard hide 후 send: 통과
+
+[영향]
+- 금지 영역 영향: 없음
+- sendMessage 흐름 변경: 없음
+- input state ownership 변경: 없음
+- callback 의미 변경: 없음
+- RAG/Web Search 실행 로직 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[기본 확인]
+- 빌드: 성공
+
+[로드맵 상태]
+- 1단계 ConversationDisplayParser 분리: 완료
+- 2단계 Assistant message rendering layer: 완료
+- 3단계 ConversationBlocks renderer 책임: 완료
+- 4단계 RunInfo/RAG/Web Search parser 분리: 완료
+- 5단계 ConversationInputPanel 분리: 진행
+
+[문제]
+- 없음
+
+[후속 후보]
+- 1~5단계 완료 후 대화세션 리팩토링 안정화 문서 작성 여부 판단
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+대화세션 리팩토링 5단계 - ConversationInputPanel 파일 분리
+
+목표:
+- 1~5단계 리팩토링 로드맵 중 5단계만 수행한다.
+- ConversationRoomScreen.kt에 남아 있는 ConversationInputPanel UI를 별도 파일로 분리한다.
+- send flow, 입력 상태, mode 선택, RAG/Web Search toggle 의미는 변경하지 않는다.
+- 기능 추가나 스타일 보정은 하지 않는다.
+
+로드맵 상태:
+1. ConversationDisplayParser.kt 분리: 완료
+2. Assistant message rendering layer 분리: 완료
+3. ConversationBlocks.kt renderer 책임 재정리: 완료
+4. RunInfo / RAG / Web Search parser 분리: 완료
+5. ConversationInputPanel 파일 분리: 이번 단계
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationInputPanel.kt
+
+수정 조건:
+- ConversationInputPanel.kt는 신규 생성한다.
+- ConversationRoomScreen.kt에서 기존 ConversationInputPanel 관련 Compose 함수와 필요한 보조 함수만 이동한다.
+- 기존 함수명 / parameter / callback 의미는 최대한 유지한다.
+- 상태 소유권은 변경하지 않는다.
+- ViewModel 연결 방식은 변경하지 않는다.
+- UI 표시 결과는 기존과 동일하게 유지한다.
+
+작업 범위:
+- ConversationInputPanel Compose 함수 분리
+- 입력창 BasicTextField 표시 유지
+- send button 표시 유지
+- mode radio 표시 유지
+- RAG switch 표시 유지
+- Web Search switch 표시 유지
+- Web Search fallback switch 표시 유지
+- quick setting 접힘/펼침 표시 유지
+- keyboard hide 후 onSend 호출 흐름 유지
+- canSend 조건 유지
+
+절대 금지:
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- sendMessage 흐름 변경 금지
+- input state ownership 변경 금지
+- canSend 조건 변경 금지
+- onSend / onModeChange / onToggleSearch / onToggleWebSearch / onToggleFallback 의미 변경 금지
+- RAG/Web Search parser 변경 금지
+- RunInfo parser 변경 금지
+- Assistant renderer 변경 금지
+- ConversationBlocks 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- 스타일 보정 작업으로 범위 확장 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationInputPanel.kt 생성
+- ConversationRoomScreen.kt에서 input panel 관련 코드 분리
+- 기존 입력창 표시 유지
+- send / mode / RAG / Web Search / fallback 동작 유지
+- 빌드 성공
+- 1~5단계 리팩토링 로드맵 완료 가능 상태 확보
+
+검증 기준:
+- 일반 입력 가능
+- 빈 입력 send 방지 유지
+- 실행 중 send disabled 유지
+- send button 동작 유지
+- mode radio 선택 유지
+- RAG switch 동작 유지
+- Web Search switch 동작 유지
+- Web Search fallback switch 동작 유지
+- quick setting 접힘/펼침 유지
+- keyboard hide 후 send 흐름 유지
+- ConversationEngine / ConversationViewModel / 저장 schema 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+대화세션 리팩토링 1~5단계 안정화 문서 작성
+
+==============================
 [2026-05-06 21:54] RunInfo / RAG / Web Search parser 분리
 ==============================
 
