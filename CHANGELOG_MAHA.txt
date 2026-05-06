@@ -1,4 +1,221 @@
 ==============================
+[2026-05-06] 대화모드 설정 UX 안정화 마감 기록
+==============================
+
+[작업]
+- 최근 대화모드 설정 UX 보정 완료 범위를 문서화
+- 대화모드 설정 카드맵, Provider/Model/API 설정, Memory/RAG/Storage 설정, 고급 하네스 설정 정리 내역 기록
+- SettingsStyleTokens / SettingsUiComponents 기반 카드 / 버튼 / chip / Dialog / Switch 스타일 정책 정리
+- 중첩카드, back stack, 시스템 뒤로가기, Dialog 우선 닫기 정책 기록
+- 남은 후보 작업을 다음 단계로 분리
+- Kotlin 코드, Provider 호출, ConversationEngine, Worker/Scenario 실행, RAG/Web Search/Tool 실행, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 최근 대화모드 설정 UX 안정화 완료 범위를 문서화
+- Provider / Model / API, Memory / RAG / Storage, 고급 하네스 설정 정리 내용을 안정 지점으로 기록
+- 카드 / 버튼 / chip / Dialog / Switch / 중첩카드 / back stack 정책을 정리
+- 실행 연결 금지 원칙과 저장 schema 변경 금지 원칙을 재확인
+- 후속 작업 후보와 다음 단계 진입 기준을 분리
+
+[설계 산출물]
+- 문서명: MAHA_CHAT_SETTINGS_UX_STABILIZATION_v1.md
+- 작성 위치: docs/design/MAHA_CHAT_SETTINGS_UX_STABILIZATION_v1.md
+- 주요 섹션: 목적 / 적용 범위 / 완료된 설정 UX 보정 / Provider-Model-API / Memory-RAG-Storage / 고급 하네스 / Worker-Scenario-Capability / 스타일 token / Dialog-Switch / 중첩카드 / back stack / 금지사항 / 후속 작업 / 다음 단계 기준
+
+[완료 범위 정리]
+- 설정 카드맵: 더미 카드, placeholder, 중복 진입 카드 정리 완료
+- Provider/Model/API: 1페이지 요약 / 2페이지 상세 구조, Provider/Model 관리, 모델 목록 Dialog 검색창, 기능 버튼 회귀 복구 기록
+- Storage/RAG: Memory/RAG/Storage placeholder 제거, 저장소 관리 스타일 보정, RAG 검색 테스트와 세션 파일 기능 유지 기록
+- 고급 하네스: Worker Profile / Scenario / Capability Resolver 설정과 preview 계층 분리 기록
+- Dialog/Switch: Dialog 다크테마, Switch/Radio 다크테마, Dialog surface opacity/scrim 보정 기록
+- back stack: 시스템 뒤로가기, Dialog 우선 닫기, root Drawer 닫기, 시각적 back icon 제거 정책 기록
+
+[스타일 정책 정리]
+- 카드: 큰 면 배경은 단일 dark surface 계열 유지
+- 버튼: 역할별 버튼은 border / text 중심으로 표현
+- chip: 작은 상태 표시로 약한 tone background 허용
+- 중첩카드: 보조 정보는 InfoRow / Divider / ChipRow / InlineNotice 중심으로 표현
+- Dialog: 불투명 dark surface와 scrim 정책 유지
+- Switch: checked / unchecked / disabled 상태를 SettingsStyleTokens 기준으로 통일
+
+[후속 작업 후보]
+- 후보 1: phone / tablet / landscape 실기기 최종 점검
+- 후보 2: Storage / Conversation Dialog 잔여 미세 보정
+- 후보 3: RAG 품질 개선 및 TRACE / ERROR / PROVIDER_SUMMARY block allowlist 설계
+- 후보 4: worker_profiles.json / conversation_scenarios.json 설정 백업 범위 검증
+- 후보 5: 고급 하네스 실제 실행 연결 설계
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- Provider 호출: 변경 없음
+- ConversationEngine: 변경 없음
+- 저장 schema: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_CHAT_SETTINGS_UX_STABILIZATION_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계/정리 모드]
+
+작업명:
+대화모드 설정 UX 안정화 마감 기록
+
+목표:
+- 최근 진행한 대화모드 설정 UX 보정 작업의 완료 범위를 문서화한다.
+- 카드 / 버튼 / chip / Dialog / Switch / 중첩카드 / back stack / Drawer 폭 / 설정 페이지 구조 정리 내용을 안정 지점으로 기록한다.
+- 다음 구현 단계로 넘어가기 전에 현재까지의 변경 범위와 남은 후보 작업을 분리한다.
+- 이번 단계는 문서 정리 작업이며, Kotlin UI / 저장 / 실행 로직은 변경하지 않는다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+작성 문서 후보:
+- docs/design/MAHA_CHAT_SETTINGS_UX_STABILIZATION_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 적용 범위
+3. 완료된 설정 UX 보정 항목
+4. Provider / Model / API 설정 정리 내용
+5. Memory / RAG / Storage 설정 정리 내용
+6. 고급 하네스 설정 정리 내용
+7. Worker Profile / Scenario / Capability Resolver UI 정리 내용
+8. 카드 / 버튼 / chip 스타일 token 정리 내용
+9. Dialog / Popup / Switch 다크테마 정리 내용
+10. 중첩카드 정책 정리 내용
+11. back stack / 시스템 뒤로가기 정책
+12. 유지해야 할 금지사항
+13. 남은 후보 작업
+14. 다음 단계 진입 기준
+
+이번 단계에서 금지:
+- Kotlin 코드 변경
+- AppRoot.kt 변경
+- SettingsStyleTokens.kt 변경
+- SettingsUiComponents.kt 변경
+- ProviderManagementScreen.kt 변경
+- ModelManagementScreen.kt 변경
+- StorageManagementScreen.kt 변경
+- Worker / Scenario / Capability 관련 화면 변경
+- ConversationEngine 연결
+- Provider 호출 변경
+- Worker/Scenario 실행 연결
+- RAG/Web Search/Tool 실행 연결
+- 저장 schema 변경
+- 작업모드 수정
+
+--------------------------------------------------
+2. 반드시 기록할 완료 항목
+--------------------------------------------------
+
+대화모드 설정 구조:
+- 대화모드 설정 메인 카드맵 정리
+- 더미 카드 / 미연결 placeholder / 중복 카드 제거
+- 고급 하네스 설정을 기본 설정과 분리
+- 프로바이더 / 모델 / API 설정 1페이지 / 2페이지 구조 정리
+- Provider / Model 관리를 하단 펼침이 아닌 상세 설정 구조로 분리
+- 2중 스크롤 문제 완화
+- 백업 / 복원 카드 하단 배치
+
+공통 스타일:
+- SettingsStyleTokens.kt 기준 다크테마 token 정리
+- SettingsUiComponents.kt 기준 카드 / 버튼 / chip 공통화
+- 카드 큰 면 배경 단일화
+- 상태 차이는 border / chip / text 중심으로 표현
+- MainMenuScreen 작업모드 / 대화모드 카드 스타일 정리
+
+Provider / Model:
+- ProviderManagementScreen 스타일 1차 치환
+- ModelManagementScreen 스타일 1차 치환
+- Provider / Model 기능 버튼 회귀 복구
+- ProviderType.OPENAI 분기 누락 보정
+- 모델 목록 Dialog 검색창 복구
+- Provider / Model 기능 로직 유지
+
+고급 하네스:
+- Worker Profile 관리 / 편집 스타일 보정
+- Scenario 관리 / 편집 스타일 보정
+- Capability Resolver 진단 / Preview 스타일 보정
+- Capability Override 이전/다음 방식 제거
+- Capability 직접 선택 UI 적용
+- OutputPolicy expectedOutputType 직접 선택 UI 적용
+- Provider / Model 선택 카드의 “선택됨” 중복 표시 제거
+- 고급 하네스 하위 화면 좌측 최상단 back icon 제거
+
+Storage / Dialog / Switch:
+- Memory / RAG / Storage 설정 placeholder 제거
+- StorageManagementScreen 스타일 보정
+- Dialog / Popup / Confirm Dialog 다크테마 적용
+- Switch / Radio / 선택 컨트롤 다크테마 적용
+- Dialog surface opacity / scrim 보정
+- Dialog 뒤 카드 비침 문제 완화
+
+Navigation:
+- 설정 내부 back stack 유지
+- Android 시스템 뒤로가기 유지
+- Dialog 우선 닫기 유지
+- 설정 root Drawer 닫기 유지
+- 좌측 최상단 시각적 back icon 제거 정책 기록
+
+--------------------------------------------------
+3. 남은 후보 작업 분리
+--------------------------------------------------
+
+문서에 다음 후보를 “후속 작업”으로 분리한다.
+
+후보 1:
+- 대화모드 설정 UX 실기기 최종 점검
+- phone / tablet / landscape 확인
+- 카드 밀도 / 세로 스크롤 / Dialog 표시 확인
+
+후보 2:
+- Storage / Conversation Dialog 잔여 미세 보정
+- Conversation 본문 UI와 설정 UI의 스타일 경계 정리
+
+후보 3:
+- RAG 품질 개선
+- TRACE / ERROR / PROVIDER_SUMMARY block allowlist 설계
+- SAF-only 세션 indexing 검토
+
+후보 4:
+- 설정 백업 범위 검증
+- worker_profiles.json / conversation_scenarios.json 백업 포함 여부 확인
+
+후보 5:
+- 고급 하네스 실제 실행 연결 설계
+- 단, ConversationEngine 연결은 별도 대형 단계로 분리
+
+--------------------------------------------------
+4. 완료 기준
+--------------------------------------------------
+
+- MAHA_CHAT_SETTINGS_UX_STABILIZATION_v1.md 작성
+- 최근 설정 UX 보정 완료 범위 정리
+- 남은 작업 후보 분리
+- 실행 연결 금지 원칙 재확인
+- 코드 변경 없음
+- 빌드 영향 없음 또는 해당 없음
+
+--------------------------------------------------
+
+[다음 작업]
+대화모드 설정 UX 최종 실기기 점검 또는 RAG 품질 개선 / 설정 백업 범위 검증 중 선택
+
+==============================
 [2026-05-06 05:50] Settings Dialog 불투명도 및 scrim 보정
 ==============================
 
