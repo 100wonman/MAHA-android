@@ -3,11 +3,17 @@ package com.maha.app
 import org.json.JSONArray
 import org.json.JSONObject
 
-private data class StructuredAnswerSegment(
+internal data class ConversationDisplaySegment(
     val type: ConversationOutputBlockType,
     val title: String,
     val content: String
 )
+
+internal fun parseConversationDisplaySegments(
+    text: String
+): List<ConversationDisplaySegment> {
+    return parseStructuredAnswerSegments(text)
+}
 
 internal fun expandAssistantStructuredBlocks(
     blocks: List<ConversationOutputBlock>
@@ -23,13 +29,20 @@ internal fun expandAssistantStructuredBlocks(
 private fun splitAssistantTextLikeBlock(
     block: ConversationOutputBlock
 ): List<ConversationOutputBlock> {
-    val segments = parseStructuredAnswerSegments(block.content)
+    val segments = parseConversationDisplaySegments(block.content)
     if (segments.isEmpty()) return listOf(block)
 
     val onlyTextSegment = segments.size == 1 &&
             segments.first().type.name in setOf("TEXT_BLOCK", "MARKDOWN_BLOCK") &&
             segments.first().content.trim() == block.content.trim()
     if (onlyTextSegment) return listOf(block)
+
+    val containsMarkdownTableSegment = segments.any { segment ->
+        segment.type == ConversationOutputBlockType.TABLE_BLOCK
+    }
+    if (containsMarkdownTableSegment) {
+        return listOf(block)
+    }
 
     return segments.mapIndexed { index, segment ->
         ConversationOutputBlock(
@@ -42,10 +55,10 @@ private fun splitAssistantTextLikeBlock(
     }
 }
 
-private fun parseStructuredAnswerSegments(text: String): List<StructuredAnswerSegment> {
+private fun parseStructuredAnswerSegments(text: String): List<ConversationDisplaySegment> {
     if (text.isBlank()) return emptyList()
 
-    val segments = mutableListOf<StructuredAnswerSegment>()
+    val segments = mutableListOf<ConversationDisplaySegment>()
     val fencedPattern = Regex("""(?s)```([A-Za-z0-9_+.#-]*)[ \t]*(?:\r?\n)(.*?)(?:\r?\n)?```""")
     var cursor = 0
 
@@ -67,7 +80,7 @@ private fun parseStructuredAnswerSegments(text: String): List<StructuredAnswerSe
                 else -> language.ifBlank { "code" }
             }
             segments.add(
-                StructuredAnswerSegment(
+                ConversationDisplaySegment(
                     type = blockType,
                     title = title,
                     content = codeContent
@@ -84,11 +97,11 @@ private fun parseStructuredAnswerSegments(text: String): List<StructuredAnswerSe
     return mergeAdjacentTextSegments(segments)
 }
 
-private fun parsePlainStructuredSegments(text: String): List<StructuredAnswerSegment> {
+private fun parsePlainStructuredSegments(text: String): List<ConversationDisplaySegment> {
     if (text.isBlank()) return emptyList()
 
     val tableSplitSegments = splitMarkdownTableSegments(text)
-    val result = mutableListOf<StructuredAnswerSegment>()
+    val result = mutableListOf<ConversationDisplaySegment>()
 
     tableSplitSegments.forEach { segment ->
         if (segment.type.name == "TEXT_BLOCK") {
@@ -101,9 +114,9 @@ private fun parsePlainStructuredSegments(text: String): List<StructuredAnswerSeg
     return result
 }
 
-private fun splitMarkdownTableSegments(text: String): List<StructuredAnswerSegment> {
+private fun splitMarkdownTableSegments(text: String): List<ConversationDisplaySegment> {
     val lines = text.lines()
-    val result = mutableListOf<StructuredAnswerSegment>()
+    val result = mutableListOf<ConversationDisplaySegment>()
     val textBuffer = mutableListOf<String>()
     var index = 0
 
@@ -111,7 +124,7 @@ private fun splitMarkdownTableSegments(text: String): List<StructuredAnswerSegme
         val content = textBuffer.joinToString("\n").trim()
         if (content.isNotBlank()) {
             result.add(
-                StructuredAnswerSegment(
+                ConversationDisplaySegment(
                     type = ConversationOutputBlockType.TEXT_BLOCK,
                     title = "",
                     content = content
@@ -133,7 +146,7 @@ private fun splitMarkdownTableSegments(text: String): List<StructuredAnswerSegme
             val tableText = tableLines.joinToString("\n").trim()
             if (tableText.isNotBlank()) {
                 result.add(
-                    StructuredAnswerSegment(
+                    ConversationDisplaySegment(
                         type = ConversationOutputBlockType.TABLE_BLOCK,
                         title = "Table",
                         content = tableText
@@ -151,12 +164,12 @@ private fun splitMarkdownTableSegments(text: String): List<StructuredAnswerSegme
     return result
 }
 
-private fun splitJsonSegments(text: String): List<StructuredAnswerSegment> {
+private fun splitJsonSegments(text: String): List<ConversationDisplaySegment> {
     val trimmed = text.trim()
     if (trimmed.isBlank()) return emptyList()
     if (isValidJsonText(trimmed)) {
         return listOf(
-            StructuredAnswerSegment(
+            ConversationDisplaySegment(
                 type = ConversationOutputBlockType.JSON_BLOCK,
                 title = "json",
                 content = trimmed
@@ -165,7 +178,7 @@ private fun splitJsonSegments(text: String): List<StructuredAnswerSegment> {
     }
 
     val lines = text.lines()
-    val result = mutableListOf<StructuredAnswerSegment>()
+    val result = mutableListOf<ConversationDisplaySegment>()
     val textBuffer = mutableListOf<String>()
     var index = 0
 
@@ -173,7 +186,7 @@ private fun splitJsonSegments(text: String): List<StructuredAnswerSegment> {
         val content = textBuffer.joinToString("\n").trim()
         if (content.isNotBlank()) {
             result.add(
-                StructuredAnswerSegment(
+                ConversationDisplaySegment(
                     type = ConversationOutputBlockType.TEXT_BLOCK,
                     title = "",
                     content = content
@@ -205,7 +218,7 @@ private fun splitJsonSegments(text: String): List<StructuredAnswerSegment> {
             if (foundJson) {
                 flushTextBuffer()
                 result.add(
-                    StructuredAnswerSegment(
+                    ConversationDisplaySegment(
                         type = ConversationOutputBlockType.JSON_BLOCK,
                         title = "json",
                         content = candidate
@@ -227,9 +240,9 @@ private fun splitJsonSegments(text: String): List<StructuredAnswerSegment> {
 }
 
 private fun mergeAdjacentTextSegments(
-    segments: List<StructuredAnswerSegment>
-): List<StructuredAnswerSegment> {
-    val result = mutableListOf<StructuredAnswerSegment>()
+    segments: List<ConversationDisplaySegment>
+): List<ConversationDisplaySegment> {
+    val result = mutableListOf<ConversationDisplaySegment>()
     segments.forEach { segment ->
         if (segment.content.isBlank()) return@forEach
         val previous = result.lastOrNull()
