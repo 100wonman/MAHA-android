@@ -1,4 +1,362 @@
 ==============================
+[2026-05-06 10:30] 대화세션 / 대화방 UX·UI 현황 점검 및 개선 설계
+==============================
+
+[작업]
+- 대화방 화면의 현재 구조와 UX 개선 후보를 문서화
+- 메시지 카드, 입력창, 실행정보 패널, RAG/Web Search 표시, structured/code block, Dialog UX를 검토
+- phone / tablet / landscape 환경에서의 대화방 가독성·밀도·스크롤 부담 개선 방향 정리
+- 후속 ConversationStyleTokens / ConversationUiComponents 후보 구조 정리
+- 일반설정 → 그래픽 설정과 연결할 conversationDensity, messageFontScale, citationDisplayDensity 등 옵션 후보 정리
+- 대화방 UX/UI 구현 우선순위를 단계별로 분리
+- Kotlin 코드, ConversationEngine, Provider 호출, RAG/Web Search 실행 로직, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 대화세션 / 대화방 화면의 현재 구성과 UX 목표를 문서화
+- 메시지 카드, 입력창, 실행정보 패널, RAG / Web Search, structured block, Dialog 개선 후보 정리
+- ConversationStyleTokens / ConversationUiComponents 후보 구조 정리
+- Graphics 설정과 연결할 대화방 표시 옵션 후보 정리
+- 후속 구현 우선순위와 금지사항을 분리
+
+[설계 산출물]
+- 문서명: MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+- 주요 섹션: 목적 / 설계 전제 / 현재 대화방 화면 구성 / UX 목표 / 메시지 카드 / 입력창 / 실행정보 / RAG-Web Search / Structured block / Dialog / Phone-Tablet-Landscape / ConversationStyleTokens / Graphics 연결 / 구현 우선순위 / 금지사항 / 후속 단계 / 안정 지점
+
+[대화방 구조 정리]
+- 상단/navigation: 대화방 title, 설정 Drawer, 세션 목록, 시스템 뒤로가기 정책 정리
+- 메시지 영역: 사용자 메시지, assistant 응답, structured/code/table/json/error block 정리
+- 입력 영역: 텍스트 입력창, send button, multiline 높이, file/voice/quick setting 후보 정리
+- 실행정보: provider/model/latency/RAG/Web Search/fallback/error summary 후보 정리
+- RAG/Web Search: context, citation, source title/url/snippet, grounding/fallback 상태 분리 정리
+- Dialog: message edit, storage settings, quick setting popup, confirm dialog 후보 정리
+
+[개선 후보]
+- 메시지 카드: 사용자/assistant 시각 구분, 긴 답변 가독성, markdown/code/citation 표시 후보 정리
+- 입력창: compact/normal/comfortable 높이, multiline max height, send/file/voice action 후보 정리
+- 실행정보 패널: 기본 접힘, 1줄 summary, 상세 접힘 구조, token/cost/time 후보 정리
+- RAG/Web Search: 본문 분리, compact source/citation, 원문 과다 노출 방지 후보 정리
+- Dialog: edit dialog dark surface, 저장/취소/삭제 역할 명확화, opacity/scrim 유지 정리
+- phone/tablet: phone 세로 공간 절약, tablet 폭 활용, landscape keyboard 대응 후보 정리
+
+[Conversation token 후보]
+- message: user/assistant/system background, border, radius, padding, spacing, max width
+- input: input panel background/border, field radius, send button radius
+- structured/code: structured block, code block, table/json block token 후보
+- citation/RAG: citation chip, RAG context, Web Search source card token 후보
+- run summary: compact summary, trace block, run info panel token 후보
+- error/warning: error/warning/info notice border와 background 후보
+
+[Graphics 연결 후보]
+- density: conversationDensity, structuredBlockDensity, rag/citation display density
+- font: messageFontScale, codeBlockFontScale
+- radius: messageBubbleRadius, inputFieldRadius, structured block radius
+- visibility: timestampVisibility, roleLabelVisibility, runSummaryDefaultCollapsed
+- accessibility: reducedMotion, largeTouchTargets, highContrast, reducedTransparency
+
+[후속 구현 단계]
+- 정적 스캔: ConversationRoomScreen / ConversationBlocks / ConversationDialogs 직접 Material 사용처 확인
+- 역할 목록 고정: 메시지, 입력창, 실행정보, RAG/Web Search 표시 역할 목록 문서화
+- token 설계: ConversationStyleTokens 후보 작성
+- UI skeleton: ConversationUiComponents 후보 작성
+- 단계별 치환: 메시지 카드 → 입력창 → 실행정보 → RAG/Web Search → phone/tablet/landscape 검증
+
+[기존 기능 영향]
+- 코드 변경: 없음
+- ConversationEngine: 변경 없음
+- Provider 호출: 변경 없음
+- RAG/Web Search: 변경 없음
+- 저장 schema: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+대화세션 / 대화방 UX·UI 현황 점검 및 개선 설계
+
+목표:
+- 설정 UX/UI 안정화 이후, 실제 사용 시간이 가장 긴 대화세션 / 대화방 화면의 UX·UI 개선 방향을 설계한다.
+- ConversationRoomScreen 계열 화면의 현재 구조와 개선 후보를 문서화한다.
+- 메시지 카드, 입력창, 실행정보 패널, RAG/Web Search 표시, structured block, Dialog, phone/tablet UX를 검토한다.
+- 후속 그래픽 설정과 연결할 ConversationStyleTokens 후보를 정리한다.
+- 이번 단계는 설계 문서 작성이며, Kotlin UI / 저장 / 실행 로직은 변경하지 않는다.
+
+--------------------------------------------------
+1. 작업 범위
+--------------------------------------------------
+
+작성 문서 후보:
+- docs/design/MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+
+검토 대상 후보:
+- ConversationRoomScreen.kt
+- ConversationInputPanel
+- UserMessageBlock
+- AssistantMessageBlock 또는 ConversationOutputBlockCard 계열
+- StructuredOutputBlock
+- ConversationRunSummaryPanel / 실행정보 패널
+- RAG 검색 결과 표시 영역
+- Web Search citation 표시 영역
+- ConversationBlocks.kt
+- ConversationDialogs.kt
+- ConversationStorageSettingsDialog.kt
+- ConversationSessionListScreen.kt는 후순위로 참고만
+
+문서에 포함할 내용:
+1. 목적
+2. 설계 전제
+3. 현재 대화방 화면 구성
+4. 대화방 UX 목표
+5. 메시지 카드 / 말풍선 정책
+6. 입력창 UX
+7. 실행정보 패널 UX
+8. RAG / Web Search 표시 UX
+9. Structured block / Code block 표시 UX
+10. Dialog / Message edit UX
+11. Phone / Tablet / Landscape 고려사항
+12. ConversationStyleTokens 후보
+13. Graphics 설정과 연결할 옵션
+14. 구현 우선순위
+15. 유지해야 할 금지사항
+16. 후속 구현 단계
+17. 마이그레이션 전 안정 지점
+
+이번 단계에서 금지:
+- Kotlin 코드 변경
+- ConversationRoomScreen.kt 변경
+- ConversationBlocks.kt 변경
+- ConversationDialogs.kt 변경
+- ConversationEngine 연결 변경
+- ConversationViewModel 흐름 변경
+- Provider 호출 변경
+- RAG/Web Search 실행 로직 변경
+- 저장 schema 변경
+- Worker/Scenario 실행 연결
+- GraphicsSettingsStore 구현
+- ConversationStyleTokens 실제 구현
+- 작업모드 수정
+
+--------------------------------------------------
+2. 현재 대화방 화면 구성 정리 기준
+--------------------------------------------------
+
+문서에는 현재 대화방을 다음 단위로 나눠 정리한다.
+
+A. 상단 / Drawer / Navigation
+- 대화방 title
+- 설정 Drawer 진입
+- 세션 목록 진입
+- 시스템 뒤로가기 정책
+
+B. 메시지 영역
+- 사용자 메시지
+- assistant 응답
+- structured output block
+- code block
+- table / json block
+- error / warning / system notice
+- timestamp / role label / provider summary 후보
+
+C. 입력 영역
+- 텍스트 입력창
+- send button
+- attachment / file action 후보
+- mic / voice action 후보
+- quick setting 후보
+- multiline 입력 높이 정책
+
+D. 실행정보 영역
+- run summary
+- worker summary 후보
+- provider/model summary
+- token/cost/time 후보
+- 접힘/펼침 정책
+
+E. RAG / Web Search 표시
+- RAG context 표시
+- 검색 결과 표시
+- citation 표시
+- source title / url / snippet 표시 밀도
+- 사용자가 보기 편한 요약 방식
+
+F. Dialog / Popup
+- message edit dialog
+- storage settings dialog
+- quick setting popup
+- confirm dialog
+
+--------------------------------------------------
+3. UX 목표
+--------------------------------------------------
+
+문서에 다음 목표를 포함한다.
+
+- 대화방은 설정 화면보다 더 오래 보는 화면이므로 가독성이 최우선이다.
+- 답변 본문과 실행정보는 시각적으로 분리되어야 한다.
+- 실행정보 / RAG / Web Search / trace는 기본적으로 접힘 또는 compact 표시가 좋다.
+- 사용자가 질문과 답변 흐름을 방해받지 않아야 한다.
+- 오류/경고는 숨기지 않되, 본문보다 튀지 않게 표시한다.
+- phone에서는 세로 공간 절약이 중요하다.
+- tablet에서는 좌우 폭을 활용할 수 있다.
+- 그래픽 설정 도입 시 대화방은 설정 화면과 별도 token layer를 가질 수 있다.
+
+--------------------------------------------------
+4. 개선 후보 정리 기준
+--------------------------------------------------
+
+문서에 다음 개선 후보를 정리한다.
+
+메시지 카드:
+- 사용자 메시지와 assistant 메시지 시각 구분
+- 말풍선형 / 카드형 후보
+- 긴 답변 가독성
+- markdown spacing
+- 코드블록 가독성
+- citation 표시 위치
+
+입력창:
+- compact / normal / comfortable 높이
+- multiline max height
+- send button 위치
+- voice / file action 후보
+- quick setting 노출 방식
+
+실행정보:
+- 기본 접힘
+- summary 1줄 표시
+- 상세는 접힘 영역
+- worker / provider / model / time / token / cost 후보
+- error / retry count 표시 후보
+
+RAG / Web Search:
+- RAG context는 본문과 분리
+- source/citation은 compact card 또는 inline chip 후보
+- web search 사용 여부 표시
+- 검색 결과 원문 과다 노출 방지
+- 최신성 / 출처 확인 상태 표시 후보
+
+Dialog:
+- message edit dialog 다크테마 유지
+- dialog surface opacity 유지
+- 저장/취소/삭제 버튼 역할 명확화
+
+--------------------------------------------------
+5. ConversationStyleTokens 후보
+--------------------------------------------------
+
+문서에 후속 token 후보를 포함한다.
+
+후보 파일:
+- ConversationStyleTokens.kt
+- ConversationUiComponents.kt
+
+후보 token:
+- messageUserBackground
+- messageAssistantBackground
+- messageSystemBackground
+- messageBorderColor
+- messageRadius
+- messagePadding
+- messageSpacing
+- inputPanelBackground
+- inputPanelBorder
+- inputFieldRadius
+- structuredBlockBackground
+- structuredBlockBorder
+- codeBlockBackground
+- citationChipColor
+- ragContextBorder
+- webSearchCitationBorder
+- runSummaryBackground
+- runSummaryBorder
+- errorNoticeBorder
+- warningNoticeBorder
+
+연결 방침:
+- SettingsStyleTokens를 그대로 복사하지 않는다.
+- GraphicsSettings의 accent / density / fontScale / contrast 값은 공유 가능하다.
+- ConversationStyleTokens는 대화방 가독성을 우선한다.
+- Settings token과 Conversation token은 GraphicsThemeResolver에서 함께 생성할 수 있다.
+
+--------------------------------------------------
+6. Graphics 설정 연결 후보
+--------------------------------------------------
+
+문서에 다음 연결 후보를 정리한다.
+
+- conversationDensity
+- messageSpacing
+- messageFontScale
+- codeBlockFontScale
+- messageBubbleRadius
+- inputPanelHeight
+- runSummaryDefaultCollapsed
+- ragContextDisplayDensity
+- citationDisplayDensity
+- timestampVisibility
+- roleLabelVisibility
+- reducedMotion
+- largeTouchTargets
+- highContrast
+
+주의:
+- 그래픽 설정 실제 구현은 이번 단계에서 하지 않는다.
+- ConversationStyleTokens 실제 구현도 후속 단계로 분리한다.
+
+--------------------------------------------------
+7. 구현 우선순위 후보
+--------------------------------------------------
+
+문서에 다음 순서를 제안한다.
+
+1. 대화방 UX/UI 현황 문서화
+2. ConversationRoomScreen 직접 Material 사용처 정적 스캔
+3. 대화방 메시지 카드 / 입력창 / 실행정보 패널 역할 목록 고정
+4. ConversationStyleTokens 설계
+5. ConversationUiComponents skeleton 설계
+6. 메시지 카드 스타일 1차 치환
+7. 입력창 / quick setting UI 보정
+8. 실행정보 패널 compact화
+9. RAG / Web Search 표시 compact화
+10. phone / tablet / landscape 검증
+11. Graphics 설정과 동적 연결
+
+--------------------------------------------------
+8. 완료 기준
+--------------------------------------------------
+
+- MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md 작성
+- 현재 대화방 화면 구성 정리
+- 대화방 UX 목표 정리
+- 메시지 / 입력창 / 실행정보 / RAG / Web Search / Dialog 개선 후보 정리
+- ConversationStyleTokens 후보 정리
+- Graphics 설정 연결 후보 정리
+- 구현 우선순위 정리
+- 코드 변경 없음
+- 빌드 영향 없음
+
+--------------------------------------------------
+
+[다음 작업]
+지휘 세션 / 구현 세션 마이그레이션 또는 ConversationRoomScreen 정적 스캔 및 역할 목록 고정
+
+==============================
 [2026-05-06 10:20] 일반설정 그래픽 옵션 설계 및 대화모드 UI token 연결 방침 정리
 ==============================
 
