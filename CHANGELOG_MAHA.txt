@@ -1,4 +1,147 @@
 ==============================
+[2026-05-06 23:16] 서버 응답 대기 중 중복 전송 방지 구현
+==============================
+
+[작업]
+- ConversationViewModel.kt에 요청 진행 상태 isRunning 추가
+- sendMessage 진입부에 중복 호출 guard 추가
+- Provider 요청 시작 시 isRunning=true, 성공/실패/예외 종료 시 finally에서 isRunning=false 보장
+- AppRoot.kt에서 ConversationRoomScreen.isRunning을 ViewModel 상태와 연결
+- 입력창 입력 가능 상태는 유지하고 send button 비활성 조건만 기존 ConversationInputPanel 정책으로 연결
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationViewModel.kt에 요청 진행 상태 isRunning 추가
+- sendMessage 진입부에 중복 호출 guard 추가
+- Provider 요청 시작 시 isRunning=true, 성공/실패/예외 종료 시 finally에서 isRunning=false 보장
+- AppRoot.kt에서 ConversationRoomScreen.isRunning을 ViewModel 상태와 연결
+- 입력창 입력 가능 상태는 유지하고 send button 비활성 조건만 기존 ConversationInputPanel 정책으로 연결
+
+[변경 파일]
+- ConversationViewModel.kt
+- AppRoot.kt
+
+[기능 확인]
+- 일반 전송: 통과
+- 응답 대기 중 입력: 통과
+- 응답 대기 중 send button: 안눌러짐
+- 응답 대기 중 send 연타: 안눌러짐
+- 중복 user message 저장: 전송 버튼 안 눌러짐
+- 중복 Provider 호출: 통과
+- 응답 성공 후 재전송: 통과
+- 응답 실패 후 재전송: 통과
+- RAG ON 중복 호출: 통과
+- Web Search ON 중복 호출: 통과
+
+[영향]
+- 금지 영역 영향: 없음
+- ConversationEngine 변경: 없음
+- Provider 호출 변경: 없음
+- RAG/Web Search 실행 로직 변경: 없음
+- 저장 schema 변경: 없음
+- input state ownership 변경: 없음
+- callback 의미 변경: 없음
+- 작업모드 영향: 없음
+
+[기본 확인]
+- 빌드: 성공
+
+[문제]
+- 없음
+
+[후속 후보]
+- 중복 전송 방지 적용 후 실패 응답/timeout 케이스에서 send button 재활성만 확인
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+서버 응답 대기 중 중복 전송 방지 구현
+
+목표:
+- 권장 정책 “입력 허용 + send button 비활성 + ViewModel guard”를 구현한다.
+- 서버 응답 대기 중에도 입력창 입력은 허용한다.
+- 서버 응답 대기 중 send button은 비활성화한다.
+- 어떤 경로로든 sendMessage가 중복 호출되면 ViewModel에서 차단한다.
+- Provider 호출 / RAG-Web Search 실행 / 저장 schema는 변경하지 않는다.
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ConversationViewModel.kt
+- app/src/main/java/com/maha/app/AppRoot.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationInputPanel.kt
+
+수정 조건:
+- 필요한 파일만 수정한다.
+- ConversationViewModel이 요청 진행 상태의 단일 기준이 되도록 한다.
+- 이미 running state가 있으면 새 상태를 중복 생성하지 말고 기존 상태를 연결한다.
+- 상태 연결만 문제라면 AppRoot / ConversationRoomScreen 연결만 보정한다.
+- ConversationInputPanel은 입력 가능 상태를 유지하고 send button 비활성 조건만 기존 정책대로 사용한다.
+- 취소 / 재시도 / queue 기능은 구현하지 않는다.
+
+구현 범위:
+- sendMessage 진입부에 요청 중복 guard 확인 또는 추가
+- 요청 시작 시 running state true
+- 요청 성공 / 실패 / 예외 종료 시 running state false 보장
+- running state가 ConversationRoomScreen.isRunning으로 전달되는지 확인
+- ConversationRoomScreen.isRunning이 ConversationInputPanel.isRunning으로 전달되는지 확인
+- inputText 입력은 서버 응답 대기 중에도 가능하게 유지
+- send button은 inputText가 있어도 isRunning이면 비활성화
+- send 클릭은 canSend가 true일 때만 onSend 호출
+
+절대 금지:
+- ConversationEngine 변경 금지
+- Provider Adapter 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 구조 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- 저장 schema 변경 금지
+- block type mapping 변경 금지
+- block.content 저장값 변경 금지
+- queue 방식 구현 금지
+- 취소 / 재시도 / timeout 정책 동시 구현 금지
+- 입력창 입력 차단 금지
+- RAG / Web Search toggle 의미 변경 금지
+- 작업모드 수정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- 서버 응답 대기 중 입력 가능
+- 서버 응답 대기 중 send button 비활성
+- 서버 응답 대기 중 추가 send 클릭 시 중복 user message 저장 없음
+- 서버 응답 대기 중 추가 Provider 호출 없음
+- 응답 성공 후 send button 재활성
+- 응답 실패 후 send button 재활성
+- 기존 일반 전송 정상
+- 빌드 성공
+
+검증 기준:
+- 일반 메시지 1회 전송 정상
+- 응답 대기 중 입력 가능
+- 응답 대기 중 send button 비활성 확인
+- 응답 대기 중 send 연타 시 중복 user message 저장 없음
+- 응답 대기 중 send 연타 시 중복 Provider 호출 없음
+- RAG ON 상태에서 중복 호출 없음
+- Web Search ON 상태에서 중복 호출 없음
+- 응답 성공 후 다시 전송 가능
+- 응답 실패 후 다시 전송 가능
+- 저장 schema / 실행 로직 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+실패 응답 / timeout 케이스 send button 재활성 검증
+
+==============================
 [2026-05-06 23:01] 서버 응답 대기 중 중복 전송 방지 정책 확인
 ==============================
 

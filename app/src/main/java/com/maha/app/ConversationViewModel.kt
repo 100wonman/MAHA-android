@@ -59,6 +59,9 @@ class ConversationViewModel(
     var quickSettingsExpanded by mutableStateOf(false)
         private set
 
+    var isRunning by mutableStateOf(false)
+        private set
+
     var sessionSearchQuery by mutableStateOf("")
         private set
 
@@ -262,6 +265,8 @@ class ConversationViewModel(
     }
 
     fun sendMessage() {
+        if (isRunning) return
+
         val textToSend = inputText.trim()
         if (textToSend.isBlank()) return
 
@@ -342,39 +347,44 @@ class ConversationViewModel(
         )
 
         inputText = ""
+        isRunning = true
 
         viewModelScope.launch {
-            val response = conversationEngine.execute(request)
-            val assistantNowText = getCurrentTimeText()
-            val assistantMessage = ConversationMessage(
-                messageId = "message_assistant_${System.currentTimeMillis()}",
-                sessionId = targetSession.sessionId,
-                role = ConversationRole.ASSISTANT,
-                createdAt = assistantNowText,
-                blocks = response.blocks,
-                linkedRunId = runId
-            )
+            try {
+                val response = conversationEngine.execute(request)
+                val assistantNowText = getCurrentTimeText()
+                val assistantMessage = ConversationMessage(
+                    messageId = "message_assistant_${System.currentTimeMillis()}",
+                    sessionId = targetSession.sessionId,
+                    role = ConversationRole.ASSISTANT,
+                    createdAt = assistantNowText,
+                    blocks = response.blocks,
+                    linkedRunId = runId
+                )
 
-            val latestIndex = conversationSessions.indexOfFirst {
-                it.sessionId == targetSession.sessionId
+                val latestIndex = conversationSessions.indexOfFirst {
+                    it.sessionId == targetSession.sessionId
+                }
+
+                if (latestIndex == -1) return@launch
+
+                val latestSession = conversationSessions[latestIndex]
+                val updatedSession = latestSession.copy(
+                    lastMessageSummary = textToSend.take(60),
+                    updatedAt = assistantNowText,
+                    messages = latestSession.messages + assistantMessage,
+                    latestRun = response.runInfo
+                )
+
+                conversationSessions[latestIndex] = updatedSession
+                conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
+                conversationFileStore.updateSession(
+                    session = updatedSession,
+                    isFavorite = favoriteSessionIds.contains(targetSession.sessionId)
+                )
+            } finally {
+                isRunning = false
             }
-
-            if (latestIndex == -1) return@launch
-
-            val latestSession = conversationSessions[latestIndex]
-            val updatedSession = latestSession.copy(
-                lastMessageSummary = textToSend.take(60),
-                updatedAt = assistantNowText,
-                messages = latestSession.messages + assistantMessage,
-                latestRun = response.runInfo
-            )
-
-            conversationSessions[latestIndex] = updatedSession
-            conversationFileStore.appendMessage(targetSession.sessionId, assistantMessage)
-            conversationFileStore.updateSession(
-                session = updatedSession,
-                isFavorite = favoriteSessionIds.contains(targetSession.sessionId)
-            )
         }
     }
 

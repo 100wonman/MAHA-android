@@ -118,7 +118,7 @@ fun AppRoot() {
     val conversationWebSearchEnabled = conversationViewModel.webSearchEnabled
     val conversationWebSearchFallbackEnabled = conversationViewModel.webSearchFallbackEnabled
     val conversationModeLabel = conversationViewModel.modeLabel
-
+    val conversationIsRunning = conversationViewModel.isRunning
 
     var selectedAgentId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRunId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -127,7 +127,6 @@ fun AppRoot() {
     var isScenarioScreenOpen by rememberSaveable { mutableStateOf(false) }
     var isSettingsScreenOpen by rememberSaveable { mutableStateOf(false) }
     var isConversationListScreenOpen by rememberSaveable { mutableStateOf(false) }
-    var conversationIsRunning by rememberSaveable { mutableStateOf(false) }
     var showConversationSettingsDialog by rememberSaveable { mutableStateOf(false) }
     var selectedConversationSettingsPage by rememberSaveable { mutableStateOf<String?>(null) }
     var conversationSettingsBackStack by rememberSaveable {
@@ -859,9 +858,6 @@ fun AppRoot() {
 
             if (isAppStorageMigrationDialogOpen) {
                 AlertDialog(
-                    containerColor = SettingsStyleTokens.dialogBackground,
-                    titleContentColor = SettingsStyleTokens.titleTextColor,
-                    textContentColor = SettingsStyleTokens.bodyTextColor,
                     onDismissRequest = {
                         isAppStorageMigrationDialogOpen = false
                     },
@@ -874,8 +870,7 @@ fun AppRoot() {
                         )
                     },
                     confirmButton = {
-                        SettingsPrimaryButton(
-                            text = "가져오기",
+                        TextButton(
                             onClick = {
                                 val result = conversationViewModel.migrateAppSpecificSessionsToSaf()
                                 Toast.makeText(
@@ -885,15 +880,18 @@ fun AppRoot() {
                                 ).show()
                                 isAppStorageMigrationDialogOpen = false
                             }
-                        )
+                        ) {
+                            Text(text = "가져오기")
+                        }
                     },
                     dismissButton = {
-                        SettingsSecondaryButton(
-                            text = "취소",
+                        TextButton(
                             onClick = {
                                 isAppStorageMigrationDialogOpen = false
                             }
-                        )
+                        ) {
+                            Text(text = "취소")
+                        }
                     }
                 )
             }
@@ -2577,9 +2575,6 @@ private fun SettingsBackupListDialog(
     onSelectBackup: (SettingsBackupEntry) -> Unit
 ) {
     AlertDialog(
-        containerColor = SettingsStyleTokens.dialogBackground,
-        titleContentColor = SettingsStyleTokens.titleTextColor,
-        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = "설정 백업 선택")
@@ -2616,7 +2611,9 @@ private fun SettingsBackupListDialog(
             }
         },
         confirmButton = {
-            SettingsSecondaryButton(text = "닫기", onClick = onDismiss)
+            TextButton(onClick = onDismiss) {
+                Text(text = "닫기")
+            }
         }
     )
 }
@@ -2628,9 +2625,6 @@ private fun SettingsRestoreConfirmDialog(
     onConfirm: () -> Unit
 ) {
     AlertDialog(
-        containerColor = SettingsStyleTokens.dialogBackground,
-        titleContentColor = SettingsStyleTokens.titleTextColor,
-        textContentColor = SettingsStyleTokens.bodyTextColor,
         onDismissRequest = onDismiss,
         title = {
             Text(text = "설정 복원 확인")
@@ -2641,10 +2635,14 @@ private fun SettingsRestoreConfirmDialog(
             )
         },
         confirmButton = {
-            SettingsPrimaryButton(text = "복원", onClick = onConfirm)
+            Button(onClick = onConfirm) {
+                Text(text = "복원")
+            }
         },
         dismissButton = {
-            SettingsSecondaryButton(text = "취소", onClick = onDismiss)
+            TextButton(onClick = onDismiss) {
+                Text(text = "취소")
+            }
         }
     )
 }
