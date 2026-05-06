@@ -1,4 +1,321 @@
 ==============================
+[2026-05-06 22:23] RunInfo / RAG / Web Search 표시 wrapper 설계
+==============================
+
+[작업]
+- RunInfo / RAG / Web Search 표시 wrapper 후보 문서화
+- compact / collapsed 중심의 실행정보 표시 정책 정리
+- RAG context와 Web Search source/citation 표시 위험도 분리
+- copy action 유지 기준과 phone 화면 표시 밀도 기준 기록
+- 후속 구현 우선순위를 LOW~MEDIUM 영역부터 진행하도록 정리
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- RunInfo / RAG / Web Search 표시 wrapper 후보를 문서화
+- compact / collapsed 중심의 실행정보 표시 정책을 정리
+- RAG context와 Web Search source/citation 표시의 위험도를 분리
+- copy action 유지 기준과 phone 화면 표시 밀도 기준을 기록
+- 후속 구현 우선순위를 LOW~MEDIUM 영역부터 진행하도록 정리
+
+[산출물]
+- 문서명: MAHA_RUNINFO_RAG_WEBSEARCH_WRAPPER_DESIGN_v1.md
+- 작성 위치: docs/design/MAHA_RUNINFO_RAG_WEBSEARCH_WRAPPER_DESIGN_v1.md
+
+[설계 범위]
+- RunInfo: ConversationRunSummaryPanelReadable 역할, summary/detail 구조 정리
+- RAG: RAG ON/OFF, query, result count, used chunk, fallback 표시 구조 정리
+- Web Search grounding: requested / executed / used / citation count / search query count 표시 구조 정리
+- Web Search source/citation: source title / url / snippet / citation chip 표시 후보 정리
+- provider/fallback summary: provider response summary와 fallback reason compact 표시 후보 정리
+- trace/raw text: 기본 접힘, 필요 시 펼침, copy 유지 정책 정리
+
+[wrapper 후보]
+- RunInfo: ConversationRunInfoCard, ConversationRunInfoSection, ConversationRunInfoSummaryRow
+- RAG: ConversationRagSummaryPanel, ConversationRagContextPanel
+- Web Search: ConversationWebSearchGroundingPanel
+- source/citation: ConversationWebSearchSourceCard, ConversationCitationChip
+- provider/fallback: ConversationProviderSummaryPanel
+- trace: ConversationTraceTextPanel
+
+[표시 정책]
+- compact: status / provider / model / latency / RAG / Web Search / fallback 요약 중심
+- collapsed: raw trace, RAG context 원문, Web Search source 상세는 기본 접힘
+- detail: 펼쳤을 때 provider detail, RAG detail, search query, source, fallback reason 표시
+- copy action: summary / raw trace / source URL / provider summary copy 유지
+- phone 밀도: 1줄 summary, source snippet 축약, raw trace 기본 접힘
+
+[위험도]
+- LOW: label/value row, status chip, section title, divider
+- MEDIUM: RunInfo card shell, summary row, provider summary panel, trace visual shell, copy button wrapper
+- HIGH: RAG summary/context, Web Search grounding/source, source/citation mapping, fallback 표시 위계
+- DO_NOT_TOUCH: ConversationEngine, ConversationViewModel, trace marker, parser key, fallback policy, source/citation schema, 저장 schema, Provider Adapter, 작업모드
+
+[영향]
+- 코드 변경: 없음
+- 실행 로직 변경: 없음
+- parser marker 변경: 없음
+- 저장 schema 변경: 없음
+- 작업모드 영향: 없음
+
+[문제]
+- 없음
+
+[후속 후보]
+- RunInfo 외부 shell과 summary row만 1차 적용하는 것이 가장 안전
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+RunInfo / RAG / Web Search 표시 wrapper 설계
+
+목표:
+- 리팩토링 1~5단계 완료 이후 RunInfo / RAG / Web Search 표시 영역의 wrapper 설계를 진행한다.
+- 실행정보, RAG context, Web Search grounding/source 표시를 compact한 UI 구조로 재정리한다.
+- parser는 이미 ConversationRunInfoParser.kt로 분리된 상태를 전제로 한다.
+- 이번 단계는 설계 문서 작성만 한다. Kotlin 코드는 변경하지 않는다.
+
+수정 허용 파일:
+- docs/design/MAHA_RUNINFO_RAG_WEBSEARCH_WRAPPER_DESIGN_v1.md
+
+작성 문서:
+- docs/design/MAHA_RUNINFO_RAG_WEBSEARCH_WRAPPER_DESIGN_v1.md
+
+설계 범위:
+- ConversationRunSummaryPanelReadable 현재 역할 정리
+- RunInfo summary / detail 구조 설계
+- RAG 표시 compact wrapper 설계
+- Web Search grounding 표시 compact wrapper 설계
+- Web Search source / citation 표시 wrapper 설계
+- provider / fallback summary 표시 방식 정리
+- copy action 유지 기준 정리
+- collapsed / expanded 상태 기준 정리
+- phone 화면 기준 표시 밀도 정리
+- 후속 구현 우선순위 제안
+
+wrapper 후보:
+- ConversationRunInfoCard
+- ConversationRunInfoSection
+- ConversationRunInfoSummaryRow
+- ConversationRagSummaryPanel
+- ConversationRagContextPanel
+- ConversationWebSearchGroundingPanel
+- ConversationWebSearchSourceCard
+- ConversationCitationChip
+- ConversationProviderSummaryPanel
+- ConversationTraceTextPanel
+
+설계 기준:
+- 실행정보는 assistant 본문과 시각적으로 분리한다.
+- 기본값은 compact / collapsed 중심으로 설계한다.
+- 상세 trace / raw text는 기본 노출하지 않는다.
+- RAG context와 Web Search source는 과도한 원문 노출을 피한다.
+- copy action은 유지한다.
+- parser marker / trace key / fallback key는 변경하지 않는다.
+- RAG / Web Search 실행 로직은 변경하지 않는다.
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationRoomScreen.kt 수정 금지
+- ConversationRunInfoParser.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- Provider 호출 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- trace marker 변경 금지
+- parser key 변경 금지
+- fallback policy 변경 금지
+- source / citation schema 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- ConversationInputPanel 보정 금지
+- table visual 보정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- MAHA_RUNINFO_RAG_WEBSEARCH_WRAPPER_DESIGN_v1.md 작성
+- RunInfo / RAG / Web Search 표시 wrapper 후보 정리
+- compact / collapsed 표시 정책 정리
+- wrapper별 역할 / props / 위험도 작성
+- 후속 구현 순서 작성
+- Kotlin 코드 변경 없음
+
+검증 기준:
+- 문서만 추가
+- 코드 변경 없음
+- 실행 로직 변경 없음
+- 저장 schema 변경 없음
+- parser marker / trace key 변경 없음
+
+--------------------------------------------------
+
+[다음 작업]
+RunInfo 외부 shell과 summary row 1차 적용
+
+==============================
+[2026-05-06 22:21] 대화세션 리팩토링 1~5단계 통합 검증
+==============================
+
+[작업]
+- 대화세션 리팩토링 1~5단계 결과 통합 검증
+- 빌드 / 대화방 진입 / 일반 메시지 전송 / assistant text 표시 확인
+- RunInfo / RAG / Web Search / 입력창 / send / mode / toggle / quick setting 동작 확인
+- code/json block 기존 표시 확인
+- markdown table은 TEXT_BLOCK 내부 table visual 표시 상태로 확인하고 후속 정책 판단 후보로 분리
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 확인]
+- 빌드 성공 및 주요 대화세션 기능 통과
+- 대화방 진입 / 일반 메시지 전송 / assistant 일반 text 표시 통과
+- RunInfo / RAG / Web Search / 입력창 / send button / mode / toggle / quick setting 동작 통과
+- code/json block 기존 표시 통과
+- 테이블은 현재 별도 TABLE_BLOCK 카드가 아니라 TEXT_BLOCK 본문 내부의 표 형태 표시로 확인됨
+
+[기능 확인]
+- 빌드: 통과
+- 대화방 진입: 통과
+- 일반 메시지 전송: 통과
+- assistant 일반 text: 통과
+- heading / quote: 통과 또는 영향 없음
+- markdown table 포함 답변: 부분 통과
+- code/json block: 통과
+- OutputBlock: code/json 기준 통과
+- block copy/action/preview: 일반 TEXT_BLOCK 표에는 해당 없음
+- RunInfo: 통과
+- RAG 표시: 통과
+- Web Search 표시: 통과
+- 입력창: 통과
+- send button: 통과
+- mode radio: 통과
+- RAG/Web Search/fallback switch: 통과
+- quick setting: 통과
+- keyboard hide 후 send: 통과
+
+[테이블 표시 상태]
+- 현재 표는 TABLE_BLOCK으로 출력되지 않음
+- TEXT_BLOCK 안의 markdown table을 화면 표시 단계에서 작은 카드형 cell들로 행/열을 맞춰 보여주는 상태
+- 사용자가 보기에는 “큰 카드 안에 작은 카드들이 행/열로 다닥다닥 붙어 있고 그 안에 내용이 들어간 형태”로 보임
+- 따라서 명시적 TABLE_BLOCK 카드 기능은 확인 불가
+- 현재 확인 가능한 것은 “TEXT_BLOCK 내부 표 표시”뿐임
+
+[영향]
+- 코드 변경: 없음
+- 금지 영역 영향: 없음
+- sendMessage 흐름 변경: 없음
+- parser / marker 변경: 없음
+- block type mapping 변경: 없음
+- block.content 저장값 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+- 작업모드 영향: 없음
+
+[문제]
+- 테이블 표시가 명시적 TABLE_BLOCK 카드로 분리되지 않음
+- 재현 조건: assistant 응답이 TEXT_BLOCK 안에 markdown table을 포함하는 경우
+- 관련 파일: ConversationRoomScreen.kt, ConversationAssistantRenderer.kt, ConversationDisplayParser.kt, ConversationBlocks.kt
+- 추정 원인: Provider 응답의 markdown table이 저장 단계에서 TABLE_BLOCK으로 분리되지 않고 TEXT_BLOCK content 안에 유지됨. 현재 구현은 저장값 변환 없이 화면 표시 단계에서만 표처럼 보이게 처리함.
+- 우선순위: 중간
+
+[후속 후보]
+- “TEXT_BLOCK 내부 표를 별도 TABLE_BLOCK 카드로 승격할지” 또는 “현재처럼 본문 내부 표로 유지하되 디자인만 개선할지” 지휘세션 판단 필요
+
+--------------------------------------------------
+
+[검증 모드]
+
+작업명:
+대화세션 리팩토링 1~5단계 통합 빌드 / 실사용 검증
+
+목표:
+- 완료된 대화세션 리팩토링 1~5단계 결과를 통합 검증한다.
+- 빌드, 대화 전송, assistant 표시, markdown table, code/json, RunInfo, RAG/Web Search, 입력창 동작을 확인한다.
+- 이번 단계는 검증만 한다. Kotlin 코드는 변경하지 않는다.
+- 문제가 있으면 수정하지 말고 재현 조건과 영향 범위를 보고한다.
+
+검증 범위:
+- ConversationRoomScreen 호출 구조
+- ConversationDisplayParser
+- ConversationAssistantRenderer
+- ConversationBlocks
+- ConversationRunInfoParser
+- ConversationInputPanel
+- 기존 대화 전송 / 저장 / 표시 흐름
+
+검증 항목:
+- 앱 빌드
+- 대화방 진입
+- 일반 메시지 전송
+- assistant 일반 text 표시
+- heading 표시
+- quote 표시
+- markdown table 포함 assistant text 표시
+- code block 표시
+- json block 표시
+- 명시적 OutputBlock 표시
+- block copy / action dialog / preview-expand
+- RunInfo 표시
+- RAG ON/OFF 표시
+- Web Search ON/OFF 표시
+- 입력창 일반 입력
+- 빈 입력 send 방지
+- 실행 중 send disabled
+- mode radio 선택
+- RAG switch
+- Web Search switch
+- fallback switch
+- quick setting 접힘/펼침
+- keyboard hide 후 send
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- trace marker / parser key 변경 금지
+- block type mapping 변경 금지
+- block.content 저장값 변경 금지
+- sendMessage 흐름 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- UI 보정 진행 금지
+- 발견한 문제를 즉시 수정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- 빌드 결과 확인
+- 주요 대화세션 기능 검증 완료
+- 리팩토링 분리 파일들이 기존 동작을 깨지 않는지 확인
+- 문제 발생 시 재현 조건 / 관련 파일 / 추정 원인 보고
+- 코드 변경 없음
+
+검증 기준:
+- 일반 대화가 정상 전송되고 assistant 응답이 표시되는지 확인
+- markdown table 포함 답변이 읽을 수 있는 형태로 표시되는지 확인
+- code/json block 표시가 깨지지 않는지 확인
+- RunInfo / RAG / Web Search 표시가 유지되는지 확인
+- 입력창과 toggle 동작이 유지되는지 확인
+- 저장 schema / 실행 로직 영향이 없는지 확인
+
+--------------------------------------------------
+
+[다음 작업]
+TEXT_BLOCK 내부 markdown table visual 디자인 개선 여부 판단
+
+==============================
 [2026-05-06 22:09] 대화세션 리팩토링 1~5단계 안정화 문서 작성
 ==============================
 
