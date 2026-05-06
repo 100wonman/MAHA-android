@@ -1,4 +1,276 @@
 ==============================
+[2026-05-06 22:51] ConversationInputPanel 스타일 1차 보정
+==============================
+
+[작업]
+- ConversationInputPanel.kt 입력 영역 visual 1차 보정 적용
+- 입력창 전체 카드의 border / background / spacing을 대화방 스타일 기준으로 정리
+- 빠른 설정 접힘/펼침 header를 작은 border panel 형태로 정리
+- 자동 / 일반 / 코드 / 검증 선택 영역과 RAG / Web Search / fallback 스위치 row의 시각 밀도 보정
+- send flow, canSend 조건, toggle callback, input state ownership은 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationInputPanel.kt 입력 영역 visual 1차 보정 적용
+- 입력창 전체 카드의 border / background / spacing을 대화방 스타일 기준으로 정리
+- 빠른 설정 접힘/펼침 header를 작은 border panel 형태로 정리
+- 자동 / 일반 / 코드 / 검증 선택 영역과 RAG / Web Search / fallback 스위치 row의 시각 밀도 보정
+- send flow, canSend 조건, toggle callback, input state ownership은 변경하지 않음
+
+[변경 파일]
+- ConversationInputPanel.kt
+
+[기능 확인]
+- 입력창 표시: 통과
+- 일반 입력: 통과
+- 빈 입력 send 방지: 통과
+- 서버 응답 대기 중 입력 가능 여부: 기존 동작 유지 / 관찰됨
+- 서버 응답 대기 중 전송 버튼 활성 여부: 기존 동작 유지 / 관찰됨
+- send button: 통과
+- mode radio: 통과
+- RAG switch: 통과
+- Web Search switch: 통과
+- fallback switch: 통과
+- quick setting 접힘/펼침: 통과
+- keyboard hide 후 send: 통과
+- phone 화면 밀도: 통과
+
+[기능 정책 정정]
+- “답변 생성 중 send disabled”는 이번 단계의 검증 항목에서 제외
+- 현재 관찰 기준, 서버 전송 후 응답을 받기 전까지도 글씨 입력과 전송 버튼 활성 상태가 유지됨
+- 이번 작업은 스타일 보정이며 canSend 조건 변경이 금지되어 있었으므로 해당 동작은 실패가 아니라 기존 동작 유지로 기록
+- 서버 응답 대기 중 중복 전송 방지 여부는 별도 정책 판단이 필요한 후속 작업임
+
+[영향]
+- 금지 영역 영향: 없음
+- sendMessage 흐름 변경: 없음
+- input state ownership 변경: 없음
+- canSend 조건 변경: 없음
+- callback 의미 변경: 없음
+- RAG/Web Search 실행 로직 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[기본 확인]
+- 빌드: 성공
+
+[문제]
+- 테스트 문구 오류 수정
+- 기존 보고서의 “실행 중 send disabled” 항목은 현재 기능 정책과 맞지 않아 제거함
+
+[후속 후보]
+- 서버 응답 대기 중 중복 전송을 막을지 여부는 별도 작업으로 분리 필요
+
+--------------------------------------------------
+
+[보정 모드]
+
+작업명:
+ConversationInputPanel 스타일 1차 보정
+
+목표:
+- ConversationInputPanel.kt의 입력창 / send button / mode radio / RAG-Web Search toggle / quick setting 영역을 대화방 스타일 기준에 맞게 1차 보정한다.
+- 기능 의미는 변경하지 않는다.
+- send flow, canSend 조건, toggle callback, input state ownership은 유지한다.
+- 이번 단계는 입력 영역 visual 보정만 진행한다.
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationInputPanel.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationUiComponents.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+
+수정 조건:
+- ConversationInputPanel.kt 중심으로 보정한다.
+- ConversationUiComponents.kt / ConversationStyleTokens.kt는 필요한 token 또는 작은 wrapper 보강이 있을 때만 수정한다.
+- 기능 추가 금지.
+- 입력 UX 구조 변경 금지.
+- 기존 callback 의미 변경 금지.
+
+보정 범위:
+- input panel surface
+- text input field surface
+- placeholder / input text 가독성
+- send button visual
+- mode radio row 밀도
+- RAG / Web Search / fallback toggle row 밀도
+- quick setting 접힘 / 펼침 header
+- phone 화면 기준 vertical spacing
+
+절대 금지:
+- ConversationRoomScreen.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- sendMessage 흐름 변경 금지
+- input state ownership 변경 금지
+- canSend 조건 변경 금지
+- onSend / onModeChange / onToggleSearch / onToggleWebSearch / onToggleFallback 의미 변경 금지
+- keyboard hide 후 send 흐름 변경 금지
+- RunInfo / RAG / Web Search wrapper 작업 금지
+- 표/테이블 표시 보정 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- 입력창 시각 밀도 개선
+- send button 시각 구분 유지
+- mode / RAG / Web Search / fallback toggle 표시 유지
+- quick setting 접힘/펼침 유지
+- 기존 입력 동작 유지
+- 빌드 성공
+
+검증 기준:
+- 입력창 표시 정상
+- 일반 입력 가능
+- 빈 입력 send 방지 유지
+- 실행 중 send disabled 유지
+- send button 동작 유지
+- mode radio 선택 유지
+- RAG switch 동작 유지
+- Web Search switch 동작 유지
+- fallback switch 동작 유지
+- quick setting 접힘/펼침 유지
+- keyboard hide 후 send 유지
+- 저장 schema / 실행 로직 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+서버 응답 대기 중 중복 전송 방지 정책 판단
+
+==============================
+[2026-05-06 22:38] RunInfo 외부 shell / summary row 실사용 검증
+==============================
+
+[작업]
+- RunInfo 외부 shell / summary row 1차 적용 결과 실사용 검증
+- 실행정보 카드 상단 1줄 표시와 펼침/접힘 동작 확인
+- RAG / Web Search / source / trace 상세 영역 기존 표시 유지 확인
+- copy action 및 phone 화면 밀도 확인
+- 표/테이블 표시는 별도 후속 이슈로 분리
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 확인]
+- RunInfo 외부 shell / summary row 1차 적용 결과는 실사용 기준 모두 통과
+- 실행정보 카드 상단 1줄 표시와 펼침/접힘 동작 정상 확인
+- RAG / Web Search / source / trace 상세 영역 기존 표시 유지 확인
+- copy action 및 phone 화면 밀도 문제 없음 확인
+- 별도 이슈로 표/테이블 블록 개선은 없음
+
+[기능 확인]
+- 빌드: 통과
+- RunInfo 카드 상단 summary: 통과
+- provider / model / latency: 통과
+- 펼침 / 접힘: 통과
+- RAG 상세 표시: 통과
+- Web Search grounding: 통과
+- Web Search source: 통과
+- provider/fallback summary: 통과
+- trace/raw text: 통과
+- copy action: 통과
+- phone 화면 밀도: 통과
+
+[영향]
+- 코드 변경: 없음
+- 금지 영역 영향: 없음
+- ConversationRunInfoParser 변경: 없음
+- trace marker 변경: 없음
+- parser key 변경: 없음
+- RAG/Web Search 실행 로직 변경: 없음
+- 저장 schema 변경: 없음
+- 작업모드 영향: 없음
+
+[문제]
+- 표/테이블 블록 개선 없음
+- 재현 조건: assistant 응답이 TEXT_BLOCK 내부 markdown table을 포함하거나 명시적 TABLE_BLOCK 카드 기대가 있는 경우
+- 관련 파일: ConversationAssistantRenderer.kt, ConversationBlocks.kt, ConversationDisplayParser.kt
+- 추정 원인: 현재 표는 별도 TABLE_BLOCK 카드로 승격되지 않고 TEXT_BLOCK 본문 내부에서 작은 cell/card 형태로만 표시됨
+- 우선순위: 중간
+
+[후속 후보]
+- 표/테이블 표시 정책을 별도 단계로 분리: “본문 내부 표 유지 + 디자인 개선” 또는 “명시적 TABLE_BLOCK 카드 승격” 중 지휘세션 판단 필요
+
+--------------------------------------------------
+
+[검증 모드]
+
+작업명:
+RunInfo 외부 shell / summary row 실사용 검증
+
+목표:
+- RunInfo 외부 shell과 summary row 1차 적용 결과를 실사용 기준으로 검증한다.
+- 실행정보 카드 상단 1줄 표시와 펼침/접힘 동작을 확인한다.
+- RAG / Web Search / source / trace 상세 영역이 기존처럼 표시되는지 확인한다.
+- 이번 단계는 검증만 한다. Kotlin 코드는 변경하지 않는다.
+
+검증 범위:
+- ConversationRunInfoCard
+- ConversationRunInfoSummaryRow
+- ConversationRunSummaryPanelReadable 기존 상세 영역
+- RAG 상세 표시
+- Web Search grounding 표시
+- Web Search source 표시
+- provider / fallback summary 표시
+- copy action
+- 펼침 / 접힘 동작
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationRoomScreen.kt 수정 금지
+- ConversationUiComponents.kt 수정 금지
+- ConversationStyleTokens.kt 수정 금지
+- ConversationRunInfoParser.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- Provider 호출 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- trace marker 변경 금지
+- parser key 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- 발견한 문제 즉시 보정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- 실행정보 카드 상단 summary row 표시 확인
+- provider / model / latency 표시 확인
+- 펼침 / 접힘 동작 확인
+- RAG 상세 표시 확인
+- Web Search grounding/source 표시 확인
+- copy action 확인
+- 문제 발생 시 재현 조건과 영향 범위만 보고
+- 코드 변경 없음
+
+검증 기준:
+- 실행정보 상단 1줄이 과도하게 길거나 깨지지 않는지 확인
+- 펼침/접힘 후 상세 section이 기존처럼 표시되는지 확인
+- RAG / Web Search 정보가 누락되지 않는지 확인
+- source / trace / provider summary copy 의미가 유지되는지 확인
+- phone 화면에서 카드 높이와 spacing이 과도하지 않은지 확인
+- 빌드 성공 확인
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationInputPanel 스타일 보정 또는 표/테이블 표시 정책 별도 판단
+
+==============================
 [2026-05-06 22:34] RunInfo 외부 shell과 summary row 1차 적용
 ==============================
 

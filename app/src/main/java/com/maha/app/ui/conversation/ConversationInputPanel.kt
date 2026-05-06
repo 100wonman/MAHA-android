@@ -1,5 +1,7 @@
 package com.maha.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +17,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 private fun buildQuickSettingsSummary(
@@ -66,56 +71,32 @@ internal fun ConversationInputPanel(
     val canSend = trimmedInput.isNotEmpty() && !isRunning
 
     Card(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         shape = conversationUnifiedCardShape(),
         colors = CardDefaults.cardColors(
-            containerColor = conversationUnifiedCardColor()
+            containerColor = ConversationSurfaces.cardBackground
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = ConversationBorders.defaultBorder
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(ConversationSpacing.inputPanelPadding),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        isQuickSettingsExpanded = !isQuickSettingsExpanded
-                    },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = "빠른 설정",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
-                    )
-
-                    Text(
-                        text = buildQuickSettingsSummary(
-                            modeLabel = modeLabel,
-                            searchEnabled = searchEnabled,
-                            webSearchEnabled = webSearchEnabled,
-                            webSearchFallbackEnabled = webSearchFallbackEnabled
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        maxLines = 1
-                    )
+            QuickSettingsHeader(
+                expanded = isQuickSettingsExpanded,
+                summary = buildQuickSettingsSummary(
+                    modeLabel = modeLabel,
+                    searchEnabled = searchEnabled,
+                    webSearchEnabled = webSearchEnabled,
+                    webSearchFallbackEnabled = webSearchFallbackEnabled
+                ),
+                onClick = {
+                    isQuickSettingsExpanded = !isQuickSettingsExpanded
                 }
-
-                Text(
-                    text = if (isQuickSettingsExpanded) "⌃" else "⌄",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            )
 
             if (isQuickSettingsExpanded) {
                 Column(
@@ -130,13 +111,14 @@ internal fun ConversationInputPanel(
                         Text(
                             text = "모드 선택",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                            fontWeight = FontWeight.SemiBold,
+                            color = ConversationColors.textSecondary
                         )
 
                         Text(
                             text = "Worker: 추후 지원",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+                            color = ConversationColors.textMuted
                         )
                     }
 
@@ -146,123 +128,52 @@ internal fun ConversationInputPanel(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         modeOptions.forEach { option ->
-                            Row(
-                                modifier = Modifier
-                                    .clickable {
-                                        onModeChange(option)
-                                    }
-                                    .padding(end = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = modeLabel == option,
-                                    onClick = {
-                                        onModeChange(option)
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                )
-
-                                Text(
-                                    text = option,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "RAG 검색 사용",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                            )
-
-                            Text(
-                                text = if (searchEnabled) "앱 내부 RAG 검색 ON" else "앱 내부 RAG 검색 OFF",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
-                            )
-                        }
-
-                        Switch(
-                            checked = searchEnabled,
-                            onCheckedChange = {
-                                onToggleSearch()
-                            }
-                        )
-                    }
-
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = "Web Search",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                            )
-
-                            Text(
-                                text = if (webSearchEnabled) {
-                                    "외부 Web Search grounding 요청 ON"
-                                } else {
-                                    "외부 Web Search grounding 요청 OFF"
+                            ModeRadioItem(
+                                label = option,
+                                selected = modeLabel == option,
+                                onClick = {
+                                    onModeChange(option)
                                 },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
+                                modifier = Modifier.weight(1f)
                             )
                         }
-
-                        Switch(
-                            checked = webSearchEnabled,
-                            onCheckedChange = {
-                                onToggleWebSearch()
-                            }
-                        )
                     }
+
+                    ToggleSettingRow(
+                        title = "RAG 검색 사용",
+                        description = if (searchEnabled) {
+                            "앱 내부 RAG 검색 ON"
+                        } else {
+                            "앱 내부 RAG 검색 OFF"
+                        },
+                        checked = searchEnabled,
+                        onCheckedChange = {
+                            onToggleSearch()
+                        }
+                    )
+
+                    ToggleSettingRow(
+                        title = "Web Search",
+                        description = if (webSearchEnabled) {
+                            "외부 Web Search grounding 요청 ON"
+                        } else {
+                            "외부 Web Search grounding 요청 OFF"
+                        },
+                        checked = webSearchEnabled,
+                        onCheckedChange = {
+                            onToggleWebSearch()
+                        }
+                    )
 
                     if (webSearchEnabled) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text(
-                                    text = "검색 실패 시 일반 답변",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-                                )
-
-                                Text(
-                                    text = "Web Search grounding 실패 시 검색 없이 일반 Gemini 답변을 시도합니다. 최신정보 질문에서는 부정확할 수 있습니다.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
-                                )
+                        ToggleSettingRow(
+                            title = "검색 실패 시 일반 답변",
+                            description = "Web Search 실패 시 검색 없이 일반 답변을 시도합니다.",
+                            checked = webSearchFallbackEnabled,
+                            onCheckedChange = {
+                                onToggleWebSearchFallback()
                             }
-
-                            Switch(
-                                checked = webSearchFallbackEnabled,
-                                onCheckedChange = {
-                                    onToggleWebSearchFallback()
-                                }
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -272,59 +183,293 @@ internal fun ConversationInputPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                BasicTextField(
+                ConversationInputTextBox(
                     value = inputText,
                     onValueChange = onInputTextChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp, max = 132.dp)
-                        .padding(vertical = 8.dp),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.18f
-                    ),
-                    minLines = 1,
-                    maxLines = 5,
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (inputText.isBlank()) {
-                                Text(
-                                    text = "메시지를 입력하세요.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
-                                )
-                            }
-
-                            innerTextField()
-                        }
-                    }
+                    modifier = Modifier.weight(1f)
                 )
 
-                IconButton(
+                SendActionButton(
+                    canSend = canSend,
+                    isRunning = isRunning,
                     onClick = {
                         if (canSend) {
                             keyboardController?.hide()
                             onSend()
                         }
-                    },
-                    enabled = canSend,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Text(
-                        text = if (isRunning) "…" else "➤",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (canSend) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
-                        }
-                    )
-                }
+                    }
+                )
             }
         }
     }
 }
+
+@Composable
+private fun QuickSettingsHeader(
+    expanded: Boolean,
+    summary: String,
+    onClick: () -> Unit
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(ConversationShapes.buttonRadius)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = ConversationBorders.subtleBorder,
+                shape = shape
+            )
+            .background(
+                color = ConversationSurfaces.messageSystemBackground,
+                shape = shape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "빠른 설정",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = ConversationColors.textSecondary
+            )
+
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.labelSmall,
+                color = ConversationColors.textMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Text(
+            text = if (expanded) "접기" else "펼치기",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = ConversationVisualTone.ACTION.conversationTextColor()
+        )
+    }
+}
+
+@Composable
+private fun ModeRadioItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(ConversationShapes.buttonRadius)
+    val borderColor = if (selected) {
+        ConversationVisualTone.SELECTED.conversationBorderColor()
+    } else {
+        ConversationBorders.subtleBorder
+    }
+
+    Row(
+        modifier = modifier
+            .heightIn(min = 34.dp)
+            .border(width = 1.dp, color = borderColor, shape = shape)
+            .background(
+                color = ConversationSurfaces.messageSystemBackground,
+                shape = shape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick,
+            modifier = Modifier.size(26.dp),
+            colors = RadioButtonDefaults.colors(
+                selectedColor = ConversationVisualTone.SELECTED.conversationTextColor(),
+                unselectedColor = ConversationColors.textMuted,
+                disabledSelectedColor = ConversationColors.textMuted,
+                disabledUnselectedColor = ConversationColors.textMuted.copy(alpha = 0.45f)
+            )
+        )
+
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) {
+                ConversationVisualTone.SELECTED.conversationTextColor()
+            } else {
+                ConversationColors.textSecondary
+            },
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ToggleSettingRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: () -> Unit
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(ConversationShapes.buttonRadius)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = if (checked) {
+                    ConversationVisualTone.SELECTED.conversationBorderColor()
+                } else {
+                    ConversationBorders.subtleBorder
+                },
+                shape = shape
+            )
+            .background(
+                color = ConversationSurfaces.messageSystemBackground,
+                shape = shape
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = ConversationColors.textSecondary
+            )
+
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelSmall,
+                color = ConversationColors.textMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = {
+                onCheckedChange()
+            },
+            colors = conversationSwitchColors()
+        )
+    }
+}
+
+@Composable
+private fun ConversationInputTextBox(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(ConversationShapes.inputRadius)
+
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .heightIn(min = 48.dp, max = 132.dp)
+            .border(
+                width = 1.dp,
+                color = ConversationBorders.defaultBorder,
+                shape = shape
+            )
+            .background(
+                color = ConversationSurfaces.messageAssistantBackground,
+                shape = shape
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = ConversationColors.textPrimary,
+            lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.18f
+        ),
+        minLines = 1,
+        maxLines = 5,
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isBlank()) {
+                    Text(
+                        text = "메시지를 입력하세요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ConversationColors.textMuted
+                    )
+                }
+
+                innerTextField()
+            }
+        }
+    )
+}
+
+@Composable
+private fun SendActionButton(
+    canSend: Boolean,
+    isRunning: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(ConversationShapes.buttonRadius)
+    val borderColor = if (canSend) {
+        ConversationVisualTone.ACTION.conversationBorderColor()
+    } else {
+        ConversationBorders.subtleBorder
+    }
+
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .border(width = 1.dp, color = borderColor, shape = shape)
+            .background(
+                color = ConversationSurfaces.messageSystemBackground,
+                shape = shape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = canSend,
+            modifier = Modifier.size(44.dp)
+        ) {
+            Text(
+                text = if (isRunning) "…" else "➤",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (canSend) {
+                    ConversationVisualTone.ACTION.conversationTextColor()
+                } else {
+                    ConversationColors.textMuted.copy(alpha = 0.62f)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun conversationSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = ConversationVisualTone.SELECTED.conversationTextColor(),
+    checkedTrackColor = ConversationVisualTone.SELECTED.conversationBorderColor().copy(alpha = 0.34f),
+    checkedBorderColor = ConversationVisualTone.SELECTED.conversationBorderColor(),
+    uncheckedThumbColor = ConversationColors.textMuted,
+    uncheckedTrackColor = ConversationSurfaces.messageSystemBackground,
+    uncheckedBorderColor = ConversationBorders.subtleBorder,
+    disabledCheckedThumbColor = ConversationColors.textMuted.copy(alpha = 0.58f),
+    disabledCheckedTrackColor = ConversationBorders.subtleBorder.copy(alpha = 0.42f),
+    disabledUncheckedThumbColor = ConversationColors.textMuted.copy(alpha = 0.42f),
+    disabledUncheckedTrackColor = ConversationSurfaces.messageSystemBackground.copy(alpha = 0.58f)
+)
