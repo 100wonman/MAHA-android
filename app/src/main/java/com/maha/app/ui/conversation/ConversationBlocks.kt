@@ -7,11 +7,14 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -330,32 +333,93 @@ private fun ConversationTableRowView(
     textColor: Color,
     isHeader: Boolean
 ) {
+    if (row.cells.size == 2) {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val keyColumnWidth = when {
+                maxWidth < 360.dp -> 116.dp
+                maxWidth < 520.dp -> 136.dp
+                else -> maxWidth * 0.34f
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                ConversationTableCellText(
+                    text = row.cells[0],
+                    textColor = textColor,
+                    emphasize = true,
+                    modifier = Modifier.width(keyColumnWidth)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .background(ConversationBorders.subtleBorder.copy(alpha = 0.56f))
+                )
+
+                ConversationTableCellText(
+                    text = row.cells[1],
+                    textColor = textColor,
+                    emphasize = isHeader,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        return
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.Top
     ) {
         row.cells.forEachIndexed { index, cell ->
-            val cellWeight = when {
-                row.cells.size == 2 && index == 0 -> 0.34f
-                row.cells.size == 2 -> 0.66f
-                else -> 1f
-            }
-            Text(
+            ConversationTableCellText(
                 text = cell,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (isHeader || index == 0) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isHeader || index == 0) {
-                    textColor.copy(alpha = 0.92f)
-                } else {
-                    textColor.copy(alpha = 0.84f)
-                },
-                modifier = Modifier
-                    .weight(cellWeight)
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                textColor = textColor,
+                emphasize = isHeader || index == 0,
+                modifier = Modifier.weight(1f)
             )
+
+            if (index < row.cells.lastIndex) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .background(ConversationBorders.subtleBorder.copy(alpha = 0.56f))
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun ConversationTableCellText(
+    text: String,
+    textColor: Color,
+    emphasize: Boolean,
+    modifier: Modifier
+) {
+    Text(
+        text = normalizeConversationDisplayText(text),
+        style = MaterialTheme.typography.bodySmall,
+        fontWeight = if (emphasize) FontWeight.SemiBold else FontWeight.Normal,
+        color = if (emphasize) {
+            textColor.copy(alpha = 0.92f)
+        } else {
+            textColor.copy(alpha = 0.84f)
+        },
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+    )
 }
 
 @Composable

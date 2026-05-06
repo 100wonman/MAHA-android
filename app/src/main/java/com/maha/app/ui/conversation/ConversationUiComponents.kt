@@ -16,11 +16,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
@@ -37,7 +39,7 @@ fun ConversationMessageCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         shape = RoundedCornerShape(ConversationMessageTokens.radius),
         colors = CardDefaults.cardColors(
             containerColor = role.conversationMessageBackground()
@@ -116,6 +118,38 @@ fun ConversationIconActionButton(
     }
 }
 
+
+@Composable
+fun ConversationTextActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tone: ConversationVisualTone = ConversationVisualTone.ACTION,
+    textAlign: TextAlign = TextAlign.Start
+) {
+    val textColor = if (enabled) {
+        tone.conversationTextColor()
+    } else {
+        ConversationColors.textMuted
+    }
+
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
 @Composable
 fun ConversationStructuredBlockCard(
     modifier: Modifier = Modifier,
@@ -124,7 +158,7 @@ fun ConversationStructuredBlockCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         shape = RoundedCornerShape(ConversationStructuredBlockTokens.radius),
         colors = CardDefaults.cardColors(
             containerColor = ConversationStructuredBlockTokens.background
@@ -156,7 +190,7 @@ fun ConversationDialogSurface(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         shape = RoundedCornerShape(ConversationDialogTokens.radius),
         colors = CardDefaults.cardColors(
             containerColor = ConversationDialogTokens.background

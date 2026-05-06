@@ -1,4 +1,1277 @@
 ==============================
+[2026-05-06 16:31] ConversationDisplayParser 1차 분리
+==============================
+
+[작업]
+- ConversationDisplayParser.kt 신규 생성
+- ConversationRoomScreen.kt 내부의 structured/text/code/json/table 표시용 순수 parser/helper 일부 분리
+- expandAssistantStructuredBlocks 기존 호출 경로 유지
+- Compose UI, renderer, callback, RAG/Web Search parser, run info parser, input panel은 분리하지 않음
+- parser marker, block type mapping, block content 저장값, 실행 로직은 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationDisplayParser.kt 신규 생성
+- ConversationRoomScreen.kt 내부의 structured/text/code/json/table 표시용 순수 parser/helper 일부를 새 파일로 분리
+- expandAssistantStructuredBlocks 기존 호출 경로는 유지
+- Compose UI, renderer, callback, RAG/Web Search parser, run info parser, input panel은 분리하지 않음
+- parser marker, block type mapping, block content 저장값, 실행 로직은 변경하지 않음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+- ConversationDisplayParser.kt
+
+[산출물]
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDisplayParser.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+
+[기능 확인]
+- 일반 text 표시: 기존 경로 유지 / 확인
+- markdown table 포함 TEXT_BLOCK 표시: 기존 parser 의미 유지 / 확인
+- code/json/table segment 표시: 기존 segment 분리 의미 유지 / 확인
+- block copy/action: 변경 없음 / 확인
+- preview/expand: 변경 없음 / 확인
+- 기존 callback 의미: 유지
+
+[영향]
+- 금지 영역 영향: 없음
+- parser / marker 변경: 없음
+- block type mapping 변경: 없음
+- block content 저장값 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[기본 확인]
+- 빌드: 성공
+
+[로드맵 상태]
+- 1단계 ConversationDisplayParser 분리: 진행
+- 2단계 TEXT_BLOCK markdown table 정책: 미진행
+- 3단계 ConversationBlocks renderer 책임: 미진행
+- 4단계 RunInfo/RAG/Web Search parser 분리: 미진행
+- 5단계 ConversationInputPanel 분리: 미진행
+
+[문제]
+- 
+--------------------------------------------------
+
+
+[구현 모드]
+
+작업명:
+대화세션 리팩토링 1단계 - ConversationDisplayParser.kt 1차 분리
+
+목표:
+- 대화세션 리팩토링 1~5단계 로드맵을 고정한다.
+- 이번 턴에서는 1단계만 수행한다.
+- ConversationRoomScreen.kt에 집중된 표시용 structured/text/code/json/table parser 중 UI와 무관한 순수 함수만 ConversationDisplayParser.kt로 분리한다.
+- 화면 표시 결과와 기존 동작은 바꾸지 않는다.
+- 이 작업은 기능 추가가 아니라 파일 구조 정리다.
+
+전체 리팩토링 로드맵:
+1. ConversationDisplayParser.kt 1차 분리
+2. TEXT_BLOCK 내부 markdown table 표시 정책 정리
+3. ConversationBlocks.kt renderer 책임 재정리
+4. RunInfo / RAG / Web Search parser 분리
+5. ConversationInputPanel 파일 분리
+
+이번 단계:
+- 1단계만 진행한다.
+- 2~5단계는 진행하지 않는다.
+- 2~5단계에 필요한 발견사항은 기록만 한다.
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDisplayParser.kt
+
+작업 범위:
+- ConversationDisplayParser.kt 신규 생성
+- ConversationRoomScreen.kt 내부 parser/helper 중 UI와 무관한 순수 함수만 이동
+- 이동 후 ConversationRoomScreen.kt에서 기존 호출 경로 연결
+- 함수명과 반환 의미는 최대한 유지
+- 기존 표시 결과 유지
+- 빌드 성공 확인
+
+분리 후보:
+- expandAssistantStructuredBlocks
+- splitAssistantTextLikeBlock
+- parseStructuredAnswerSegments
+- parsePlainStructuredSegments
+- splitMarkdownTableSegments
+- splitJsonSegments
+- mergeAdjacentTextSegments
+- isMarkdownTableStart
+- isValidJsonText
+- isJsonBracketBalanced
+
+분리 제외:
+- Compose UI 함수
+- Text / Card / Modifier / Color를 쓰는 renderer
+- clipboard / dialog / click callback 관련 함수
+- RAG parser
+- Web Search parser
+- run info parser
+- input panel 관련 함수
+- send flow 관련 함수
+- storage 관련 함수
+
+절대 금지:
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationBlocks.kt 변경 금지
+- ConversationRunPanel.kt 변경 금지
+- ConversationDialogs.kt 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- parser marker / trace marker 변경 금지
+- block type mapping 변경 금지
+- block content 저장값 변경 금지
+- sendMessage 흐름 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- TEXT_BLOCK markdown table 보정 금지
+- TABLE_BLOCK 추가 보정 금지
+- RunInfo / RAG / Web Search parser 분리 금지
+- InputPanel 분리 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationDisplayParser.kt 생성
+- ConversationRoomScreen.kt parser/helper 일부가 새 파일로 분리됨
+- 기존 structured/text/code/json/table 표시 결과 유지
+- 기존 callback 의미 변경 없음
+- block content 의미 변경 없음
+- 빌드 성공
+- 2~5단계로 작업 범위 확장 없음
+
+검증 기준:
+- 일반 assistant text 표시 유지
+- markdown table 포함 TEXT_BLOCK 표시가 기존과 동일하게 유지
+- code/json/table segment 표시 의미 변경 없음
+- block copy / action dialog / preview-expand 기존 동작 유지
+- parser / marker / block type mapping 변경 없음
+- 저장 schema / 실행 로직 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[후속 후보]
+- 빌드 성공 확인 후 2단계 TEXT_BLOCK markdown table 표시 정책 정리 여부 판단
+
+==============================
+[2026-05-06 15:42] ConversationBlocks visual wrapper 안정 지점 문서화
+==============================
+
+[작업]
+- ConversationBlocks.kt visual wrapper 1차 적용 이후 안정 지점 문서화
+- ConversationStyleTokens.kt / ConversationUiComponents.kt skeleton 생성 상태 정리
+- ConversationBlocks.kt 적용 범위와 미적용 범위 분리
+- TABLE_BLOCK 현재 상태를 임시 고정으로 기록
+- 원본 content 보존 / 화면 표시 정리 정책과 후속 후보 정리
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationBlocks.kt visual wrapper 1차 적용 이후의 안정 지점을 문서화
+- ConversationStyleTokens.kt / ConversationUiComponents.kt skeleton 생성 상태를 정리
+- ConversationBlocks.kt에 실제 적용된 visual wrapper 범위와 미적용 범위를 분리
+- TABLE_BLOCK 현재 상태를 “임시 고정”으로 기록하고 남은 문제를 분리
+- 후속 지휘 판단 후보를 정리
+
+[산출물]
+- 문서명: MAHA_CONVERSATION_BLOCKS_VISUAL_STABILIZATION_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_BLOCKS_VISUAL_STABILIZATION_v1.md
+
+[정리 범위]
+- ConversationStyleTokens: 대화방 전용 정적 token skeleton 생성 상태 기록
+- ConversationUiComponents: LOW~MEDIUM visual wrapper skeleton 생성 상태 기록
+- ConversationBlocks visual wrapper: OutputBlock shell / header action / block action dialog 적용 범위 기록
+- TABLE_BLOCK: 고정 구분열 + 가변 상세열 구조, bold marker / <br> 표시 정리, 임시 고정 상태 기록
+
+[현재 안정 지점]
+- 적용 완료: ConversationStyleTokens skeleton, ConversationUiComponents skeleton, ConversationBlocks visual shell 1차, helper/token alias 보정
+- 미적용: ConversationRoomScreen, ConversationInputPanel, RunInfo, RAG, Web Search, session list
+- 임시 고정: TABLE_BLOCK 2열 표시, column divider, 화면 표시용 marker 정리
+- 보류: TABLE_BLOCK 원본 content 구조 분석, table parser/renderer 책임 분리, phone layout 정책
+
+[남은 문제]
+- TABLE_BLOCK 품질은 완전 확정이 아니라 임시 고정 상태
+- 원본 block.content가 실제 row/cell 구조인지 markdown/plain text 혼합인지 추가 진단 필요
+- renderer 표시 정리와 원본 copy 보존 정책 경계 유지 필요
+
+[영향]
+- 코드 변경: 없음
+- 금지 영역 영향: 없음
+- parser / marker 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[후속 후보]
+- TABLE_BLOCK 원본 content 구조 진단
+- TABLE_BLOCK phone layout 정책 결정
+- ConversationBlocks visual shell 안정화 검증
+- ConversationDialogs / ConversationSessionListScreen 잔여 스타일 확인
+- RunInfo / RAG / Web Search wrapper 설계 재확인
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+ConversationBlocks visual wrapper 적용 결과 통합 보고
+
+목표:
+- ConversationBlocks.kt visual wrapper 적용 이후의 현재 안정 지점을 문서화한다.
+- ConversationStyleTokens / ConversationUiComponents skeleton 생성 이후 실제 적용된 범위를 정리한다.
+- ConversationBlocks.kt의 block shell, action dialog, TABLE_BLOCK 상태를 기록한다.
+- 남은 문제와 후속 보정 후보를 분리한다.
+- 이번 단계는 문서 작성만 한다. Kotlin 코드는 변경하지 않는다.
+
+수정 허용 파일:
+- docs/design/MAHA_CONVERSATION_BLOCKS_VISUAL_STABILIZATION_v1.md
+
+작성 문서:
+- docs/design/MAHA_CONVERSATION_BLOCKS_VISUAL_STABILIZATION_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 기준 시점
+3. 관련 산출물
+4. 변경 이력 요약
+5. ConversationStyleTokens.kt 생성 상태
+6. ConversationUiComponents.kt 생성 상태
+7. ConversationBlocks.kt visual wrapper 적용 범위
+8. 적용된 wrapper 목록
+9. TABLE_BLOCK 현재 표시 상태
+10. TABLE_BLOCK 남은 문제
+11. 원본 content 보존 / 화면 표시 정리 정책
+12. copy / edit / share / long-click callback 유지 상태
+13. code/json/table 영향 범위
+14. 금지 영역 영향 없음 확인
+15. 현재 안정 지점
+16. 후속 보정 후보
+17. 다음 지휘 판단 후보
+
+반드시 기록할 내용:
+- ConversationBlocks.kt는 LOW~MEDIUM visual shell 중심으로만 적용됨
+- ConversationRoomScreen.kt는 수정하지 않음
+- ConversationInputPanel은 수정하지 않음
+- RunInfo / RAG / Web Search는 수정하지 않음
+- parser / marker / block type mapping은 변경하지 않음
+- block content 저장값은 변경하지 않음
+- TABLE_BLOCK은 현재 고정 구분열 + 가변 상세열 구조
+- TABLE_BLOCK 품질은 완전 확정이 아니라 임시 고정 상태
+- 실제 table 원본 content 구조 확인이 필요할 수 있음
+- 이번 직전 검증에서 추가 Kotlin 변경 없음
+- 직전 검증의 빌드는 사용자 확인 필요 상태였음
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationBlocks.kt 수정 금지
+- ConversationRoomScreen.kt 수정 금지
+- ConversationStyleTokens.kt 수정 금지
+- ConversationUiComponents.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- parser marker / trace marker 변경 금지
+- block type mapping 변경 금지
+- block content 저장값 변경 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- MAHA_CONVERSATION_BLOCKS_VISUAL_STABILIZATION_v1.md 작성
+- 적용 범위와 미적용 범위 분리
+- TABLE_BLOCK 현재 상태와 남은 문제 기록
+- 후속 후보 정리
+- Kotlin 코드 변경 없음
+
+검증 기준:
+- 문서만 추가
+- 코드 변경 없음
+- 금지 영역 영향 없음
+
+==============================
+[2026-05-06 15:18] 대화세션 관련 파일 전체 무결성 검증
+==============================
+
+[작업]
+- 대화세션 관련 Kotlin 파일 13개의 현재 역할과 연결 흐름 문서화
+- sendMessage / 저장 / prompt build / assistant response / structured block / RAG / Web Search / run info 흐름 분리
+- parser / renderer / action / state / storage 경계 정리
+- 반복 보정으로 혼재된 TABLE_BLOCK, run info, RAG/Web Search parser 위험 구간 식별
+- 즉시 보정 후보와 DO_NOT_TOUCH 영역 분리
+
+--------------------------------------------------
+
+[핵심 변경]
+- 대화세션 관련 Kotlin 파일 13개의 현재 역할과 연결 흐름을 문서화
+- sendMessage / 저장 / prompt build / assistant response / structured block / RAG / Web Search / run info 흐름을 분리
+- parser / renderer / action / state / storage 경계를 정리
+- 반복 보정으로 혼재된 TABLE_BLOCK, run info, RAG/Web Search parser 위험 구간을 식별
+- 즉시 보정 후보와 DO_NOT_TOUCH 영역을 분리
+
+[산출물]
+- 문서명: MAHA_CONVERSATION_SESSION_INTEGRITY_AUDIT_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_SESSION_INTEGRITY_AUDIT_v1.md
+
+[검증 범위]
+- UI: ConversationRoomScreen, ConversationBlocks, ConversationRunPanel, ConversationDialogs, ConversationSessionListScreen
+- ViewModel: ConversationViewModel
+- Request/Response: ConversationRequestResponse
+- Prompt: ConversationPromptBuilder
+- Engine: ConversationEngine
+- Storage: ConversationFileStore, ConversationStorageSettingsDialog
+- RAG/Web Search: ConversationRoomScreen parser, ConversationEngine trace, ConversationWebSearchQuickSetting
+- Blocks/Dialog: ConversationBlocks, ConversationDialogs
+
+[주요 확인]
+- 전체 흐름: ConversationRoomScreen → ConversationViewModel.sendMessage → ConversationPromptBuilder → ConversationEngine → Provider Adapter → ConversationResponse → ConversationFileStore → UI 표시
+- parser / renderer 경계: ConversationRoomScreen에 structured/RAG/Web Search parser 집중, ConversationBlocks에 OutputBlock renderer와 TABLE_BLOCK 표시 parser 일부 존재
+- action / callback 경계: block copy/action dialog, message edit, session rename/delete는 callback 의미 보존 필요
+- state / storage 경계: ViewModel은 state/orchestration, FileStore는 session.json/messages.jsonl 저장 전담
+- trace / marker 의존: RAG/Web Search 표시가 Engine trace marker와 강하게 결합
+- token/component 적용 상태: ConversationStyleTokens/ConversationUiComponents skeleton 생성, ConversationBlocks visual shell 1차 적용, input/run/RAG/Web Search는 미적용
+
+[위험 구간]
+- HIGH: ConversationRoomScreen, ConversationInputPanel, ConversationRunSummaryPanelReadable, RAG/Web Search parser, StructuredOutputBlock, message edit dialog, session list rename/delete
+- DO_NOT_TOUCH: ConversationEngine, ConversationViewModel sendMessage, ConversationModels schema, ConversationRequestResponse DTO, ConversationFileStore, ConversationPromptBuilder, Provider Adapter, RAG/Web Search 실행 로직, 저장 schema, 작업모드
+
+[즉시 보정 후보]
+- ConversationBlocks.kt TABLE_BLOCK renderer compile/quality hygiene 점검
+- TABLE_BLOCK 표시용 normalize와 원본 copy 정책 경계 고정
+- ConversationRoomScreen TableContent와 ConversationBlocks TABLE_BLOCK renderer 중복 책임 조사
+- ConversationSessionListScreen Dialog 다크테마 잔여 확인
+- ConversationRunPanel과 ConversationRoomScreen run panel 중복성 확인
+
+
+[영향]
+- 코드 변경 없음
+- 실행 로직 변경 없음
+- 저장 schema 변경 없음
+- 작업모드 영향 없음
+
+--------------------------------------------------
+
+[후속 후보]
+- ConversationBlocks 빌드 위생 확인 → TABLE_BLOCK phone 표시 재확인 → ConversationSessionListScreen/Dialog 잔여 보정 검토 → ConversationRoomScreen parser 추출 설계
+
+==============================
+[2026-05-06 15:55] ConversationBlocks table block 표시 단건 보정
+==============================
+
+[작업]
+- ConversationBlocks.kt의 TABLE_BLOCK 표시 UI를 단건 보정
+- 구분열 / 상세열을 34% / 66% 비율의 row-cell 구조로 표시
+- table cell 안의 bold marker와 <br> 표시를 화면 표시용으로 정리
+- 긴 상세 텍스트가 2열 안에서 줄바꿈되도록 보정
+- parser, marker, block type mapping, copy/edit/share callback 의미는 변경하지 않음
+
+[결과]
+부분 성공
+
+[확인]
+- 빌드 성공
+- block copy action 유지
+- block action dialog 유지
+- preview/expand 유지
+- code/json/table 표시 유지
+- 긴 텍스트 줄바꿈 확인
+
+[남은 문제]
+- table sample에서 구분열 / 상세열이 엑셀 시트처럼 명확하게 정렬되지는 않음
+
+[산출물]
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+
+[후속 후보]
+ConversationBlocks.kt의 TABLE_BLOCK 표시만 대상으로 열 정렬 / bold marker / 줄바꿈 재검증
+
+==============================
+[2026-05-06 14:43] ConversationBlocks visual shell 컴파일 보정
+==============================
+
+[작업]
+- ConversationSurfaces.cardBackground alias 추가
+- ConversationShapes.cardRadius alias 추가
+- ConversationBlocks.kt의 token alias 참조 오류 보정
+- 기존 ConversationBlocks.kt 추가 수정 없음
+- parser, marker, block content, callback, 실행 로직은 변경하지 않음
+
+--------------------------------------------------
+
+[핵심 변경]
+- ConversationSurfaces.cardBackground alias 추가
+- ConversationShapes.cardRadius alias 추가
+- ConversationBlocks.kt의 conversationUnifiedCardColor / conversationUnifiedCardShape 참조 오류 보정
+- 기존 ConversationBlocks.kt는 추가 수정하지 않음
+- parser, marker, block content, callback, 실행 로직은 변경하지 않음
+
+[변경 파일]
+- ConversationStyleTokens.kt
+
+[검증]
+- 빌드 성공
+- block copy action 확인
+- block action dialog 확인
+- preview/expand 확인
+- code/json/table 표시 확인
+- 기존 callback 의미 유지
+
+[영향]
+- 금지 영역 영향 없음
+- parser / marker 변경 없음
+- 저장 schema 변경 없음
+- 실행 로직 변경 없음
+
+[산출물]
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ConversationBlocks.kt 단순 visual shell 1차 적용
+
+목표:
+- ConversationUiComponents skeleton을 ConversationBlocks.kt의 LOW~MEDIUM 위험도 visual shell에만 적용한다.
+- block card / header action / dialog surface 중심으로 작게 치환한다.
+- parser, block content, callback 의미는 변경하지 않는다.
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationUiComponents.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+
+수정 조건:
+- ConversationUiComponents.kt / ConversationStyleTokens.kt는 컴파일 보정 또는 wrapper props 보강이 필요한 경우에만 수정한다.
+- 신규 기능 추가 금지.
+
+1차 적용 대상:
+- ConversationOutputBlockCard의 외부 visual shell
+- StructuredBlockHeader의 action wrapper
+- ConversationBlockActionDialog의 dialog surface
+- 단순 Text body wrapper 가능 영역
+
+후순위 유지:
+- ConversationRoomScreen.kt
+- ConversationInputPanel
+- ConversationRunSummaryPanelReadable
+- RAG 표시 영역
+- Web Search 표시 영역
+- structured parser
+- code/json/table parser
+
+절대 금지:
+- ConversationRoomScreen.kt 수정 금지
+- ConversationRunPanel.kt 수정 금지
+- ConversationDialogs.kt 수정 금지
+- ConversationWebSearchQuickSetting.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- parser marker / trace marker 변경 금지
+- block type mapping 변경 금지
+- block content transform 변경 금지
+- copy / edit / share / long-click callback 의미 변경 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationBlocks.kt에 visual wrapper 1차 적용
+- 기존 action 유지
+- 기존 block 표시 결과 유지
+- 빌드 성공
+- 변경 범위가 허용 파일 안에만 있음
+
+검증 기준:
+- block copy action 유지
+- block action dialog 표시 유지
+- 긴 block preview / expand 동작 유지
+- code/json/table 표시 의미 변경 없음
+- 금지 영역 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+빌드 후 첫 번째 Kotlin error가 있으면 해당 에러만 대상으로 보정
+
+==============================
+[2026-05-06 13:54] ConversationStyleTokens / ConversationUiComponents skeleton 구현
+==============================
+
+[작업]
+- ConversationStyleTokens.kt 신규 생성
+- ConversationUiComponents.kt 신규 생성
+- LOW~MEDIUM 위험도 visual wrapper skeleton 작성
+- 입력창 / 실행정보 / RAG / Web Search wrapper는 후순위로 유지
+- 기존 ConversationRoomScreen / ConversationBlocks / ConversationRunPanel / ConversationDialogs 파일은 수정하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- ConversationStyleTokens.kt 신규 생성
+- ConversationUiComponents.kt 신규 생성
+- LOW~MEDIUM 위험도 visual wrapper skeleton만 작성
+- 입력창 / 실행정보 / RAG / Web Search wrapper는 후순위로 남김
+- 기존 ConversationRoomScreen / ConversationBlocks / ConversationRunPanel / ConversationDialogs 파일은 수정하지 않음
+
+[변경 파일]
+- ConversationStyleTokens.kt
+- ConversationUiComponents.kt
+
+[영향]
+- 금지 영역 영향: 없음
+- 기존 UI 치환: 없음
+- 저장 schema 변경: 없음
+
+[문제]
+- 
+
+[산출물]
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationUiComponents.kt
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+ConversationStyleTokens.kt / ConversationUiComponents.kt skeleton 구현
+
+목표:
+- 대화방 전용 token/component skeleton 파일을 생성한다.
+- 기존 화면에는 아직 적용하지 않는다.
+- LOW~MEDIUM 위험도 wrapper 후보만 함수 skeleton으로 만든다.
+- 입력창, 실행정보, RAG, Web Search 실제 치환은 하지 않는다.
+
+필수 제공 파일:
+- MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+- MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+- MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+
+파일 미제공 시:
+- 작업 시작 금지
+- 누락 파일명 보고
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationStyleTokens.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationUiComponents.kt
+
+수정 금지 파일:
+- ConversationRoomScreen.kt
+- ConversationBlocks.kt
+- ConversationRunPanel.kt
+- ConversationDialogs.kt
+- ConversationWebSearchQuickSetting.kt
+- ConversationEngine.kt
+- ConversationViewModel.kt
+- Provider Adapter 계열
+- RAG/Web Search 실행 파일
+- 저장소 / schema 파일
+- 작업모드 파일
+
+구현 범위:
+1. ConversationStyleTokens.kt 생성
+   - package는 기존 ui/conversation 경로와 맞춘다.
+   - object 또는 data object 기반 정적 skeleton으로 작성한다.
+   - 최소 token 그룹만 작성한다.
+   - 실제 GraphicsSettings 연결은 하지 않는다.
+
+2. ConversationUiComponents.kt 생성
+   - package는 기존 ui/conversation 경로와 맞춘다.
+   - Compose component skeleton만 작성한다.
+   - 기존 화면 파일에 import하거나 적용하지 않는다.
+   - parser/helper/callback 의미를 포함하지 않는다.
+
+ConversationStyleTokens.kt 최소 포함 후보:
+- ConversationColors
+- ConversationSurfaces
+- ConversationBorders
+- ConversationShapes
+- ConversationSpacing
+- ConversationTypography
+- ConversationMessageTokens
+- ConversationStructuredBlockTokens
+- ConversationDialogTokens
+- ConversationNoticeTokens
+
+ConversationUiComponents.kt 최소 포함 후보:
+- ConversationMessageCard
+- ConversationAssistantBlockCard
+- ConversationMessageText
+- ConversationIconActionButton
+- ConversationStructuredBlockCard
+- ConversationDialogSurface
+- ConversationNoticeBlock
+
+후순위로 남길 것:
+- ConversationInputSurface
+- ConversationTextInputBox
+- ConversationToggleRow
+- ConversationSendButton
+- ConversationRunInfoCard
+- ConversationRunInfoSection
+- ConversationRagContextPanel
+- ConversationWebSearchSourceCard
+
+절대 금지:
+- 기존 UI 파일에 skeleton 적용 금지
+- ConversationRoomScreen.kt 수정 금지
+- ConversationBlocks.kt 수정 금지
+- 입력창 수정 금지
+- send enable 조건 변경 금지
+- onSend / toggle / edit / copy callback 의미 변경 금지
+- parser marker / trace marker 변경 금지
+- RAG/Web Search parser 변경 금지
+- Provider 호출 변경 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- GraphicsSettingsStore 구현 금지
+- GraphicsThemeResolver 구현 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationStyleTokens.kt 생성
+- ConversationUiComponents.kt 생성
+- 기존 화면 파일 변경 없음
+- LOW~MEDIUM skeleton component 작성
+- HIGH 위험도 component는 TODO 또는 후순위 주석으로만 남김
+- 빌드 성공
+
+검증 기준:
+- git diff에서 수정 파일이 위 2개인지 확인
+- 기존 UI 파일 변경 없음 확인
+- ./gradlew assembleDebug 실행
+- 빌드 성공 확인
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationBlocks.kt 단순 visual shell 1차 적용
+
+==============================
+[2026-05-06 13:45] ConversationUiComponents skeleton 설계
+==============================
+
+[작업]
+- ConversationUiComponents 후보 component skeleton 문서화
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog, notice, action 영역별 wrapper 후보 정리
+- component별 역할 / 대체 대상 / props / 연결 token / 적용 대상 파일 / 위험도 / 금지 조건 작성
+- LOW / MEDIUM / HIGH / DO_NOT_TOUCH 위험도에 따라 후속 구현 순서 분리
+- Kotlin 코드, ConversationStyleTokens.kt, ConversationUiComponents.kt는 생성하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationUiComponents 후보 component skeleton을 문서화
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog, notice, action 영역별 wrapper 후보 정리
+- component별 역할 / 대체 대상 / props / 연결 token / 적용 대상 파일 / 위험도 / 금지 조건 작성
+- LOW / MEDIUM / HIGH / DO_NOT_TOUCH 위험도에 따라 후속 구현 순서 분리
+- Kotlin 코드, ConversationStyleTokens.kt, ConversationUiComponents.kt는 생성하지 않음
+
+[설계 산출물]
+- 문서명: MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+- 주요 섹션: 목적 / 설계 전제 / component skeleton 원칙 / token 연결 기준 / component 후보 개요 / Message / Input / Run info / RAG / Web Search / Structured-Code-Json-Table / Dialog / Notice / Action / props 기준 / 적용 대상 파일 / 위험도 / 1차 구현 우선순위 / 즉시 구현 금지 영역 / 검증 체크리스트
+
+[필수 파일 확인]
+- STATIC_SCAN: 확인
+- STYLE_TOKENS: 확인
+
+[component 후보]
+- message: ConversationMessageCard, ConversationUserBubble, ConversationAssistantBlockCard, ConversationMessageText
+- input: ConversationInputSurface, ConversationTextInputBox, ConversationToggleRow, ConversationSendButton
+- run info: ConversationRunInfoCard, ConversationRunInfoSection
+- RAG: ConversationRagContextPanel
+- Web Search: ConversationWebSearchSourceCard, ConversationCitationChip
+- structured/code/json/table: ConversationStructuredBlockCard, ConversationCodeBlockSurface, ConversationJsonBlockSurface, ConversationTableSurface
+- dialog: ConversationDialogSurface
+- notice: ConversationNoticeBlock
+- action: ConversationIconActionButton
+
+[props 기준]
+- 공통 props: modifier, enabled, selected, tone, compact, onClick, content
+- message props: role, messageId, text, blocks, createdAt, isEditable, onCopy, onEdit
+- input props: inputText, onInputChange, canSend, isSending, onSend, RAG/Web Search toggle state
+- run info props: runStatus, providerName, modelName, latencySec, ragInfo, webSearchInfo, collapsed, copy action
+- source/RAG props: sourceTitle, sourceUrl, snippet, score, fallbackReason, citation/searchQuery count
+- dialog/action props: title, message, confirmLabel, dismissLabel, danger, onConfirm, onDismissRequest
+
+[위험도]
+- LOW: ConversationMessageCard, ConversationMessageText, AssistantBlock shell, Notice visual shell
+- MEDIUM: ConversationUserBubble, ConversationIconActionButton, ConversationDialogSurface, structured/code/json/table shell, CitationChip
+- HIGH: ConversationInputSurface, ConversationTextInputBox, ConversationToggleRow, ConversationSendButton, RunInfo, RAG, Web Search source card
+- DO_NOT_TOUCH: parser marker, trace marker, send flow, request/response schema, storage schema, RAG/Web Search execution logic, Provider Adapter call path
+
+[후속 구현 순서]
+- 1차 skeleton: ConversationUiComponents.kt skeleton 작성
+- message wrapper: ConversationBlocks.kt 단순 block shell부터 치환
+- dialog wrapper: block action dialog부터 적용
+- structured wrapper: structured/code/json/table visual shell 적용
+- input wrapper: ConversationInputPanel은 별도 단계
+- run info wrapper: parser 고정 확인 후 별도 단계
+- RAG/Web Search wrapper: marker 변경 없이 표시 wrapper만 별도 단계
+
+[기존 기능 영향]
+- Kotlin 코드 변경: 없음
+- ConversationEngine: 변경 없음
+- ConversationViewModel: 변경 없음
+- Provider 호출: 변경 없음
+- RAG/Web Search: 변경 없음
+- 저장 schema: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+ConversationUiComponents skeleton 설계
+
+목표:
+- ConversationStyleTokens 설계 문서를 기준으로 대화방 전용 UI component skeleton을 설계한다.
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog 영역별 wrapper 후보를 정리한다.
+- 실제 Kotlin 파일은 생성하지 않는다.
+- 이번 단계는 문서 작성만 한다.
+
+필수 제공 파일:
+- MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+- MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+
+파일 미제공 시:
+- 작업 시작 금지
+- 누락 파일명 보고
+
+수정 허용 파일:
+- docs/design/MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+
+작성 문서:
+- docs/design/MAHA_CONVERSATION_UI_COMPONENTS_SKELETON_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 설계 전제
+3. component skeleton 설계 원칙
+4. ConversationStyleTokens 연결 기준
+5. Message component 후보
+6. Input component 후보
+7. Run info component 후보
+8. RAG component 후보
+9. Web Search / citation / source component 후보
+10. Structured / code / json / table component 후보
+11. Dialog / popup component 후보
+12. Notice / error / warning component 후보
+13. Action button / copy / edit / expand component 후보
+14. component별 props 후보
+15. component별 적용 대상 파일
+16. component별 위험도
+17. 1차 구현 우선순위
+18. 즉시 구현 금지 영역
+19. 검증 체크리스트
+
+component 후보:
+- ConversationScreenSurface
+- ConversationMessageCard
+- ConversationUserBubble
+- ConversationAssistantBlockCard
+- ConversationMessageText
+- ConversationIconActionButton
+- ConversationInputSurface
+- ConversationTextInputBox
+- ConversationToggleRow
+- ConversationSendButton
+- ConversationRunInfoCard
+- ConversationRunInfoSection
+- ConversationRagContextPanel
+- ConversationWebSearchSourceCard
+- ConversationCitationChip
+- ConversationStructuredBlockCard
+- ConversationCodeBlockSurface
+- ConversationJsonBlockSurface
+- ConversationTableSurface
+- ConversationDialogSurface
+- ConversationNoticeBlock
+
+각 component 작성 형식:
+- 역할:
+- 대체 대상:
+- 필요 props:
+- 연결 token:
+- 적용 대상 파일:
+- 위험도:
+- 1차 구현 여부:
+- 금지 조건:
+
+위험도 기준:
+- LOW: 단순 표시 wrapper
+- MEDIUM: action button / dialog / structured block shell
+- HIGH: input panel / run info / RAG / Web Search 표시
+- DO_NOT_TOUCH: parser / trace marker / send flow / 저장 schema와 결합되는 영역
+
+1차 구현 우선순위 제안:
+1. ConversationBlocks.kt의 단순 block shell 후보
+2. Dialog surface wrapper 후보
+3. UserMessageBlock / Assistant plain text wrapper 후보
+4. Icon action wrapper 후보
+5. Structured/code/json/table visual wrapper 후보
+6. ConversationInputPanel은 별도 단계
+7. Run info / RAG / Web Search는 parser 고정 후 별도 단계
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationUiComponents.kt 생성 금지
+- ConversationStyleTokens.kt 생성 금지
+- ConversationRoomScreen.kt 변경 금지
+- ConversationBlocks.kt 변경 금지
+- ConversationRunPanel.kt 변경 금지
+- ConversationDialogs.kt 변경 금지
+- ConversationWebSearchQuickSetting.kt 변경 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 전송 흐름 변경 금지
+- Provider 호출 경로 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationUiComponents.kt skeleton 구현
+
+==============================
+[2026-05-06 13:30] ConversationStyleTokens 설계
+==============================
+
+[작업]
+- ConversationStyleTokens 후보 그룹 구조 문서화
+- SettingsStyleTokens와 ConversationStyleTokens의 공유 / 분리 기준 정리
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog, notice token 후보 작성
+- GraphicsSettings 연결 후보와 기본값 방향 정리
+- 후속 Kotlin 구현 순서와 즉시 구현 금지 영역 분리
+- Kotlin 코드, ConversationEngine, ConversationViewModel, Provider 호출, RAG/Web Search 실행 로직, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- ConversationStyleTokens 후보 그룹 구조를 문서화
+- SettingsStyleTokens와 ConversationStyleTokens의 공유 / 분리 기준 정리
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog, notice token 후보 작성
+- GraphicsSettings 연결 후보와 기본값 방향 정리
+- 후속 Kotlin 구현 순서와 즉시 구현 금지 영역 분리
+
+[설계 산출물]
+- 문서명: MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+- 주요 섹션: 목적 / 설계 전제 / SettingsStyleTokens 분리 원칙 / GraphicsSettings 공유·분리 값 / token 그룹 구조 / Message-Input-Run-RAG-WebSearch-Structured-Code-Json-Table-Dialog-Notice token / phone-tablet-landscape / 접근성 / 기본값 / 후속 Kotlin 구조 / 즉시 구현 금지 / 검증 체크리스트
+
+[필수 파일 확인]
+- STATIC_SCAN: 확인
+- UX_UI_REVIEW: 확인
+- GRAPHICS_OPTIONS: 확인
+
+[token 그룹]
+- colors/surfaces: ConversationColors, ConversationSurfaces 후보 작성
+- borders/shapes: ConversationBorders, ConversationShapes 후보 작성
+- spacing/typography: ConversationSpacing, ConversationTypography 후보 작성
+- message: user / assistant / system message shell token 후보 작성
+- input: input panel / input field / send button / quick setting token 후보 작성
+- run info: run summary / section / trace block token 후보 작성
+- RAG: context / source / fallback / copy action token 후보 작성
+- Web Search: citation / source / grounding / fallback token 후보 작성
+- structured/code/json/table: block shell, syntax, table, json token 후보 작성
+- dialog/notice: conversation dialog, popup, error/warning/info/trace notice token 후보 작성
+
+[분리 기준]
+- SettingsStyleTokens와 공유: accent, border intensity, dialog opacity, scrim, base surface, warning/danger/info/success tone 일부
+- ConversationStyleTokens 전용: message background, input panel size, run summary hierarchy, RAG display density, Web Search citation/source hierarchy, code/json/table styling
+- GraphicsSettings 연결 후보: accentPreset, conversationDensity, messageFontScale, codeBlockFontScale, messageBubbleRadius, inputPanelHeight, runSummaryDefaultCollapsed, citationDisplayDensity, highContrast, reducedTransparency
+
+[위험도]
+- LOW: 단순 색상, border, radius, chip tone, static typography 후보
+- MEDIUM: message shell, structured/code/json/table block, dialog shell, action icon 후보
+- HIGH: input panel, send button, run info, RAG 표시, Web Search 표시, landscape keyboard 관련 token
+- DO_NOT_TOUCH: parser marker, trace marker, send flow, ConversationEngine, ConversationViewModel, Provider 호출, RAG/Web Search 실행, 저장 schema
+
+[후속 구현 순서]
+- Kotlin token 파일: ConversationStyleTokens.kt skeleton을 별도 단계에서 작성
+- UI component skeleton: ConversationUiComponents.kt skeleton을 별도 단계에서 작성
+- message wrapper: ConversationBlocks 단순 block shell부터 적용
+- input wrapper: ConversationInputPanel은 별도 단계로 분리
+- run info wrapper: parser 고정 후 ConversationRunSummaryPanelReadable 별도 단계
+- RAG/Web Search wrapper: marker 변경 없이 표시 wrapper만 별도 단계
+
+[기존 기능 영향]
+- Kotlin 코드 변경: 없음
+- ConversationEngine: 변경 없음
+- ConversationViewModel: 변경 없음
+- Provider 호출: 변경 없음
+- RAG/Web Search: 변경 없음
+- 저장 schema: 변경 없음
+- 작업모드: 변경 없음
+
+[문제]
+- 없음
+
+[변경 파일]
+- MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+
+[빌드]
+해당 없음
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+ConversationStyleTokens 설계
+
+목표:
+- 정적 스캔 결과를 기준으로 대화방 전용 style token 구조를 설계한다.
+- SettingsStyleTokens와 분리되는 값 / 공유 가능한 값을 구분한다.
+- 메시지, 입력창, 실행정보, RAG, Web Search, structured/code/json/table, Dialog 영역별 token 후보를 문서화한다.
+- 이번 단계는 문서 설계만 한다. Kotlin 코드는 변경하지 않는다.
+
+필수 제공 파일:
+- MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+- MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+- MAHA_GRAPHICS_SETTINGS_OPTIONS_v1.md
+
+파일 미제공 시:
+- 작업을 시작하지 말고 누락 파일명을 보고한다.
+
+수정 허용 파일:
+- docs/design/MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+
+읽기 전용 참고 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRunPanel.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDialogs.kt
+- app/src/main/java/com/maha/app/ConversationWebSearchQuickSetting.kt
+- app/src/main/java/com/maha/app/SettingsStyleTokens.kt
+- app/src/main/java/com/maha/app/SettingsUiComponents.kt
+
+작성 문서:
+- docs/design/MAHA_CONVERSATION_STYLE_TOKENS_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 설계 전제
+3. SettingsStyleTokens와 ConversationStyleTokens 분리 원칙
+4. GraphicsSettings와 공유 가능한 값
+5. GraphicsSettings와 분리해야 할 값
+6. Conversation token 그룹 구조
+7. Message token 후보
+8. Input token 후보
+9. Run info token 후보
+10. RAG token 후보
+11. Web Search / citation / source token 후보
+12. Structured / code / json / table token 후보
+13. Dialog / popup token 후보
+14. Error / warning / trace token 후보
+15. Phone / tablet / landscape 대응 token 후보
+16. 접근성 / high contrast / reduced transparency 후보
+17. 기본값 후보
+18. 후속 Kotlin 구현 시 파일 구조 후보
+19. 즉시 구현 금지 영역
+20. 검증 체크리스트
+
+필수 설계 원칙:
+- 대화방은 설정 화면보다 본문 가독성이 우선이다.
+- SettingsStyleTokens를 그대로 복사하지 않는다.
+- 큰 카드 배경을 상태색으로 칠하지 않는다.
+- 상태 표현은 border / text / chip / label 중심으로 설계한다.
+- 실행정보, RAG, Web Search, trace는 본문과 분리되는 compact 표시를 전제로 한다.
+- parser / marker / 실행 로직에 영향을 주는 token은 만들지 않는다.
+- token 설계는 visual layer에 한정한다.
+
+필수 token 그룹:
+- ConversationColors
+- ConversationSurfaces
+- ConversationBorders
+- ConversationShapes
+- ConversationSpacing
+- ConversationTypography
+- ConversationMessageTokens
+- ConversationInputTokens
+- ConversationRunInfoTokens
+- ConversationRagTokens
+- ConversationWebSearchTokens
+- ConversationStructuredBlockTokens
+- ConversationCodeTokens
+- ConversationJsonTokens
+- ConversationTableTokens
+- ConversationDialogTokens
+- ConversationNoticeTokens
+
+각 token 그룹 작성 형식:
+- 역할:
+- 후보 token:
+- 기본값 방향:
+- SettingsStyleTokens와 공유 가능 여부:
+- GraphicsSettings 연결 후보:
+- 후속 구현 위험도:
+
+위험도 기준:
+- LOW: 단순 색상 / spacing / radius 후보
+- MEDIUM: action button / dialog / block shell 관련 후보
+- HIGH: input panel / run info / RAG / Web Search 표시와 결합되는 후보
+- DO_NOT_TOUCH: parser / trace marker / send flow / 저장 schema에 영향을 줄 수 있는 항목
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationStyleTokens.kt 생성 금지
+- ConversationUiComponents.kt 생성 금지
+- ConversationRoomScreen.kt 변경 금지
+- ConversationBlocks.kt 변경 금지
+- ConversationRunPanel.kt 변경 금지
+- ConversationDialogs.kt 변경 금지
+- ConversationWebSearchQuickSetting.kt 변경 금지
+- SettingsStyleTokens.kt 변경 금지
+- SettingsUiComponents.kt 변경 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 전송 흐름 변경 금지
+- Provider 호출 경로 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- Tool execution 구현 금지
+- Worker / Scenario 실제 실행 연결 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+중요:
+- 이번 작업은 구현 전 설계 문서 작성이다.
+- token 이름은 후속 Kotlin 구현에 바로 옮길 수 있게 일관되게 작성한다.
+- 실제 색상값이 필요한 경우 기존 안정화된 다크테마 방향을 기준으로 설명하되, Kotlin 상수 생성은 하지 않는다.
+- ConversationInputPanel, RunInfo, RAG, Web Search 관련 token은 위험도를 반드시 표시한다.
+- 미구현 기능을 구현된 것처럼 쓰지 않는다.
+
+완료 기준:
+- MAHA_CONVERSATION_STYLE_TOKENS_v1.md 작성
+- token 그룹별 역할과 후보 작성
+- SettingsStyleTokens와의 분리 / 공유 기준 작성
+- GraphicsSettings 연결 후보 작성
+- 기본값 방향 작성
+- 위험도 분류 작성
+- 즉시 구현 금지 영역 작성
+- 후속 Kotlin 구현 순서 제안
+- Kotlin 코드 변경 없음
+
+검증 기준:
+- git diff에서 Kotlin 파일 변경이 없어야 한다.
+- 변경 파일은 docs/design/MAHA_CONVERSATION_STYLE_TOKENS_v1.md 하나여야 한다.
+- 민감정보가 문서에 포함되지 않아야 한다.
+- 빌드는 문서만 추가한 경우 생략 가능하다.
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationUiComponents skeleton 설계
+
+==============================
+[2026-05-06 12:35] ConversationRoomScreen 정적 스캔 및 역할 목록 고정
+==============================
+
+[작업]
+- ConversationRoomScreen 계열 대화방 UI 파일 5개를 읽기 전용으로 정적 스캔
+- 메시지 / 입력창 / 실행정보 / RAG / Web Search / structured block / Dialog 역할 목록 작성
+- 직접 Material UI 사용처와 직접 Color / background / border / shape 사용처를 표로 정리
+- 위험도를 LOW / MEDIUM / HIGH / DO_NOT_TOUCH로 분류
+- ConversationStyleTokens / ConversationUiComponents 후보와 후속 치환 순서를 문서화
+- Kotlin 코드, ConversationEngine, ConversationViewModel, Provider 호출, RAG/Web Search 실행 로직, 저장 schema, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[산출물]
+- docs/design/MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+
+--------------------------------------------------
+
+[설계 모드]
+
+작업명:
+ConversationRoomScreen 정적 스캔 및 대화방 역할 목록 고정
+
+[설계 모드]
+
+작업명:
+ConversationRoomScreen 정적 스캔 및 대화방 역할 목록 고정
+
+목표:
+- ConversationRoomScreen 계열 대화방 UI 파일을 정적 스캔한다.
+- 메시지 / 입력창 / 실행정보 / RAG / Web Search / structured block / Dialog 역할을 분리한다.
+- 직접 Material UI 사용처를 기능 영역별로 분류한다.
+- ConversationStyleTokens / ConversationUiComponents 설계 전 기준 문서를 만든다.
+- 이번 단계는 문서화만 한다. Kotlin 코드는 변경하지 않는다.
+
+필수 제공 파일:
+- MAHA_CONVERSATION_ROOM_UX_UI_REVIEW_v1.md
+- MAHA_DIRECT_UI_USAGE_SCAN_v3.md
+
+필수 제공 코드 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRunPanel.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDialogs.kt
+- app/src/main/java/com/maha/app/ConversationWebSearchQuickSetting.kt
+
+선택 제공:
+- MAHA_CODEMAP_COMPACT_v3.md 중 Conversation Room 관련 부분만
+
+수정 허용 파일:
+- docs/design/MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+
+읽기 전용 파일:
+- ConversationRoomScreen.kt
+- ConversationBlocks.kt
+- ConversationRunPanel.kt
+- ConversationDialogs.kt
+- ConversationWebSearchQuickSetting.kt
+
+작성 문서:
+- docs/design/MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 스캔 대상 파일
+3. ConversationRoomScreen 전체 역할 요약
+4. 메시지 영역 역할
+5. 입력 영역 역할
+6. 실행정보 패널 역할
+7. RAG 표시 역할
+8. Web Search / grounding / source 표시 역할
+9. structured output / code / json / table block 역할
+10. Dialog / Popup 역할
+11. parser / helper function 역할
+12. 직접 Material UI 사용처 표
+13. 직접 Color / background / border / shape 사용처 표
+14. 위험도 분류
+15. ConversationStyleTokens 후보
+16. ConversationUiComponents 후보
+17. 즉시 수정 금지 영역
+18. 후속 치환 순서
+19. 검증 체크리스트
+
+직접 UI 사용처 분류:
+- Card / OutlinedCard
+- Button / TextButton / OutlinedButton / IconButton
+- Switch / RadioButton / FilterChip
+- AlertDialog / Dialog / Popup
+- TextField / OutlinedTextField
+- Color(...)
+- Modifier.background(...)
+- Modifier.border(...)
+- RoundedCornerShape(...)
+- 직접 padding / size / height / width / alpha 지정 중 token화 후보
+
+표 형식:
+| 파일 | 함수/블록 | 직접 사용처 | 현재 역할 | 위험도 | 후속 후보 |
+|---|---|---|---|---|---|
+
+위험도 기준:
+- LOW: 단순 표시 UI
+- MEDIUM: UI 상태 또는 action과 결합
+- HIGH: parser / 실행정보 / RAG / Web Search와 결합
+- DO_NOT_TOUCH: 현재 단계에서 변경 금지
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationRoomScreen.kt 변경 금지
+- ConversationBlocks.kt 변경 금지
+- ConversationRunPanel.kt 변경 금지
+- ConversationDialogs.kt 변경 금지
+- ConversationWebSearchQuickSetting.kt 변경 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 전송 흐름 변경 금지
+- Provider 호출 경로 변경 금지
+- Provider Adapter request / response 형식 변경 금지
+- RAG 실행 로직 변경 금지
+- Web Search 실행 로직 변경 금지
+- Tool execution 구현 금지
+- Worker / Scenario 실제 실행 연결 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- SettingsStyleTokens를 ConversationRoomScreen에 직접 적용 금지
+- ConversationStyleTokens.kt 생성 금지
+- ConversationUiComponents.kt 생성 금지
+- GraphicsSettingsStore 구현 금지
+- GraphicsThemeResolver 구현 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+중요:
+- 이번 작업은 구현이 아니라 지도 작성이다.
+- Kotlin 파일은 읽기 전용이다.
+- 직접 UI 사용처가 있어도 바로 치환하지 않는다.
+- parser/helper 함수는 역할과 위험도만 기록한다.
+- 미구현 기능을 구현된 것처럼 쓰지 않는다.
+- preview / diagnostic을 actual execution처럼 표현하지 않는다.
+
+완료 기준:
+- MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md 작성
+- 대화방 주요 UI 영역 역할 목록 작성
+- 직접 Material UI 사용처 표 작성
+- 직접 Color / background / border / shape 사용처 표 작성
+- 위험도 분류 작성
+- ConversationStyleTokens 후보 작성
+- ConversationUiComponents 후보 작성
+- 후속 치환 순서 작성
+- Kotlin 코드 변경 없음
+- 실행 로직 변경 없음
+- 저장 schema 변경 없음
+
+검증 기준:
+- git diff에서 Kotlin 파일 변경이 없어야 한다.
+- 변경 파일은 docs/design/MAHA_CONVERSATION_ROOM_STATIC_SCAN_v1.md 하나여야 한다.
+- 민감정보가 문서에 포함되지 않아야 한다.
+- 빌드는 문서만 추가한 경우 생략 가능하다.
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationStyleTokens 설계
+
+==============================
 [2026-05-06 10:30] 대화세션 / 대화방 UX·UI 현황 점검 및 개선 설계
 ==============================
 
