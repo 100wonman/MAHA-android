@@ -691,81 +691,25 @@ private fun ConversationRunSummaryPanelReadable(
         }
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                isCollapsed = !isCollapsed
-            },
-        shape = conversationUnifiedCardShape(),
-        colors = CardDefaults.cardColors(
-            containerColor = conversationUnifiedCardColor()
-        )
+    ConversationRunInfoCard(
+        modifier = Modifier.fillMaxWidth(),
+        hasError = hasError,
+        onClick = {
+            isCollapsed = !isCollapsed
+        }
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "실행 정보",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    if (hasError) {
-                        Text(
-                            text = "오류발생",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(copyText.trim()))
-                        },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Text(
-                            text = "⧉",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    IconButton(
-                        onClick = {
-                            isCollapsed = !isCollapsed
-                        },
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Text(
-                            text = if (isCollapsed) "⌄" else "⌃",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
+        ConversationRunInfoSummaryRow(
+            title = "실행 정보",
+            statusLabel = answerOutcomeLabel,
+            hasError = hasError,
+            isCollapsed = isCollapsed,
+            onCopy = {
+                clipboardManager.setText(AnnotatedString(copyText.trim()))
+            },
+            onToggle = {
+                isCollapsed = !isCollapsed
             }
+        )
 
             if (!isCollapsed) {
                 RunFlatSection(
@@ -840,7 +784,6 @@ private fun ConversationRunSummaryPanelReadable(
                     )
                 }
             }
-        }
     }
 }
 

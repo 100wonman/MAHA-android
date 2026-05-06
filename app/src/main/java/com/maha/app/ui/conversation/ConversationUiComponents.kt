@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
@@ -147,6 +151,115 @@ fun ConversationTextActionButton(
             textAlign = textAlign,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+
+@Composable
+fun ConversationRunInfoCard(
+    modifier: Modifier = Modifier,
+    hasError: Boolean = false,
+    onClick: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val tone = if (hasError) {
+        ConversationVisualTone.DANGER
+    } else {
+        ConversationVisualTone.NEUTRAL
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(ConversationShapes.cardRadius),
+        colors = CardDefaults.cardColors(
+            containerColor = ConversationSurfaces.cardBackground
+        ),
+        border = BorderStroke(1.dp, tone.conversationBorderColor())
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+fun ConversationRunInfoSummaryRow(
+    title: String,
+    statusLabel: String?,
+    hasError: Boolean,
+    isCollapsed: Boolean,
+    onCopy: () -> Unit,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = ConversationColors.textPrimary
+            )
+
+            if (hasError) {
+                Text(
+                    text = "오류발생",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = ConversationVisualTone.DANGER.conversationTextColor()
+                )
+            } else if (!statusLabel.isNullOrBlank()) {
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ConversationColors.textMuted
+                )
+            }
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ConversationIconActionButton(
+                onClick = onCopy,
+                modifier = Modifier.size(34.dp),
+                tone = ConversationVisualTone.ACTION
+            ) {
+                Text(
+                    text = "⧉",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ConversationVisualTone.ACTION.conversationTextColor()
+                )
+            }
+
+            ConversationIconActionButton(
+                onClick = onToggle,
+                modifier = Modifier.size(34.dp),
+                tone = ConversationVisualTone.NEUTRAL
+            ) {
+                Text(
+                    text = if (isCollapsed) "⌄" else "⌃",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ConversationColors.textPrimary
+                )
+            }
+        }
     }
 }
 
