@@ -1,4 +1,181 @@
 ==============================
+[2026-05-06 22:09] 대화세션 리팩토링 1~5단계 안정화 문서 작성
+==============================
+
+[작업]
+- 대화세션 리팩토링 1~5단계 완료 상태 문서화
+- ConversationRoomScreen.kt에서 분리된 파일과 책임 경계 정리
+- 표시 parser / assistant renderer / block renderer / RunInfo parser / input panel 분리 결과 기록
+- Engine / ViewModel / Storage / Schema / Provider / RAG-Web Search 실행 로직 미변경 원칙 재확인
+- 남은 위험 구간과 후속 후보를 지휘 세션 판단용으로 분리
+
+--------------------------------------------------
+
+[결과]
+성공
+
+[핵심 변경]
+- 대화세션 리팩토링 1~5단계 완료 상태를 문서화
+- ConversationRoomScreen.kt에서 분리된 파일과 책임 경계를 정리
+- 표시 parser / assistant renderer / block renderer / run info parser / input panel 분리 결과 기록
+- Engine / ViewModel / Storage / Schema / Provider / RAG-Web Search 실행 로직 미변경 원칙 재확인
+- 남은 위험 구간과 후속 후보를 지휘 세션 판단용으로 분리
+
+[산출물]
+- 문서명: MAHA_CONVERSATION_REFACTOR_STABILIZATION_v1.md
+- 작성 위치: docs/design/MAHA_CONVERSATION_REFACTOR_STABILIZATION_v1.md
+
+[1~5단계 정리]
+- 1단계 DisplayParser: ConversationDisplayParser.kt 생성, structured/text/code/json/table 표시용 순수 parser/helper 분리 완료
+- 2단계 AssistantRenderer: ConversationAssistantRenderer.kt 생성, assistant text / heading / quote / markdown table 표시 계층 분리 완료
+- 3단계 Blocks renderer: ConversationBlocks.kt를 명시적 OutputBlock renderer 책임으로 정리 완료
+- 4단계 RunInfo parser: ConversationRunInfoParser.kt 생성, RunInfo / RAG / Web Search 표시용 parser/helper 분리 완료
+- 5단계 InputPanel: ConversationInputPanel.kt 생성, 입력창 UI 분리 완료
+
+[신규 파일]
+- ConversationDisplayParser.kt
+- ConversationAssistantRenderer.kt
+- ConversationRunInfoParser.kt
+- ConversationInputPanel.kt
+
+[책임 경계]
+- RoomScreen: 대화방 전체 화면 composition, ViewModel state 연결, 분리된 renderer/parser/input panel 호출
+- DisplayParser: UI와 무관한 assistant display segment parser
+- AssistantRenderer: 일반 assistant text, heading, quote, TEXT/MARKDOWN 내부 markdown table 표시
+- Blocks: 명시적 OutputBlock card, CODE_BLOCK, JSON_BLOCK, TABLE_BLOCK, block action
+- RunInfoParser: RunInfo / RAG / Web Search 표시용 순수 parser/helper
+- InputPanel: 입력창, send button, mode, RAG/Web Search/fallback switch, quick setting UI
+
+[유지된 금지 영역]
+- Engine: 변경 없음
+- ViewModel: sendMessage 흐름 변경 없음
+- Storage: ConversationFileStore / messages.jsonl / session.json 저장 구조 변경 없음
+- Schema: ConversationModels / RequestResponse / block type mapping / block.content 저장값 변경 없음
+- Provider: Provider 호출 / Adapter 변경 없음
+- RAG/Web Search: 실행 로직 / trace marker / parser key / fallback policy 변경 없음
+- 작업모드: 영향 없음
+
+[남은 위험 구간]
+- ConversationRoomScreen.kt는 여전히 전체 화면 composition과 state 연결을 담당하므로 수정 시 주의 필요
+- RunInfo UI compact화는 아직 진행하지 않음
+- RAG / Web Search 표시 wrapper는 아직 분리하지 않음
+- ConversationInputPanel은 파일 분리만 완료했고 스타일 보정은 하지 않음
+- TEXT_BLOCK 내부 markdown table을 별도 block card로 분리할지 여부는 후속 판단 필요
+
+[영향]
+- 코드 변경: 없음
+- 실행 로직 변경: 없음
+- 저장 schema 변경: 없음
+- 작업모드 영향: 없음
+
+[문제]
+- 없음
+
+[후속 후보]
+- 1~5단계 리팩토링 통합 빌드 / 실사용 검증
+- RunInfo UI compact화 설계
+- RAG / Web Search 표시 wrapper 설계
+- ConversationInputPanel 스타일 보정
+- ConversationRoomScreen 잔여 composition 정리
+
+--------------------------------------------------
+
+
+[설계 모드]
+
+작업명:
+대화세션 리팩토링 1~5단계 안정화 문서 작성
+
+목표:
+- 완료된 대화세션 리팩토링 1~5단계의 안정 지점을 문서화한다.
+- ConversationRoomScreen.kt에서 분리된 파일과 책임 경계를 정리한다.
+- 표시 계층 / parser / renderer / input panel 분리 결과를 기록한다.
+- 금지 영역이 유지되었는지 정리한다.
+- 후속 작업 후보를 지휘 세션 판단용으로 분리한다.
+- 이번 단계는 문서 작성만 한다. Kotlin 코드는 변경하지 않는다.
+
+수정 허용 파일:
+- docs/design/MAHA_CONVERSATION_REFACTOR_STABILIZATION_v1.md
+
+작성 문서:
+- docs/design/MAHA_CONVERSATION_REFACTOR_STABILIZATION_v1.md
+
+문서에 포함할 내용:
+1. 목적
+2. 기준 시점
+3. 리팩토링 전 문제
+4. 1~5단계 완료 요약
+5. 1단계 ConversationDisplayParser 분리 결과
+6. 2단계 Assistant message rendering layer 분리 결과
+7. 3단계 ConversationBlocks renderer 책임 재정리 결과
+8. 4단계 RunInfo / RAG / Web Search parser 분리 결과
+9. 5단계 ConversationInputPanel 파일 분리 결과
+10. 신규 생성 파일 목록
+11. 수정된 기존 파일 목록
+12. 현재 책임 경계
+13. 유지된 금지 영역
+14. 표시 계층 안정 지점
+15. 남은 위험 구간
+16. 후속 후보
+17. 다음 지휘 판단 후보
+18. 검증 체크리스트
+
+반드시 기록할 내용:
+- ConversationEngine 변경 없음
+- ConversationViewModel sendMessage 흐름 변경 없음
+- ConversationFileStore 저장 schema 변경 없음
+- ConversationModels / RequestResponse schema 변경 없음
+- ConversationPromptBuilder 변경 없음
+- Provider 호출 변경 없음
+- RAG / Web Search 실행 로직 변경 없음
+- 작업모드 영향 없음
+- block.content 저장값 변경 없음
+- block type mapping 변경 없음
+
+1~5단계 기록 기준:
+- 1단계: ConversationDisplayParser.kt 생성, structured/text/code/json/table 표시용 순수 parser/helper 분리
+- 2단계: ConversationAssistantRenderer.kt 생성, assistant message rendering layer 분리
+- 3단계: ConversationBlocks.kt를 명시적 OutputBlock renderer 책임으로 정리
+- 4단계: ConversationRunInfoParser.kt 생성, RunInfo / RAG / Web Search 표시용 parser/helper 분리
+- 5단계: ConversationInputPanel.kt 생성, 입력창 UI 분리
+
+절대 금지:
+- Kotlin 코드 변경 금지
+- ConversationRoomScreen.kt 수정 금지
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- 새로운 리팩토링 진행 금지
+- UI 보정 진행 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- MAHA_CONVERSATION_REFACTOR_STABILIZATION_v1.md 작성
+- 1~5단계 완료 상태 정리
+- 신규 파일 / 수정 파일 / 책임 경계 정리
+- 금지 영역 미변경 확인
+- 남은 위험 구간과 후속 후보 정리
+- Kotlin 코드 변경 없음
+
+검증 기준:
+- 문서만 추가
+- 코드 변경 없음
+- 실행 로직 변경 없음
+- 저장 schema 변경 없음
+- 작업모드 영향 없음
+
+--------------------------------------------------
+
+[다음 작업]
+대화세션 리팩토링 1~5단계 통합 빌드 / 실사용 검증
+
+==============================
 [2026-05-06 22:08] ConversationInputPanel 파일 분리
 ==============================
 
