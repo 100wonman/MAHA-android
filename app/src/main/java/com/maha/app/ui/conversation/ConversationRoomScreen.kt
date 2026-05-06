@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -314,7 +315,7 @@ private fun ConversationOutputBlockRenderer(
     }
 
     if (isTextLike) {
-        AssistantPlainTextBlock(text = block.content)
+        ConversationAssistantTextRenderer(text = block.content)
         return
     }
 
@@ -472,18 +473,147 @@ private fun UserMessageBlock(
 
 @Composable
 private fun AssistantPlainTextBlock(text: String) {
-    SelectionContainer {
-        Text(
-            text = text,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.bodyLarge.copy(
-                lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
-            ),
-            color = MaterialTheme.colorScheme.onSurface
-        )
+    val segments = remember(text) { parseConversationDisplaySegments(text) }
+    val hasMarkdownTableSegment = segments.any { segment ->
+        segment.type == ConversationOutputBlockType.TABLE_BLOCK &&
+                parseAssistantMarkdownTableRows(segment.content).isNotEmpty()
     }
+
+    if (!hasMarkdownTableSegment) {
+        SelectionContainer {
+            Text(
+                text = text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        segments.forEach { segment ->
+            when (segment.type) {
+                ConversationOutputBlockType.TABLE_BLOCK -> {
+                    val rows = parseAssistantMarkdownTableRows(segment.content)
+                    if (rows.isNotEmpty()) {
+                        AssistantMarkdownTableContent(rows = rows)
+                    }
+                }
+
+                else -> {
+                    if (segment.content.isNotBlank()) {
+                        SelectionContainer {
+                            Text(
+                                text = segment.content,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.25f
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantMarkdownTableContent(
+    rows: List<List<String>>
+) {
+    val horizontalScrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(horizontalScrollState)
+            .background(conversationUnifiedCardColor().copy(alpha = 0.28f))
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        rows.forEachIndexed { rowIndex, cells ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                cells.forEachIndexed { cellIndex, cell ->
+                    SelectionContainer {
+                        Text(
+                            text = normalizeAssistantMarkdownTableCell(cell),
+                            modifier = Modifier
+                                .widthIn(
+                                    min = if (cellIndex == 0) 104.dp else 160.dp,
+                                    max = if (cellIndex == 0) 180.dp else 280.dp
+                                )
+                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                            style = if (rowIndex == 0) {
+                                MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            } else {
+                                MaterialTheme.typography.bodySmall
+                            },
+                            color = MaterialTheme.colorScheme.onSurface.copy(
+                                alpha = if (rowIndex == 0 || cellIndex == 0) 0.95f else 0.86f
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseAssistantMarkdownTableRows(
+    text: String
+): List<List<String>> {
+    return text
+        .lines()
+        .map { line -> line.trim() }
+        .filter { line -> line.isNotBlank() }
+        .filterNot { line -> isAssistantMarkdownTableSeparator(line) }
+        .map { line ->
+            line
+                .trim('|')
+                .split('|')
+                .map { cell -> normalizeAssistantMarkdownTableCell(cell) }
+                .filter { cell -> cell.isNotBlank() }
+        }
+        .filter { cells -> cells.size >= 2 }
+}
+
+private fun isAssistantMarkdownTableSeparator(
+    line: String
+): Boolean {
+    val normalized = line.trim().trim('|').trim()
+    if (normalized.isBlank()) {
+        return false
+    }
+    return normalized
+        .split('|')
+        .map { cell -> cell.trim() }
+        .all { cell -> cell.matches(Regex(":?-{3,}:?")) }
+}
+
+private fun normalizeAssistantMarkdownTableCell(
+    value: String
+): String {
+    return value
+        .replace(Regex("(?i)<br\\s*/?>"), "\n")
+        .replace(Regex("\\$\\\\rightarrow\\$"), "→")
+        .replace(Regex("\\*\\*(.*?)\\*\\*")) { match -> match.groupValues[1] }
+        .replace(Regex("__(.*?)__")) { match -> match.groupValues[1] }
+        .trim()
 }
 
 @Composable

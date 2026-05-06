@@ -1,4 +1,181 @@
 ==============================
+[2026-05-06 21:20] Assistant message rendering layer 분리
+==============================
+
+[작업]
+- AssistantPlainTextBlock 직접 출력 구조를 ConversationAssistantRenderer 경로로 분리
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown table을 화면 표시 단계에서 표 형태로 표시
+- heading / markdown table / 일반 text 표시 경로를 assistant renderer 계층으로 정리
+- 원본 block.content, block type mapping, 저장 schema, 실행 로직은 변경하지 않음
+- ConversationEngine, ConversationViewModel, Provider 호출, 작업모드는 변경하지 않음
+
+--------------------------------------------------
+
+[결과]
+부분 성공
+
+[핵심 변경]
+- AssistantPlainTextBlock 직접 출력 구조를 ConversationAssistantRenderer 경로로 분리
+- TEXT_BLOCK / MARKDOWN_BLOCK 내부 markdown table을 화면 표시 단계에서 표 형태로 표시
+- 원본 block.content 저장값은 변경하지 않음
+- ConversationEngine / ConversationViewModel / Provider 호출 / 저장 schema는 변경하지 않음
+- code/json block 기존 표시는 사용자 확인 기준 이상 없음
+
+[변경 파일]
+- ConversationRoomScreen.kt
+- ConversationAssistantRenderer.kt
+
+[기능 확인]
+- 일반 assistant text: 통과
+- heading 표시: 통과
+- quote 표시: 해당 없음
+- markdown table sample: 통과
+- bold marker / <br> 화면 표시: 통과
+- copy 원본 보존: 해당 없음
+- block action dialog: 해당 없음
+- preview/expand: 해당 없음
+- TABLE_BLOCK 영향: 해당 없음
+- code/json 표시 영향: 통과
+
+[해당 없음 사유]
+- 현재 표는 TABLE_BLOCK 카드가 아니라 TEXT_BLOCK 내부 markdown table 표시 결과임
+- 별도 Table block card가 생성되지 않으므로 block copy icon, block action dialog, preview/expand를 확인할 수 없음
+- 이번 단계는 저장값을 TABLE_BLOCK으로 변환하는 작업이 아니라 화면 표시 계층 정리 작업임
+
+[영향]
+- 금지 영역 영향: 없음
+- parser / marker 변경: 없음
+- block type mapping 변경: 없음
+- block content 저장값 변경: 없음
+- 저장 schema 변경: 없음
+- 실행 로직 변경: 없음
+
+[기본 확인]
+- 빌드: 사용자 확인 성공
+
+[로드맵 상태]
+- 1단계 ConversationDisplayParser 분리: 완료
+- 2단계 Assistant message rendering layer: 부분 성공
+- 3단계 ConversationBlocks renderer 책임: 대기
+- 4단계 RunInfo/RAG/Web Search parser 분리: 대기
+- 5단계 ConversationInputPanel 분리: 대기
+
+[남은 판단]
+- TEXT_BLOCK 안의 표를 계속 일반 답변 안에서만 예쁘게 보여줄지
+- 아니면 다음 단계에서 실제 block card처럼 분리 표시할지 지휘세션 판단 필요
+
+--------------------------------------------------
+
+[구현 모드]
+
+작업명:
+대화세션 리팩토링 2단계 - Assistant message rendering layer 분리
+
+목표:
+- 표 단건 보정을 중단하고 assistant 메시지 표시 계층을 분리한다.
+- AssistantPlainTextBlock 직접 출력 구조를 정리한다.
+- TEXT_BLOCK / MARKDOWN_BLOCK content를 DisplaySegment 단위로 표시한다.
+- heading / plain text / quote / markdown table 표시 경로를 분리한다.
+- 원본 block.content는 변경하지 않는다.
+- copy / action dialog는 원본 content 기준을 유지한다.
+
+로드맵 상태:
+1. ConversationDisplayParser.kt 분리: 완료
+2. Assistant message rendering layer 분리: 이번 단계
+3. ConversationBlocks.kt renderer 책임 재정리: 대기
+4. RunInfo / RAG / Web Search parser 분리: 대기
+5. ConversationInputPanel 파일 분리: 대기
+
+수정 허용 파일:
+- app/src/main/java/com/maha/app/ui/conversation/ConversationRoomScreen.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationDisplayParser.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationAssistantRenderer.kt
+- app/src/main/java/com/maha/app/ui/conversation/ConversationBlocks.kt
+
+수정 조건:
+- ConversationAssistantRenderer.kt는 신규 생성한다.
+- ConversationBlocks.kt는 기존 renderer 재사용 또는 import 정리 목적의 최소 수정만 허용한다.
+- ConversationDisplayParser.kt는 renderer 분리에 필요한 segment 함수 보강만 허용한다.
+- 임시 table 보정 코드는 새 renderer 구조에 흡수하거나 제거한다.
+- 기능 추가가 아니라 표시 계층 정리만 한다.
+
+작업 범위:
+- Assistant message text rendering을 ConversationAssistantRenderer.kt로 분리
+- AssistantPlainTextBlock의 단순 Text 직접 출력 의존 축소
+- DisplaySegment 기반 표시 함수 작성
+- plain text segment 표시
+- markdown heading 표시
+- markdown quote 표시
+- markdown table segment 표시
+- markdown table은 검증 샘플일 뿐이며 작업 목표가 아님
+- code/json 표시 의미는 변경하지 않음
+- block copy / action dialog / preview-expand 의미 유지
+- 원본 content 보존
+
+구현 기준:
+- 저장값 변경 없이 renderer 단계에서만 표시 분기
+- markdown table segment가 없으면 기존 일반 text 표시와 동일해야 함
+- markdown table segment가 있으면 text / heading / quote / table segment로 분리 표시
+- heading marker `##`는 화면 표시에서 heading style로 처리
+- quote marker `>`는 화면 표시에서 quote style로 처리
+- bold marker와 `<br>`는 화면 표시에서만 정리
+- copy 원본은 block.content 기준 유지
+- TEXT_BLOCK을 TABLE_BLOCK으로 저장하거나 변환하지 않음
+- block type mapping 변경 금지
+
+절대 금지:
+- ConversationEngine 변경 금지
+- ConversationViewModel 변경 금지
+- ConversationPromptBuilder 변경 금지
+- ConversationFileStore 변경 금지
+- ConversationModels / RequestResponse schema 변경 금지
+- Provider 호출 변경 금지
+- RAG/Web Search 실행 로직 변경 금지
+- parser marker / trace marker 변경 금지
+- block type mapping 변경 금지
+- block content 저장값 변경 금지
+- sendMessage 흐름 변경 금지
+- 저장 schema 변경 금지
+- 작업모드 수정 금지
+- RunInfo / RAG / Web Search parser 분리 금지
+- ConversationInputPanel 분리 금지
+- ConversationSessionListScreen 팝업 보정 금지
+- 여러 리팩토링 단계를 한 번에 진행 금지
+- API Key / token / secret / signing 정보 출력 금지
+
+완료 기준:
+- ConversationAssistantRenderer.kt 생성
+- assistant text 표시 계층이 새 renderer로 분리됨
+- 일반 TEXT_BLOCK 표시 유지
+- heading / quote / markdown table 포함 assistant text 표시 경로 정리
+- 원본 block.content 보존
+- copy / action dialog 원본 기준 유지
+- TABLE_BLOCK 기존 표시 영향 없음
+- code/json 표시 영향 없음
+- 빌드 성공
+- 3~5단계로 작업 범위 확장 없음
+
+검증 기준:
+- 일반 assistant text 표시 유지
+- heading marker가 그대로 노출되지 않고 heading처럼 표시되는지 확인
+- quote marker가 그대로 노출되지 않고 quote처럼 표시되는지 확인
+- markdown table 포함 sample이 assistant renderer 경로에서 표시되는지 확인
+- bold marker / `<br>` 화면 표시 정리 확인
+- copy action이 원본 block.content를 유지하는지 확인
+- block action dialog 유지
+- preview/expand 유지
+- TABLE_BLOCK 기존 표시 영향 없음
+- code/json 표시 영향 없음
+- parser / marker / block type mapping 변경 없음
+- 저장 schema / 실행 로직 영향 없음
+- 빌드 성공
+
+--------------------------------------------------
+
+[다음 작업]
+ConversationBlocks renderer 책임 재정리
+
+==============================
 [2026-05-06 16:31] ConversationDisplayParser 1차 분리
 ==============================
 
